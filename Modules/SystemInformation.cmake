@@ -3,7 +3,13 @@
 
 
 cmake_minimum_required(VERSION ${CMAKE_VERSION})
-project(DumpInformation)
+
+set(INFO_LANGS ASM C CXX)
+if(APPLE)
+  list(APPEND INFO_LANGS OBJC OBJCXX)
+endif()
+
+project(DumpInformation ${INFO_LANGS})
 
 # first get the standard information for the platform
 include_directories("This does not exist")
