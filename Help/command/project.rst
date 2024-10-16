@@ -44,11 +44,18 @@ Projects should not rely on ``<PROJECT-NAME>_SOURCE_DIR`` or
 ``<PROJECT-NAME>_BINARY_DIR`` holding a particular value outside of the scope
 of the call to ``project()`` or one of its child scopes.
 
-.. versionchanged:: 3.30.4
-  If the variables ``<PROJECT-NAME>_SOURCE_DIR``,
-  ``<PROJECT-NAME>_BINARY_DIR``, or ``<PROJECT-NAME>_IS_TOP_LEVEL`` are
-  already set as non-cache variables when ``project(<PROJECT-NAME> ...)``
-  is called, the ``project()`` command will overwrite the previous values.
+.. versionchanged:: 3.30
+  ``<PROJECT-NAME>_SOURCE_DIR``, ``<PROJECT-NAME>_BINARY_DIR``, and
+  ``<PROJECT-NAME>_IS_TOP_LEVEL``, if already set as normal variables when
+  ``project(<PROJECT-NAME> ...)`` is called, are updated by the call.
+  Cache entries by the same names are always set as before.
+  See release notes for 3.30.3, 3.30.4, and 3.30.5 for details.
+
+.. versionchanged:: 3.31
+  ``<PROJECT-NAME>_SOURCE_DIR``, ``<PROJECT-NAME>_BINARY_DIR``, and
+  ``<PROJECT-NAME>_IS_TOP_LEVEL`` are always set as normal variables by
+  ``project(<PROJECT-NAME> ...)``.  See policy :policy:`CMP0180`.
+  Cache entries by the same names are always set as before.
 
 Options
 ^^^^^^^
