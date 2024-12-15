@@ -71,7 +71,7 @@ const cmDocumentationEntry cmDocumentationUsageNote = {
   "Run 'cmake --help' for more information."
 };
 
-const cmDocumentationEntry cmDocumentationOptions[34] = {
+const cmDocumentationEntry cmDocumentationOptions[35] = {
   { "--preset <preset>,--preset=<preset>", "Specify a configure preset." },
   { "--list-presets[=<type>]", "List available presets." },
   { "--workflow [<options>]", "Run a workflow preset." },
@@ -123,6 +123,9 @@ const cmDocumentationEntry cmDocumentationOptions[34] = {
   { "--compile-no-warning-as-error",
     "Ignore COMPILE_WARNING_AS_ERROR property and "
     "CMAKE_COMPILE_WARNING_AS_ERROR variable." },
+  { "--link-no-warning-as-error",
+    "Ignore LINK_WARNING_AS_ERROR property and "
+    "CMAKE_LINK_WARNING_AS_ERROR variable." },
   { "--profiling-format=<fmt>",
     "Output data for profiling CMake scripts. Supported formats: "
     "google-trace" },
@@ -219,7 +222,7 @@ std::function<bool(std::string const& value)> getShowCachedCallback(
 
 int do_cmake(int ac, char const* const* av)
 {
-  if (cmSystemTools::GetCurrentWorkingDirectory().empty()) {
+  if (cmSystemTools::GetLogicalWorkingDirectory().empty()) {
     std::cerr << "Current working directory cannot be established."
               << std::endl;
     return 1;
@@ -601,7 +604,7 @@ int do_build(int ac, char const* const* av)
         }
       }
       if (!matched && i == 0) {
-        dir = cmSystemTools::CollapseFullPath(arg);
+        dir = cmSystemTools::ToNormalizedPathOnDisk(arg);
         matched = true;
         parsed = true;
       }
@@ -873,7 +876,7 @@ int do_install(int ac, char const* const* av)
   };
 
   if (ac >= 3) {
-    dir = cmSystemTools::CollapseFullPath(av[2]);
+    dir = cmSystemTools::ToNormalizedPathOnDisk(av[2]);
 
     std::vector<std::string> inputArgs;
     inputArgs.reserve(ac - 3);
@@ -921,20 +924,6 @@ int do_install(int ac, char const* const* av)
     return 1;
   }
 
-  cmake cm(cmake::RoleScript, cmState::Script);
-
-  cmSystemTools::SetMessageCallback(
-    [&cm](const std::string& msg, const cmMessageMetadata& md) {
-      cmakemainMessageCallback(msg, md, &cm);
-    });
-  cm.SetProgressCallback([&cm](const std::string& msg, float prog) {
-    cmakemainProgressCallback(msg, prog, &cm);
-  });
-  cm.SetHomeDirectory("");
-  cm.SetHomeOutputDirectory("");
-  cm.SetDebugOutputOn(verbose);
-  cm.SetWorkingMode(cmake::SCRIPT_MODE);
-
   std::vector<std::string> args{ av[0] };
 
   if (!prefix.empty()) {
@@ -947,10 +936,6 @@ int do_install(int ac, char const* const* av)
 
   if (strip) {
     args.emplace_back("-DCMAKE_INSTALL_DO_STRIP=1");
-  }
-
-  if (!config.empty()) {
-    args.emplace_back("-DCMAKE_INSTALL_CONFIG_NAME=" + config);
   }
 
   if (!defaultDirectoryPermissions.empty()) {
@@ -967,25 +952,38 @@ int do_install(int ac, char const* const* av)
 
   args.emplace_back("-P");
 
-  auto handler = cmInstallScriptHandler(dir, component, args);
+  auto handler = cmInstallScriptHandler(dir, component, config, args);
   int ret = 0;
-  if (!handler.isParallel()) {
-    args.emplace_back(cmStrCat(dir, "/cmake_install.cmake"));
-    ret = int(bool(cm.Run(args)));
-  } else {
-    if (!jobs) {
-      jobs = 1;
-      auto envvar = cmSystemTools::GetEnvVar("CMAKE_INSTALL_PARALLEL_LEVEL");
-      if (envvar.has_value()) {
-        jobs = extract_job_number("", envvar.value());
-        if (jobs < 1) {
-          std::cerr << "Value of CMAKE_INSTALL_PARALLEL_LEVEL environment"
-                       " variable must be a positive integer.\n";
-          return 1;
-        }
+  if (!jobs && handler.IsParallel()) {
+    jobs = 1;
+    auto envvar = cmSystemTools::GetEnvVar("CMAKE_INSTALL_PARALLEL_LEVEL");
+    if (envvar.has_value()) {
+      jobs = extract_job_number("", envvar.value());
+      if (jobs < 1) {
+        std::cerr << "Value of CMAKE_INSTALL_PARALLEL_LEVEL environment"
+                     " variable must be a positive integer.\n";
+        return 1;
       }
     }
-    ret = handler.install(jobs);
+  }
+  if (handler.IsParallel()) {
+    ret = handler.Install(jobs);
+  } else {
+    for (auto const& cmd : handler.GetCommands()) {
+      cmake cm(cmake::RoleScript, cmState::Script);
+      cmSystemTools::SetMessageCallback(
+        [&cm](const std::string& msg, const cmMessageMetadata& md) {
+          cmakemainMessageCallback(msg, md, &cm);
+        });
+      cm.SetProgressCallback([&cm](const std::string& msg, float prog) {
+        cmakemainProgressCallback(msg, prog, &cm);
+      });
+      cm.SetHomeDirectory("");
+      cm.SetHomeOutputDirectory("");
+      cm.SetDebugOutputOn(verbose);
+      cm.SetWorkingMode(cmake::SCRIPT_MODE);
+      ret = int(bool(cm.Run(cmd)));
+    }
   }
 
   return int(ret > 0);
@@ -1098,7 +1096,7 @@ int do_open(int ac, char const* const* av)
   for (int i = 2; i < ac; ++i) {
     switch (doing) {
       case DoingDir:
-        dir = cmSystemTools::CollapseFullPath(av[i]);
+        dir = cmSystemTools::ToNormalizedPathOnDisk(av[i]);
         doing = DoingNone;
         break;
       default:

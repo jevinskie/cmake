@@ -19,7 +19,6 @@
 #include "cmAlgorithms.h"
 #include "cmCTest.h"
 #include "cmCTestCurl.h"
-#include "cmCTestScriptHandler.h"
 #include "cmCryptoHash.h"
 #include "cmCurl.h"
 #include "cmDuration.h"
@@ -117,26 +116,15 @@ static size_t cmCTestSubmitHandlerCurlDebugCallback(CURL* /*unused*/,
   return 0;
 }
 
-cmCTestSubmitHandler::cmCTestSubmitHandler()
-{
-  this->Initialize();
-}
-
-void cmCTestSubmitHandler::Initialize()
+cmCTestSubmitHandler::cmCTestSubmitHandler(cmCTest* ctest)
+  : Superclass(ctest)
+  , HttpHeaders(ctest->GetCommandLineHttpHeaders())
 {
   // We submit all available parts by default.
   for (cmCTest::Part p = cmCTest::PartStart; p != cmCTest::PartCount;
        p = static_cast<cmCTest::Part>(p + 1)) {
     this->SubmitPart[p] = true;
   }
-  this->HasWarnings = false;
-  this->HasErrors = false;
-  this->Superclass::Initialize();
-  this->HTTPProxy.clear();
-  this->HTTPProxyType = 0;
-  this->HTTPProxyAuth.clear();
-  this->LogFile = nullptr;
-  this->Files.clear();
 }
 
 bool cmCTestSubmitHandler::SubmitUsingHTTP(
@@ -261,10 +249,8 @@ bool cmCTestSubmitHandler::SubmitUsingHTTP(
         upload_as += "&stamp=";
         upload_as += ctest_curl.Escape(this->CTest->GetCurrentTag());
         upload_as += "-";
-        upload_as += ctest_curl.Escape(this->CTest->GetTestModelString());
-        cmCTestScriptHandler* ch = this->CTest->GetScriptHandler();
-        cmake* cm = ch->GetCMake();
-        if (cm) {
+        upload_as += ctest_curl.Escape(this->CTest->GetTestGroupString());
+        if (cmake* cm = this->CMake) {
           cmValue subproject = cm->GetState()->GetGlobalProperty("SubProject");
           if (subproject) {
             upload_as += "&subproject=";
@@ -286,7 +272,7 @@ bool cmCTestSubmitHandler::SubmitUsingHTTP(
 
       upload_as += "&MD5=";
 
-      if (this->GetOption("InternalTest").IsOn()) {
+      if (this->InternalTest) {
         upload_as += "ffffffffffffffffffffffffffffffff";
       } else {
         cmCryptoHash hasher(cmCryptoHash::AlgoMD5);
@@ -368,8 +354,8 @@ bool cmCTestSubmitHandler::SubmitUsingHTTP(
       bool successful_submission = response_code == 200;
 
       if (!successful_submission || this->HasErrors) {
-        std::string retryDelay = *this->GetOption("RetryDelay");
-        std::string retryCount = *this->GetOption("RetryCount");
+        std::string retryDelay = this->RetryDelay;
+        std::string retryCount = this->RetryCount;
 
         auto delay = cmDuration(
           retryDelay.empty()
@@ -498,10 +484,6 @@ void cmCTestSubmitHandler::ParseResponse(
 int cmCTestSubmitHandler::HandleCDashUploadFile(std::string const& file,
                                                 std::string const& typeString)
 {
-  if (file.empty()) {
-    cmCTestLog(this->CTest, ERROR_MESSAGE, "Upload file not specified\n");
-    return -1;
-  }
   if (!cmSystemTools::FileExists(file)) {
     cmCTestLog(this->CTest, ERROR_MESSAGE,
                "Upload file not found: '" << file << "'\n");
@@ -528,11 +510,11 @@ int cmCTestSubmitHandler::HandleCDashUploadFile(std::string const& file,
     fields = url.substr(pos + 1);
     url.erase(pos);
   }
-  bool internalTest = this->GetOption("InternalTest").IsOn();
+  bool internalTest = this->InternalTest;
 
   // Get RETRY_COUNT and RETRY_DELAY values if they were set.
-  std::string retryDelayString = *this->GetOption("RetryDelay");
-  std::string retryCountString = *this->GetOption("RetryCount");
+  std::string retryDelayString = this->RetryDelay;
+  std::string retryCountString = this->RetryCount;
   auto retryDelay = std::chrono::seconds(0);
   if (!retryDelayString.empty()) {
     unsigned long retryDelayValue = 0;
@@ -559,9 +541,8 @@ int cmCTestSubmitHandler::HandleCDashUploadFile(std::string const& file,
   //    has already been uploaded
   // TODO I added support for subproject. You would need to add
   // a "&subproject=subprojectname" to the first POST.
-  cmCTestScriptHandler* ch = this->CTest->GetScriptHandler();
-  cmake* cm = ch->GetCMake();
-  cmValue subproject = cm->GetState()->GetGlobalProperty("SubProject");
+  cmValue subproject =
+    this->CMake->GetState()->GetGlobalProperty("SubProject");
   // TODO: Encode values for a URL instead of trusting caller.
   std::ostringstream str;
   if (subproject) {
@@ -570,18 +551,18 @@ int cmCTestSubmitHandler::HandleCDashUploadFile(std::string const& file,
   auto timeNow =
     std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
   str << "stamp=" << curl.Escape(this->CTest->GetCurrentTag()) << "-"
-      << curl.Escape(this->CTest->GetTestModelString()) << "&"
-      << "model=" << curl.Escape(this->CTest->GetTestModelString()) << "&"
+      << curl.Escape(this->CTest->GetTestGroupString()) << "&"
+      << "model=" << curl.Escape(this->CTest->GetTestGroupString()) << "&"
       << "build="
       << curl.Escape(this->CTest->GetCTestConfiguration("BuildName")) << "&"
       << "site=" << curl.Escape(this->CTest->GetCTestConfiguration("Site"))
       << "&"
-      << "group=" << curl.Escape(this->CTest->GetTestModelString())
+      << "group=" << curl.Escape(this->CTest->GetTestGroupString())
       << "&"
       // For now, we send both "track" and "group" to CDash in case we're
       // submitting to an older instance that still expects the prior
       // terminology.
-      << "track=" << curl.Escape(this->CTest->GetTestModelString()) << "&"
+      << "track=" << curl.Escape(this->CTest->GetTestGroupString()) << "&"
       << "starttime=" << timeNow << "&"
       << "endtime=" << timeNow << "&"
       << "datafilesmd5[0]=" << md5sum << "&"
@@ -721,10 +702,9 @@ int cmCTestSubmitHandler::HandleCDashUploadFile(std::string const& file,
 
 int cmCTestSubmitHandler::ProcessHandler()
 {
-  cmValue cdashUploadFile = this->GetOption("CDashUploadFile");
-  cmValue cdashUploadType = this->GetOption("CDashUploadType");
-  if (cdashUploadFile && cdashUploadType) {
-    return this->HandleCDashUploadFile(*cdashUploadFile, *cdashUploadType);
+  if (this->CDashUpload) {
+    return this->HandleCDashUploadFile(this->CDashUploadFile,
+                                       this->CDashUploadType);
   }
 
   const std::string& buildDirectory =
@@ -892,7 +872,7 @@ std::string cmCTestSubmitHandler::GetSubmitResultsPrefix()
     cmCTest::SafeBuildIdField(this->CTest->GetCTestConfiguration("BuildName"));
   std::string name = this->CTest->GetCTestConfiguration("Site") + "___" +
     buildname + "___" + this->CTest->GetCurrentTag() + "-" +
-    this->CTest->GetTestModelString() + "___XML___";
+    this->CTest->GetTestGroupString() + "___XML___";
   return name;
 }
 

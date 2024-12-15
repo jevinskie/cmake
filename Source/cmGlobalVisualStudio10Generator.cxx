@@ -20,6 +20,7 @@
 
 #include "cmCryptoHash.h"
 #include "cmDocumentationEntry.h"
+#include "cmExperimental.h"
 #include "cmGeneratorTarget.h"
 #include "cmGlobalGenerator.h"
 #include "cmGlobalVisualStudio71Generator.h"
@@ -339,12 +340,13 @@ bool cmGlobalVisualStudio10Generator::SetGeneratorToolset(
 bool cmGlobalVisualStudio10Generator::ParseGeneratorToolset(
   std::string const& ts, cmMakefile* mf)
 {
-  std::vector<std::string> const fields = cmTokenize(ts, ",");
-  auto fi = fields.begin();
-  if (fi == fields.end()) {
+  std::vector<std::string> const fields =
+    cmTokenize(ts, ',', cmTokenizerMode::New);
+  if (fields.empty()) {
     return true;
   }
 
+  auto fi = fields.begin();
   // The first field may be the VS platform toolset.
   if (fi->find('=') == fi->npos) {
     this->GeneratorToolset = *fi;
@@ -475,6 +477,13 @@ bool cmGlobalVisualStudio10Generator::InitializeSystem(cmMakefile* mf)
     if (!this->InitializeWindowsStore(mf)) {
       return false;
     }
+  } else if (this->SystemName == "WindowsKernelModeDriver"_s &&
+             cmExperimental::HasSupportEnabled(
+               *mf, cmExperimental::Feature::WindowsKernelModeDriver)) {
+    this->SystemIsWindowsKernelModeDriver = true;
+    if (!this->InitializeWindowsKernelModeDriver(mf)) {
+      return false;
+    }
   } else if (this->SystemName == "Android"_s) {
     if (this->PlatformInGeneratorName) {
       mf->IssueMessage(
@@ -533,6 +542,13 @@ bool cmGlobalVisualStudio10Generator::InitializeWindowsStore(cmMakefile* mf)
     MessageType::FATAL_ERROR,
     cmStrCat(this->GetName(), " does not support Windows Store."));
   return false;
+}
+
+bool cmGlobalVisualStudio10Generator::InitializeWindowsKernelModeDriver(
+  cmMakefile*)
+{
+  this->DefaultPlatformToolset = "WindowsKernelModeDriver10.0";
+  return true;
 }
 
 bool cmGlobalVisualStudio10Generator::InitializeTegraAndroid(cmMakefile* mf)

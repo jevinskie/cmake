@@ -627,23 +627,70 @@ endfunction()
   .. versionchanged:: 3.8
     ``<enabled>`` can be a list of conditions.
 
+  .. versionchanged:: 3.32
+    Full :ref:`Condition Syntax` is now supported for ``<enabled>``.
+    See policy :policy:`CMP0183`.
+
   Example for setting the info for a feature:
 
   .. code-block:: cmake
 
      option(WITH_FOO "Help for foo" ON)
-     add_feature_info(Foo WITH_FOO "The Foo feature provides very cool stuff.")
+     add_feature_info(Foo WITH_FOO "this feature provides very cool stuff")
+
+  Example for setting feature info based on a list of conditions:
+
+  .. code-block:: cmake
+
+    option(WITH_FOO "Help for foo" ON)
+    option(WITH_BAR "Help for bar" OFF)
+    add_feature_info(
+      FooBar
+      "WITH_FOO;NOT WITH_BAR"
+      "this feature is enabled when WITH_FOO is ON and WITH_BAR turned OFF"
+    )
+
+  Example for setting feature info depending on a full condition syntax:
+
+  Unlike semicolon-separated list of conditions, this enables using entire
+  condition syntax as being the ``if`` clause argument, such as grouping
+  conditions with parens and similar.
+
+  .. code-block:: cmake
+
+    option(WITH_FOO "Help for foo" ON)
+    option(WITH_BAR "Help for bar" ON)
+    option(WITH_BAZ "Help for baz" OFF)
+    add_feature_info(
+      FooBarBaz
+      "WITH_FOO AND (WITH_BAR OR WITH_BAZ)"
+      "this feature is enabled when the entire condition is true"
+    )
 #]=======================================================================]
 function(ADD_FEATURE_INFO _name _depends _desc)
+  cmake_policy(GET CMP0183 _CDO_CMP0183
+    PARENT_SCOPE # undocumented, do not use outside of CMake
+  )
   set(_enabled 1)
-  foreach(_d ${_depends})
-    string(REGEX REPLACE " +" ";" _d "${_d}")
-    if(${_d})
-    else()
-      set(_enabled 0)
-      break()
-    endif()
-  endforeach()
+  if("x${_CDO_CMP0183}x" STREQUAL "xNEWx")
+    foreach(_d ${_depends})
+      cmake_language(EVAL CODE "
+        if(${_d})
+        else()
+          set(_enabled 0)
+        endif()"
+      )
+    endforeach()
+  else()
+    foreach(_d ${_depends})
+      string(REGEX REPLACE " +" ";" _d "${_d}")
+      if(${_d})
+      else()
+        set(_enabled 0)
+        break()
+      endif()
+    endforeach()
+  endif()
   if (${_enabled})
     set_property(GLOBAL APPEND PROPERTY ENABLED_FEATURES "${_name}")
   else ()
@@ -651,6 +698,12 @@ function(ADD_FEATURE_INFO _name _depends _desc)
   endif ()
 
   set_property(GLOBAL PROPERTY _CMAKE_${_name}_DESCRIPTION "${_desc}" )
+
+  if("x${_CDO_CMP0183}x" STREQUAL "xx" AND "x${_depends}x" MATCHES "[^A-Za-z0-9_.; ]")
+    cmake_policy(GET_WARNING CMP0183 _CDO_CMP0183_WARNING)
+    message(AUTHOR_WARNING "${_CDO_CMP0183_WARNING}")
+  endif()
+  unset(_CDO_CMP0183)
 endfunction()
 
 

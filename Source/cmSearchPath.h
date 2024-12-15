@@ -45,8 +45,7 @@ public:
 
   void ExtractWithout(const std::set<std::string>& ignorePaths,
                       const std::set<std::string>& ignorePrefixes,
-                      std::vector<std::string>& outPaths,
-                      bool clear = false) const;
+                      std::vector<std::string>& outPaths) const;
 
   void AddPath(const std::string& path);
   void AddUserPath(const std::string& path);
@@ -55,12 +54,10 @@ public:
   void AddCMakePrefixPath(const std::string& variable);
   void AddEnvPrefixPath(const std::string& variable, bool stripBin = false);
   void AddSuffixes(const std::vector<std::string>& suffixes);
-  void AddPrefixPaths(const std::vector<std::string>& paths,
-                      const char* base = nullptr);
+  void AddPrefixPaths(const std::vector<std::string>& paths);
 
 protected:
-  void AddPathInternal(const std::string& path, const std::string& prefix,
-                       const char* base = nullptr);
+  void AddPathInternal(const std::string& path, const std::string& prefix);
 
   cmFindCommon* FC;
   std::vector<PathWithPrefix> Paths;

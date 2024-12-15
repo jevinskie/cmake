@@ -248,15 +248,14 @@ public:
    * empty then all is assumed. clean indicates if a "make clean" should be
    * done first.
    */
-  int Build(
-    int jobs, const std::string& srcdir, const std::string& bindir,
-    const std::string& projectName,
-    std::vector<std::string> const& targetNames, std::ostream& ostr,
-    const std::string& makeProgram, const std::string& config,
-    const cmBuildOptions& buildOptions, bool verbose, cmDuration timeout,
-    cmSystemTools::OutputOption outputflag = cmSystemTools::OUTPUT_NONE,
-    std::vector<std::string> const& nativeOptions =
-      std::vector<std::string>());
+  int Build(int jobs, const std::string& srcdir, const std::string& bindir,
+            const std::string& projectName,
+            std::vector<std::string> const& targetNames, std::ostream& ostr,
+            const std::string& makeProgram, const std::string& config,
+            const cmBuildOptions& buildOptions, bool verbose,
+            cmDuration timeout, cmSystemTools::OutputOption outputMode,
+            std::vector<std::string> const& nativeOptions =
+              std::vector<std::string>());
 
   /**
    * Open a generated IDE project given the following information.
@@ -514,6 +513,8 @@ public:
   // Default config to use for cmake --build
   virtual std::string GetDefaultBuildConfig() const { return "Debug"; }
 
+  virtual cmValue GetDebuggerWorkingDirectory(cmGeneratorTarget* gt) const;
+
   // Class to track a set of dependencies.
   using TargetDependSet = cmTargetDependSet;
 
@@ -676,6 +677,14 @@ public:
   bool CheckCMP0171() const;
 
   void AddInstallScript(std::string const& file);
+  void AddTestFile(std::string const& file);
+  void AddCMakeFilesToRebuild(std::vector<std::string>& files) const;
+
+  virtual const std::set<std::string>& GetDefaultConfigs() const
+  {
+    static std::set<std::string> configs;
+    return configs;
+  }
 
 protected:
   // for a project collect all its targets by following depend
@@ -917,6 +926,7 @@ private:
     RuntimeDependencySetsByName;
 
   std::vector<std::string> InstallScripts;
+  std::vector<std::string> TestFiles;
 
 #if !defined(CMAKE_BOOTSTRAP)
   // Pool of file locks

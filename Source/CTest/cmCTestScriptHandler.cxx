@@ -2,6 +2,7 @@
    file Copyright.txt or https://cmake.org/licensing for details.  */
 #include "cmCTestScriptHandler.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <map>
 #include <ratio>
@@ -14,7 +15,6 @@
 
 #include "cmCTest.h"
 #include "cmCTestBuildCommand.h"
-#include "cmCTestCommand.h"
 #include "cmCTestConfigureCommand.h"
 #include "cmCTestCoverageCommand.h"
 #include "cmCTestEmptyBinaryDirectoryCommand.h"
@@ -27,7 +27,6 @@
 #include "cmCTestTestCommand.h"
 #include "cmCTestUpdateCommand.h"
 #include "cmCTestUploadCommand.h"
-#include "cmCommand.h"
 #include "cmDuration.h"
 #include "cmGlobalGenerator.h"
 #include "cmMakefile.h"
@@ -37,24 +36,11 @@
 #include "cmSystemTools.h"
 #include "cmUVHandlePtr.h"
 #include "cmUVProcessChain.h"
-#include "cmValue.h"
 #include "cmake.h"
 
-cmCTestScriptHandler::cmCTestScriptHandler() = default;
-
-void cmCTestScriptHandler::Initialize()
+cmCTestScriptHandler::cmCTestScriptHandler(cmCTest* ctest)
+  : CTest(ctest)
 {
-  this->Superclass::Initialize();
-
-  // what time in seconds did this script start running
-  this->ScriptStartTime = std::chrono::steady_clock::time_point();
-
-  this->Makefile.reset();
-  this->ParentMakefile = nullptr;
-
-  this->GlobalGenerator.reset();
-
-  this->CMake.reset();
 }
 
 cmCTestScriptHandler::~cmCTestScriptHandler() = default;
@@ -74,9 +60,8 @@ int cmCTestScriptHandler::ProcessHandler()
   int res = 0;
   for (size_t i = 0; i < this->ConfigurationScripts.size(); ++i) {
     // for each script run it
-    res |= this->RunConfigurationScript(
-      cmSystemTools::CollapseFullPath(this->ConfigurationScripts[i]),
-      this->ScriptProcessScope[i]);
+    res |= this->RunConfigurationScript(this->ConfigurationScripts[i],
+                                        this->ScriptProcessScope[i]);
   }
   if (res) {
     return -1;
@@ -88,18 +73,10 @@ void cmCTestScriptHandler::UpdateElapsedTime()
 {
   if (this->Makefile) {
     // set the current elapsed time
-    auto itime = cmDurationTo<unsigned int>(std::chrono::steady_clock::now() -
-                                            this->ScriptStartTime);
+    auto itime = cmDurationTo<unsigned int>(this->CTest->GetElapsedTime());
     auto timeString = std::to_string(itime);
     this->Makefile->AddDefinition("CTEST_ELAPSED_TIME", timeString);
   }
-}
-
-void cmCTestScriptHandler::AddCTestCommand(
-  std::string const& name, std::unique_ptr<cmCTestCommand> command)
-{
-  command->CTest = this->CTest;
-  this->CMake->GetState()->AddBuiltinCommand(name, std::move(command));
 }
 
 int cmCTestScriptHandler::ExecuteScript(const std::string& total_script_arg)
@@ -202,7 +179,7 @@ void cmCTestScriptHandler::CreateCMake()
     cm::make_unique<cmGlobalGenerator>(this->CMake.get());
 
   cmStateSnapshot snapshot = this->CMake->GetCurrentSnapshot();
-  std::string cwd = cmSystemTools::GetCurrentWorkingDirectory();
+  std::string cwd = cmSystemTools::GetLogicalWorkingDirectory();
   snapshot.GetDirectory().SetCurrentSource(cwd);
   snapshot.GetDirectory().SetCurrentBinary(cwd);
   this->Makefile =
@@ -220,28 +197,25 @@ void cmCTestScriptHandler::CreateCMake()
     });
 
   cmState* state = this->CMake->GetState();
-  this->AddCTestCommand("ctest_build", cm::make_unique<cmCTestBuildCommand>());
-  this->AddCTestCommand("ctest_configure",
-                        cm::make_unique<cmCTestConfigureCommand>());
-  this->AddCTestCommand("ctest_coverage",
-                        cm::make_unique<cmCTestCoverageCommand>());
+  state->AddBuiltinCommand("ctest_build", cmCTestBuildCommand(this->CTest));
+  state->AddBuiltinCommand("ctest_configure",
+                           cmCTestConfigureCommand(this->CTest));
+  state->AddBuiltinCommand("ctest_coverage",
+                           cmCTestCoverageCommand(this->CTest));
   state->AddBuiltinCommand("ctest_empty_binary_directory",
                            cmCTestEmptyBinaryDirectoryCommand);
-  this->AddCTestCommand("ctest_memcheck",
-                        cm::make_unique<cmCTestMemCheckCommand>());
-  this->AddCTestCommand("ctest_read_custom_files",
-                        cm::make_unique<cmCTestReadCustomFilesCommand>());
-  this->AddCTestCommand("ctest_run_script",
-                        cm::make_unique<cmCTestRunScriptCommand>());
+  state->AddBuiltinCommand("ctest_memcheck",
+                           cmCTestMemCheckCommand(this->CTest));
+  state->AddBuiltinCommand("ctest_read_custom_files",
+                           cmCTestReadCustomFilesCommand(this->CTest));
+  state->AddBuiltinCommand("ctest_run_script",
+                           cmCTestRunScriptCommand(this->CTest));
   state->AddBuiltinCommand("ctest_sleep", cmCTestSleepCommand);
-  this->AddCTestCommand("ctest_start", cm::make_unique<cmCTestStartCommand>());
-  this->AddCTestCommand("ctest_submit",
-                        cm::make_unique<cmCTestSubmitCommand>());
-  this->AddCTestCommand("ctest_test", cm::make_unique<cmCTestTestCommand>());
-  this->AddCTestCommand("ctest_update",
-                        cm::make_unique<cmCTestUpdateCommand>());
-  this->AddCTestCommand("ctest_upload",
-                        cm::make_unique<cmCTestUploadCommand>());
+  state->AddBuiltinCommand("ctest_start", cmCTestStartCommand(this->CTest));
+  state->AddBuiltinCommand("ctest_submit", cmCTestSubmitCommand(this->CTest));
+  state->AddBuiltinCommand("ctest_test", cmCTestTestCommand(this->CTest));
+  state->AddBuiltinCommand("ctest_update", cmCTestUpdateCommand(this->CTest));
+  state->AddBuiltinCommand("ctest_upload", cmCTestUploadCommand(this->CTest));
 }
 
 // this sets up some variables for the script to use, creates the required
@@ -342,8 +316,6 @@ int cmCTestScriptHandler::RunConfigurationScript(
 
   int result;
 
-  this->ScriptStartTime = std::chrono::steady_clock::now();
-
   // read in the script
   if (pscope) {
     cmCTestLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
@@ -362,8 +334,7 @@ bool cmCTestScriptHandler::RunScript(cmCTest* ctest, cmMakefile* mf,
                                      const std::string& sname, bool InProcess,
                                      int* returnValue)
 {
-  auto sh = cm::make_unique<cmCTestScriptHandler>();
-  sh->SetCTestInstance(ctest);
+  auto sh = cm::make_unique<cmCTestScriptHandler>(ctest);
   sh->ParentMakefile = mf;
   sh->AddConfigurationScript(sname, InProcess);
   int res = sh->ProcessHandler();
@@ -371,23 +342,4 @@ bool cmCTestScriptHandler::RunScript(cmCTest* ctest, cmMakefile* mf,
     *returnValue = res;
   }
   return true;
-}
-
-cmDuration cmCTestScriptHandler::GetRemainingTimeAllowed()
-{
-  if (!this->Makefile) {
-    return cmCTest::MaxDuration();
-  }
-
-  cmValue timelimitS = this->Makefile->GetDefinition("CTEST_TIME_LIMIT");
-
-  if (!timelimitS) {
-    return cmCTest::MaxDuration();
-  }
-
-  auto timelimit = cmDuration(atof(timelimitS->c_str()));
-
-  auto duration = std::chrono::duration_cast<cmDuration>(
-    std::chrono::steady_clock::now() - this->ScriptStartTime);
-  return (timelimit - duration);
 }

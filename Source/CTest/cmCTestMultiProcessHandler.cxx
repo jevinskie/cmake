@@ -8,7 +8,6 @@
 #include <cmath>
 #include <cstddef> // IWYU pragma: keep
 #include <cstdlib>
-#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <list>
@@ -279,9 +278,7 @@ void cmCTestMultiProcessHandler::StartTestProcess(int test)
   cmWorkingDirectory workdir(this->Properties[test]->Directory);
   if (workdir.Failed()) {
     cmCTestRunTest::StartFailure(std::move(testRun), this->Total,
-                                 "Failed to change working directory to " +
-                                   this->Properties[test]->Directory + " : " +
-                                   std::strerror(workdir.GetLastResult()),
+                                 workdir.GetError(),
                                  "Failed to change working directory");
     return;
   }
@@ -1159,6 +1156,11 @@ static Json::Value DumpCTestProperties(
     properties.append(DumpCTestProperty(
       "FIXTURES_SETUP", DumpToJsonArray(testProperties.FixturesSetup)));
   }
+  if (!testProperties.GeneratedResourceSpecFile.empty()) {
+    properties.append(
+      DumpCTestProperty("GENERATED_RESOURCE_SPEC_FILE",
+                        testProperties.GeneratedResourceSpecFile));
+  }
   if (!testProperties.Labels.empty()) {
     properties.append(
       DumpCTestProperty("LABELS", DumpToJsonArray(testProperties.Labels)));
@@ -1204,6 +1206,15 @@ static Json::Value DumpCTestProperties(
   if (testProperties.Timeout) {
     properties.append(
       DumpCTestProperty("TIMEOUT", testProperties.Timeout->count()));
+  }
+  if (testProperties.TimeoutSignal) {
+    properties.append(DumpCTestProperty("TIMEOUT_SIGNAL_NAME",
+                                        testProperties.TimeoutSignal->Name));
+  }
+  if (testProperties.TimeoutGracePeriod) {
+    properties.append(
+      DumpCTestProperty("TIMEOUT_SIGNAL_GRACE_PERIOD",
+                        testProperties.TimeoutGracePeriod->count()));
   }
   if (!testProperties.TimeoutRegularExpressions.empty()) {
     properties.append(DumpCTestProperty(

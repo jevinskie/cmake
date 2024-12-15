@@ -7,7 +7,6 @@
 #include <cstddef> // IWYU pragma: keep
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
 #include <iomanip>
 #include <ratio>
 #include <sstream>
@@ -297,11 +296,11 @@ cmCTestRunTest::EndTestResult cmCTestRunTest::EndTest(size_t completed,
   if (!this->TestHandler->MemCheck && started) {
     this->TestHandler->CleanTestOutput(
       this->ProcessOutput,
-      static_cast<size_t>(
-        this->TestResult.Status == cmCTestTestHandler::COMPLETED
-          ? this->TestHandler->CustomMaximumPassedTestOutputSize
-          : this->TestHandler->CustomMaximumFailedTestOutputSize),
-      this->TestHandler->TestOutputTruncation);
+      static_cast<size_t>(this->TestResult.Status ==
+                              cmCTestTestHandler::COMPLETED
+                            ? this->TestHandler->TestOptions.OutputSizePassed
+                            : this->TestHandler->TestOptions.OutputSizeFailed),
+      this->TestHandler->TestOptions.OutputTruncation);
   }
   this->TestResult.Reason = reason;
   if (this->TestHandler->LogFile) {
@@ -398,10 +397,7 @@ bool cmCTestRunTest::StartAgain(std::unique_ptr<cmCTestRunTest> runner,
   // change to tests directory
   cmWorkingDirectory workdir(testRun->TestProperties->Directory);
   if (workdir.Failed()) {
-    testRun->StartFailure(testRun->TotalNumberOfTests,
-                          "Failed to change working directory to " +
-                            testRun->TestProperties->Directory + " : " +
-                            std::strerror(workdir.GetLastResult()),
+    testRun->StartFailure(testRun->TotalNumberOfTests, workdir.GetError(),
                           "Failed to change working directory");
     return true;
   }

@@ -50,9 +50,20 @@ cmLocalNinjaGenerator::cmLocalNinjaGenerator(cmGlobalGenerator* gg,
 // Virtual public methods.
 
 std::unique_ptr<cmRulePlaceholderExpander>
-cmLocalNinjaGenerator::CreateRulePlaceholderExpander() const
+cmLocalNinjaGenerator::CreateRulePlaceholderExpander(
+  cmBuildStep buildStep) const
 {
-  auto ret = this->cmLocalGenerator::CreateRulePlaceholderExpander();
+  auto ret = this->cmLocalGenerator::CreateRulePlaceholderExpander(buildStep);
+  ret->SetTargetImpLib("$TARGET_IMPLIB");
+  return std::unique_ptr<cmRulePlaceholderExpander>(std::move(ret));
+}
+std::unique_ptr<cmRulePlaceholderExpander>
+cmLocalNinjaGenerator::CreateRulePlaceholderExpander(
+  cmBuildStep buildStep, cmGeneratorTarget const* target,
+  std::string const& language)
+{
+  auto ret = this->cmLocalGenerator::CreateRulePlaceholderExpander(
+    buildStep, target, language);
   ret->SetTargetImpLib("$TARGET_IMPLIB");
   return std::unique_ptr<cmRulePlaceholderExpander>(std::move(ret));
 }
@@ -272,8 +283,10 @@ void cmLocalNinjaGenerator::WriteBuildFileTop()
 void cmLocalNinjaGenerator::WriteProjectHeader(std::ostream& os)
 {
   cmGlobalNinjaGenerator::WriteDivider(os);
-  os << "# Project: " << this->GetProjectName() << '\n'
-     << "# Configurations: " << cmJoin(this->GetConfigNames(), ", ") << '\n';
+  os << "# Project: " << this->GetProjectName()
+     << "\n"
+        "# Configurations: "
+     << cmJoin(this->GetConfigNames(), ", ") << '\n';
   cmGlobalNinjaGenerator::WriteDivider(os);
 }
 
@@ -349,7 +362,7 @@ void cmLocalNinjaGenerator::WriteNinjaFilesInclusionConfig(std::ostream& os)
   std::string const commonFilePath = ng->EncodePath(ninjaCommonFile);
   cmGlobalNinjaGenerator::WriteInclude(os, commonFilePath,
                                        "Include common file.");
-  os << "\n";
+  os << '\n';
 }
 
 void cmLocalNinjaGenerator::WriteNinjaFilesInclusionCommon(std::ostream& os)
@@ -362,7 +375,7 @@ void cmLocalNinjaGenerator::WriteNinjaFilesInclusionCommon(std::ostream& os)
   std::string const rulesFilePath = ng->EncodePath(ninjaRulesFile);
   cmGlobalNinjaGenerator::WriteInclude(os, rulesFilePath,
                                        "Include rules file.");
-  os << "\n";
+  os << '\n';
 }
 
 void cmLocalNinjaGenerator::WriteNinjaWorkDir(std::ostream& os)
@@ -380,8 +393,8 @@ void cmLocalNinjaGenerator::WriteProcessedMakefile(std::ostream& os)
 {
   cmGlobalNinjaGenerator::WriteDivider(os);
   os << "# Write statements declared in CMakeLists.txt:\n"
-     << "# " << this->Makefile->GetSafeDefinition("CMAKE_CURRENT_LIST_FILE")
-     << '\n';
+        "# "
+     << this->Makefile->GetSafeDefinition("CMAKE_CURRENT_LIST_FILE") << '\n';
   if (this->IsRootMakefile()) {
     os << "# Which is the root file.\n";
   }
@@ -719,8 +732,6 @@ void cmLocalNinjaGenerator::WriteCustomCommandBuildStatement(
             CM_FALLTHROUGH;
           case cmPolicies::OLD:
             break;
-          case cmPolicies::REQUIRED_IF_USED:
-          case cmPolicies::REQUIRED_ALWAYS:
           case cmPolicies::NEW:
             depfile = ccg.GetInternalDepfile();
             break;
@@ -822,8 +833,6 @@ cmLocalNinjaGenerator::MakeCustomCommandGenerators(
       CM_FALLTHROUGH;
     case cmPolicies::OLD:
       break;
-    case cmPolicies::REQUIRED_IF_USED:
-    case cmPolicies::REQUIRED_ALWAYS:
     case cmPolicies::NEW:
       transformDepfile = true;
       break;

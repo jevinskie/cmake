@@ -30,7 +30,7 @@ cmExperimental::FeatureData LookupTable[] = {
     false },
   // WindowsKernelModeDriver
   { "WindowsKernelModeDriver",
-    "7f524e81-99c7-48f3-a35d-278bae54282c",
+    "9157bf90-2313-44d6-aefa-67cd83c8be7c",
     "CMAKE_EXPERIMENTAL_WINDOWS_KERNEL_MODE_DRIVER",
     "CMake's Windows kernel-mode driver support is experimental. It is meant "
     "only for experimentation and feedback to CMake developers.",
@@ -51,8 +51,8 @@ cmExperimental::FeatureData LookupTable[] = {
     "b80be207-778e-46ba-8080-b23bba22639e",
     "CMAKE_EXPERIMENTAL_EXPORT_PACKAGE_INFO",
     "CMake's support for exporting package information in the Common Package "
-    "Specification format. It is meant only for experimentation and feedback "
-    "to CMake developers.",
+    "Specification format is experimental. It is meant only for "
+    "experimentation and feedback to CMake developers.",
     {},
     cmExperimental::TryCompileCondition::Always,
     false },

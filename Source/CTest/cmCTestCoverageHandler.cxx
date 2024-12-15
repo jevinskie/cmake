@@ -6,7 +6,6 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <iomanip>
 #include <iterator>
 #include <memory>
@@ -41,17 +40,9 @@ class cmMakefile;
 
 #define SAFEDIV(x, y) (((y) != 0) ? ((x) / (y)) : (0))
 
-cmCTestCoverageHandler::cmCTestCoverageHandler() = default;
-
-void cmCTestCoverageHandler::Initialize()
+cmCTestCoverageHandler::cmCTestCoverageHandler(cmCTest* ctest)
+  : Superclass(ctest)
 {
-  this->Superclass::Initialize();
-  this->CustomCoverageExclude.clear();
-  this->SourceLabels.clear();
-  this->TargetDirs.clear();
-  this->LabelIdMap.clear();
-  this->Labels.clear();
-  this->LabelFilter.clear();
 }
 
 void cmCTestCoverageHandler::CleanCoverageLogFiles(std::ostream& log)
@@ -100,7 +91,7 @@ void cmCTestCoverageHandler::EndCoverageLogFile(cmGeneratedFileStream& ostr,
 
 void cmCTestCoverageHandler::StartCoverageLogXML(cmXMLWriter& xml)
 {
-  this->CTest->StartXML(xml, this->AppendXML);
+  this->CTest->StartXML(xml, this->CMake, this->AppendXML);
   xml.StartElement("CoverageLog");
   xml.Element("StartDateTime", this->CTest->CurrentTime());
   xml.Element("StartTime", std::chrono::system_clock::now());
@@ -331,7 +322,7 @@ int cmCTestCoverageHandler::ProcessHandler()
   covSumFile.setf(std::ios::fixed, std::ios::floatfield);
   covSumFile.precision(2);
 
-  this->CTest->StartXML(covSumXML, this->AppendXML);
+  this->CTest->StartXML(covSumXML, this->CMake, this->AppendXML);
   // Produce output xml files
 
   covSumXML.StartElement("Coverage");
@@ -1325,10 +1316,7 @@ int cmCTestCoverageHandler::HandleLCovCoverage(
     std::string fileDir = cmSystemTools::GetFilenamePath(f);
     cmWorkingDirectory workdir(fileDir);
     if (workdir.Failed()) {
-      cmCTestLog(this->CTest, ERROR_MESSAGE,
-                 "Unable to change working directory to "
-                   << fileDir << " : "
-                   << std::strerror(workdir.GetLastResult()) << std::endl);
+      cmCTestLog(this->CTest, ERROR_MESSAGE, workdir.GetError() << std::endl);
       cont->Error++;
       continue;
     }
@@ -1550,9 +1538,7 @@ bool cmCTestCoverageHandler::FindLCovFiles(std::vector<std::string>& files)
   std::string buildDir = this->CTest->GetCTestConfiguration("BuildDirectory");
   cmWorkingDirectory workdir(buildDir);
   if (workdir.Failed()) {
-    cmCTestLog(this->CTest, ERROR_MESSAGE,
-               "Unable to change working directory to " << buildDir
-                                                        << std::endl);
+    cmCTestLog(this->CTest, ERROR_MESSAGE, workdir.GetError() << std::endl);
     return false;
   }
 
@@ -1915,7 +1901,7 @@ int cmCTestCoverageHandler::RunBullseyeSourceSummary(
                "Cannot open coverage summary file." << std::endl);
     return 0;
   }
-  this->CTest->StartXML(xml, this->AppendXML);
+  this->CTest->StartXML(xml, this->CMake, this->AppendXML);
   auto elapsed_time_start = std::chrono::steady_clock::now();
   std::string coverage_start_time = this->CTest->CurrentTime();
   xml.StartElement("Coverage");

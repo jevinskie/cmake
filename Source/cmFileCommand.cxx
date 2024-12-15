@@ -409,8 +409,6 @@ bool HandleStringsCommand(std::vector<std::string> const& args,
       }
       have_regex = true;
       switch (status.GetMakefile().GetPolicyStatus(cmPolicies::CMP0159)) {
-        case cmPolicies::REQUIRED_IF_USED:
-        case cmPolicies::REQUIRED_ALWAYS:
         case cmPolicies::NEW:
           // store_regex = true
           break;
@@ -685,8 +683,6 @@ bool HandleGlobImpl(std::vector<std::string> const& args, bool recurse,
     status.GetMakefile().GetPolicyStatus(cmPolicies::CMP0009);
   if (recurse) {
     switch (policyStatus) {
-      case cmPolicies::REQUIRED_IF_USED:
-      case cmPolicies::REQUIRED_ALWAYS:
       case cmPolicies::NEW:
         g.RecurseThroughSymlinksOff();
         break;
@@ -839,8 +835,6 @@ bool HandleGlobImpl(std::vector<std::string> const& args, bool recurse,
   }
 
   switch (policyStatus) {
-    case cmPolicies::REQUIRED_IF_USED:
-    case cmPolicies::REQUIRED_ALWAYS:
     case cmPolicies::NEW:
       // Correct behavior, yay!
       break;
@@ -1110,7 +1104,7 @@ bool HandleRPathChangeCommand(std::vector<std::string> const& args,
   if (!cmSystemTools::ChangeRPath(file, *oldRPath, *newRPath,
                                   removeEnvironmentRPath, &emsg, &changed)) {
     status.SetError(cmStrCat("RPATH_CHANGE could not write new RPATH:\n  ",
-                             *newRPath, "\nto the file:\n  ", file, "\n",
+                             *newRPath, "\nto the file:\n  ", file, '\n',
                              emsg));
     success = false;
   }
@@ -1165,7 +1159,7 @@ bool HandleRPathSetCommand(std::vector<std::string> const& args,
 
   if (!cmSystemTools::SetRPath(file, *newRPath, &emsg, &changed)) {
     status.SetError(cmStrCat("RPATH_SET could not write new RPATH:\n  ",
-                             *newRPath, "\nto the file:\n  ", file, "\n",
+                             *newRPath, "\nto the file:\n  ", file, '\n',
                              emsg));
     success = false;
   }
@@ -1215,7 +1209,7 @@ bool HandleRPathRemoveCommand(std::vector<std::string> const& args,
   if (!cmSystemTools::RemoveRPath(file, &emsg, &removed)) {
     status.SetError(
       cmStrCat("RPATH_REMOVE could not remove RPATH from file: \n  ", file,
-               "\n", emsg));
+               '\n', emsg));
     success = false;
   }
   if (success) {
@@ -1389,8 +1383,6 @@ bool HandleRealPathCommand(std::vector<std::string> const& args,
   cmPolicies::PolicyStatus policyStatus =
     status.GetMakefile().GetPolicyStatus(cmPolicies::CMP0152);
   switch (policyStatus) {
-    case cmPolicies::REQUIRED_IF_USED:
-    case cmPolicies::REQUIRED_ALWAYS:
     case cmPolicies::NEW:
       break;
     case cmPolicies::WARN:
@@ -1409,8 +1401,7 @@ bool HandleRealPathCommand(std::vector<std::string> const& args,
       auto basePath = cmCMakePath{ *arguments.BaseDirectory };
       path = basePath.Append(path);
     }
-    result = cmSystemTools::GetActualCaseForPath(
-      cmSystemTools::GetRealPath(path.String()));
+    result = cmSystemTools::GetRealPath(path.String());
   };
 
   std::string realPath;
@@ -1547,7 +1538,7 @@ bool HandleRename(std::vector<std::string> const& args,
       break;
   }
   status.SetError(cmStrCat("RENAME failed to rename\n  ", oldname, "\nto\n  ",
-                           newname, "\nbecause: ", err, "\n"));
+                           newname, "\nbecause: ", err, '\n'));
   return false;
 }
 
@@ -1640,7 +1631,7 @@ bool HandleCopyFile(std::vector<std::string> const& args,
       status.GetMakefile().AddDefinition(arguments.Result, err);
     } else {
       status.SetError(cmStrCat("COPY_FILE failed to copy\n  ", oldname,
-                               "\nto\n  ", newname, "\nbecause: ", err, "\n"));
+                               "\nto\n  ", newname, "\nbecause: ", err, '\n'));
       result = false;
     }
   }
@@ -1831,7 +1822,7 @@ public:
 
     if (updated) {
       status =
-        cmStrCat("[", this->Text, " ", this->CurrentPercentage, "% complete]");
+        cmStrCat('[', this->Text, ' ', this->CurrentPercentage, "% complete]");
     }
 
     return updated;
@@ -2343,7 +2334,7 @@ bool HandleDownloadCommand(std::vector<std::string> const& args,
         "set environment variable CMAKE_TLS_VERIFY=0 to suppress it.");
     }
     status.GetMakefile().AddDefinition(
-      statusVar, cmStrCat(static_cast<int>(res), ";\"", std::move(m), "\""));
+      statusVar, cmStrCat(static_cast<int>(res), ";\"", std::move(m), '"'));
   }
 
   ::curl_global_cleanup();
@@ -2744,7 +2735,7 @@ bool HandleUploadCommand(std::vector<std::string> const& args,
         "set environment variable CMAKE_TLS_VERIFY=0 to suppress it.");
     }
     status.GetMakefile().AddDefinition(
-      statusVar, cmStrCat(static_cast<int>(res), ";\"", std::move(m), "\""));
+      statusVar, cmStrCat(static_cast<int>(res), ";\"", std::move(m), '"'));
   }
 
   ::curl_global_cleanup();
@@ -3099,7 +3090,7 @@ bool HandleLockCommand(std::vector<std::string> const& args,
   if (resultVariable.empty() && !fileLockResult.IsOk()) {
     status.GetMakefile().IssueMessage(
       MessageType::FATAL_ERROR,
-      cmStrCat("error locking file\n  \"", path, "\"\n", result, "."));
+      cmStrCat("error locking file\n  \"", path, "\"\n", result, '.'));
     cmSystemTools::SetFatalErrorOccurred();
     return false;
   }
@@ -3348,7 +3339,7 @@ bool HandleGetRuntimeDependenciesCommand(std::vector<std::string> const& args,
         platform)) {
     status.SetError(
       cmStrCat("GET_RUNTIME_DEPENDENCIES is not supported on system \"",
-               platform, "\""));
+               platform, '"'));
     cmSystemTools::SetFatalErrorOccurred();
     return false;
   }
@@ -3415,7 +3406,7 @@ bool HandleGetRuntimeDependenciesCommand(std::vector<std::string> const& args,
     parser.Parse(cmMakeRange(args).advance(1), &unrecognizedArguments);
   auto argIt = unrecognizedArguments.begin();
   if (argIt != unrecognizedArguments.end()) {
-    status.SetError(cmStrCat("Unrecognized argument: \"", *argIt, "\""));
+    status.SetError(cmStrCat("Unrecognized argument: \"", *argIt, '"'));
     cmSystemTools::SetFatalErrorOccurred();
     return false;
   }
@@ -3547,7 +3538,7 @@ bool HandleConfigureCommand(std::vector<std::string> const& args,
   auto argIt = unrecognizedArguments.begin();
   if (argIt != unrecognizedArguments.end()) {
     status.SetError(
-      cmStrCat("CONFIGURE Unrecognized argument: \"", *argIt, "\""));
+      cmStrCat("CONFIGURE Unrecognized argument: \"", *argIt, '"'));
     cmSystemTools::SetFatalErrorOccurred();
     return false;
   }
@@ -3681,7 +3672,7 @@ bool HandleArchiveCreateCommand(std::vector<std::string> const& args,
     parser.Parse(cmMakeRange(args).advance(1), &unrecognizedArguments);
   auto argIt = unrecognizedArguments.begin();
   if (argIt != unrecognizedArguments.end()) {
-    status.SetError(cmStrCat("Unrecognized argument: \"", *argIt, "\""));
+    status.SetError(cmStrCat("Unrecognized argument: \"", *argIt, '"'));
     cmSystemTools::SetFatalErrorOccurred();
     return false;
   }
@@ -3810,7 +3801,7 @@ bool HandleArchiveExtractCommand(std::vector<std::string> const& args,
     parser.Parse(cmMakeRange(args).advance(1), &unrecognizedArguments);
   auto argIt = unrecognizedArguments.begin();
   if (argIt != unrecognizedArguments.end()) {
-    status.SetError(cmStrCat("Unrecognized argument: \"", *argIt, "\""));
+    status.SetError(cmStrCat("Unrecognized argument: \"", *argIt, '"'));
     cmSystemTools::SetFatalErrorOccurred();
     return false;
   }
@@ -3835,7 +3826,7 @@ bool HandleArchiveExtractCommand(std::vector<std::string> const& args,
       if (cmSystemTools::FileIsFullPath(parsedArgs.Destination)) {
         destDir = parsedArgs.Destination;
       } else {
-        destDir = cmStrCat(destDir, "/", parsedArgs.Destination);
+        destDir = cmStrCat(destDir, '/', parsedArgs.Destination);
       }
 
       if (!cmSystemTools::MakeDirectory(destDir)) {
@@ -3846,14 +3837,13 @@ bool HandleArchiveExtractCommand(std::vector<std::string> const& args,
 
       if (!cmSystemTools::FileIsFullPath(inFile)) {
         inFile =
-          cmStrCat(cmSystemTools::GetCurrentWorkingDirectory(), "/", inFile);
+          cmStrCat(cmSystemTools::GetLogicalWorkingDirectory(), '/', inFile);
       }
     }
 
     cmWorkingDirectory workdir(destDir);
     if (workdir.Failed()) {
-      status.SetError(
-        cmStrCat("failed to change working directory to: ", destDir));
+      status.SetError(workdir.GetError());
       cmSystemTools::SetFatalErrorOccurred();
       return false;
     }

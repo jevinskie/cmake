@@ -18,6 +18,7 @@
 #include "cmCustomCommand.h" // IWYU pragma: keep
 #include "cmCustomCommandGenerator.h"
 #include "cmGeneratedFileStream.h"
+#include "cmGeneratorOptions.h"
 #include "cmGeneratorTarget.h"
 #include "cmGlobalNinjaGenerator.h"
 #include "cmLinkLineComputer.h"
@@ -350,7 +351,9 @@ void cmNinjaNormalTargetGenerator::WriteNvidiaDeviceLinkRule(
     }
 
     auto rulePlaceholderExpander =
-      this->GetLocalGenerator()->CreateRulePlaceholderExpander();
+      this->GetLocalGenerator()->CreateRulePlaceholderExpander(
+        cmBuildStep::Link, this->GetGeneratorTarget(),
+        this->TargetLinkLanguage(config));
 
     // Rule for linking library/executable.
     std::vector<std::string> linkCmds = this->ComputeDeviceLinkCmd();
@@ -413,7 +416,9 @@ void cmNinjaNormalTargetGenerator::WriteDeviceLinkRules(
   std::string compileCmd = this->GetMakefile()->GetRequiredDefinition(
     "CMAKE_CUDA_DEVICE_LINK_COMPILE");
   auto rulePlaceholderExpander =
-    this->GetLocalGenerator()->CreateRulePlaceholderExpander();
+    this->GetLocalGenerator()->CreateRulePlaceholderExpander(
+      cmBuildStep::Link, this->GetGeneratorTarget(),
+      this->TargetLinkLanguage(config));
   rulePlaceholderExpander->ExpandRuleVariables(this->GetLocalGenerator(),
                                                compileCmd, vars);
 
@@ -566,7 +571,9 @@ void cmNinjaNormalTargetGenerator::WriteLinkRule(bool useResponseFile,
     }
 
     auto rulePlaceholderExpander =
-      this->GetLocalGenerator()->CreateRulePlaceholderExpander();
+      this->GetLocalGenerator()->CreateRulePlaceholderExpander(
+        cmBuildStep::Link, this->GetGeneratorTarget(),
+        this->TargetLinkLanguage(config));
 
     // Rule for linking library/executable.
     std::vector<std::string> linkCmds = this->ComputeLinkCmd(config);
@@ -1276,6 +1283,9 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement(
   localGen.GetTargetFlags(linkLineComputer.get(), config,
                           vars["LINK_LIBRARIES"], vars["FLAGS"],
                           vars["LINK_FLAGS"], frameworkPath, linkPath, gt);
+
+  localGen.AppendDependencyInfoLinkerFlags(vars["LINK_FLAGS"], gt, config,
+                                           this->TargetLinkLanguage(config));
 
   // Add OS X version flags, if any.
   if (this->GeneratorTarget->GetType() == cmStateEnums::SHARED_LIBRARY ||

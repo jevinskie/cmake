@@ -30,6 +30,7 @@
 #include "cmGeneratedFileStream.h"
 #include "cmGeneratorExpression.h"
 #include "cmGeneratorExpressionDAGChecker.h"
+#include "cmGeneratorOptions.h"
 #include "cmGlobalGenerator.h"
 #include "cmList.h"
 #include "cmLocalGenerator.h"
@@ -2473,8 +2474,6 @@ void cmGeneratorTarget::AddExplicitLanguageFlags(std::string& flags,
     case cmPolicies::OLD:
       // The OLD behavior is to not add explicit language flags.
       return;
-    case cmPolicies::REQUIRED_ALWAYS:
-    case cmPolicies::REQUIRED_IF_USED:
     case cmPolicies::NEW:
       // The NEW behavior is to add explicit language flags.
       break;
@@ -4759,15 +4758,6 @@ std::string cmGeneratorTarget::CheckCMP0004(std::string const& item) const
         cm->IssueMessage(MessageType::FATAL_ERROR, e.str(),
                          this->GetBacktrace());
       } break;
-      case cmPolicies::REQUIRED_IF_USED:
-      case cmPolicies::REQUIRED_ALWAYS: {
-        std::ostringstream e;
-        e << cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0004) << "\n"
-          << "Target \"" << this->GetName() << "\" links to item \"" << item
-          << "\" which has leading or trailing whitespace.";
-        cm->IssueMessage(MessageType::FATAL_ERROR, e.str(),
-                         this->GetBacktrace());
-      } break;
     }
   }
   return lib;
@@ -5926,8 +5916,6 @@ cmGeneratorTarget::CxxModuleSupport cmGeneratorTarget::NeedCxxDyndep(
       // The OLD behavior is to not scan the source.
       policyAnswer = CxxModuleSupport::Disabled;
       break;
-    case cmPolicies::REQUIRED_ALWAYS:
-    case cmPolicies::REQUIRED_IF_USED:
     case cmPolicies::NEW:
       // The NEW behavior is to scan the source if the compiler supports
       // scanning and the generator supports it.
@@ -6023,15 +6011,27 @@ std::string cmGeneratorTarget::GetSwiftModuleFileName() const
 std::string cmGeneratorTarget::GetSwiftModuleDirectory(
   std::string const& config) const
 {
-  std::string moduleDirectory =
-    this->GetPropertyOrDefault("Swift_MODULE_DIRECTORY", "");
+  // This is like the *_OUTPUT_DIRECTORY properties except that we don't have a
+  // separate per-configuration target property.
+  //
+  // The property expands generator expressions. Multi-config generators append
+  // a per-configuration subdirectory to the specified directory unless a
+  // generator expression is used.
+  bool appendConfigDir = true;
+  std::string moduleDirectory;
 
+  if (cmValue value = this->GetProperty("Swift_MODULE_DIRECTORY")) {
+    moduleDirectory = cmGeneratorExpression::Evaluate(
+      *value, this->LocalGenerator, config, this);
+    appendConfigDir = *value == moduleDirectory;
+  }
   if (moduleDirectory.empty()) {
     moduleDirectory = this->LocalGenerator->GetCurrentBinaryDirectory();
+  }
+  if (appendConfigDir) {
     this->LocalGenerator->GetGlobalGenerator()->AppendDirectoryForConfig(
       "/", config, "", moduleDirectory);
   }
-
   return moduleDirectory;
 }
 

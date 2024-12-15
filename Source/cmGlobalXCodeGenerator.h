@@ -304,6 +304,7 @@ private:
   std::string LookupFlags(const std::string& varNamePrefix,
                           const std::string& varNameLang,
                           const std::string& varNameSuffix,
+                          cmGeneratorTarget const* gt,
                           const std::string& default_flags);
 
   class Factory;
@@ -371,7 +372,6 @@ private:
   std::map<std::string, cmXCodeObject*> TargetGroup;
   std::map<std::string, cmXCodeObject*> FileRefs;
   std::map<std::string, cmXCodeObject*> ExternalLibRefs;
-  std::map<std::string, cmXCodeObject*> EmbeddedLibRefs;
   std::map<cmGeneratorTarget const*, cmXCodeObject*> XCodeObjectMap;
   std::map<cmXCodeObject*, cmXCodeObject*> FileRefToBuildFileMap;
   std::map<cmXCodeObject*, cmXCodeObject*> FileRefToEmbedBuildFileMap;

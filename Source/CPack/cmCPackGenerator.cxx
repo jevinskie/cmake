@@ -3,7 +3,6 @@
 #include "cmCPackGenerator.h"
 
 #include <algorithm>
-#include <cstring>
 #include <memory>
 #include <utility>
 
@@ -52,10 +51,9 @@ cmCPackGenerator::~cmCPackGenerator()
 }
 
 void cmCPackGenerator::DisplayVerboseOutput(const std::string& msg,
-                                            float progress)
+                                            float /*unused*/)
 {
-  (void)progress;
-  cmCPackLogger(cmCPackLog::LOG_VERBOSE, "" << msg << std::endl);
+  cmCPackLogger(cmCPackLog::LOG_VERBOSE, msg << std::endl);
 }
 
 int cmCPackGenerator::PrepareNames()
@@ -434,10 +432,7 @@ int cmCPackGenerator::InstallProjectViaInstalledDirectories(
         cmWorkingDirectory workdir(goToDir);
         if (workdir.Failed()) {
           cmCPackLogger(cmCPackLog::LOG_ERROR,
-                        "Failed to change working directory to "
-                          << goToDir << " : "
-                          << std::strerror(workdir.GetLastResult())
-                          << std::endl);
+                        workdir.GetError() << std::endl);
           return 0;
         }
         for (auto const& symlinked : symlinkedFiles) {
@@ -1321,6 +1316,15 @@ int cmCPackGenerator::InitializeInternal()
 bool cmCPackGenerator::IsSet(const std::string& name) const
 {
   return this->MakefileMap->IsSet(name);
+}
+
+cmValue cmCPackGenerator::GetOptionIfSet(const std::string& name) const
+{
+  cmValue ret = this->MakefileMap->GetDefinition(name);
+  if (!ret || ret->empty() || cmIsNOTFOUND(*ret)) {
+    return {};
+  }
+  return ret;
 }
 
 bool cmCPackGenerator::IsOn(const std::string& name) const

@@ -4,16 +4,11 @@
 
 #include "cmConfigure.h" // IWYU pragma: keep
 
-#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "cmCTestGenericHandler.h"
-#include "cmDuration.h"
-
 class cmCTest;
-class cmCTestCommand;
 class cmGlobalGenerator;
 class cmMakefile;
 class cmake;
@@ -21,20 +16,18 @@ class cmake;
 /** \class cmCTestScriptHandler
  * \brief A class that handles ctest -S invocations
  */
-class cmCTestScriptHandler : public cmCTestGenericHandler
+class cmCTestScriptHandler
 {
 public:
-  using Superclass = cmCTestGenericHandler;
-
   /**
    * Add a script to run, and if is should run in the current process
    */
   void AddConfigurationScript(const std::string&, bool pscope);
 
   /**
-   * Run a dashboard using a specified confiuration script
+   * Run a dashboard using a specified configuration script
    */
-  int ProcessHandler() override;
+  int ProcessHandler();
 
   /*
    * Run a script
@@ -48,19 +41,10 @@ public:
    */
   void UpdateElapsedTime();
 
-  /**
-   * Return the time remaianing that the script is allowed to run in
-   * seconds if the user has set the variable CTEST_TIME_LIMIT. If that has
-   * not been set it returns a very large value.
-   */
-  cmDuration GetRemainingTimeAllowed();
-
-  cmCTestScriptHandler();
+  cmCTestScriptHandler(cmCTest* ctest);
   cmCTestScriptHandler(const cmCTestScriptHandler&) = delete;
   const cmCTestScriptHandler& operator=(const cmCTestScriptHandler&) = delete;
-  ~cmCTestScriptHandler() override;
-
-  void Initialize() override;
+  ~cmCTestScriptHandler();
 
   void CreateCMake();
   cmake* GetCMake() { return this->CMake.get(); }
@@ -73,16 +57,9 @@ private:
 
   int RunConfigurationScript(const std::string& script, bool pscope);
 
-  // Add ctest command
-  void AddCTestCommand(std::string const& name,
-                       std::unique_ptr<cmCTestCommand> command);
-
+  cmCTest* CTest = nullptr;
   std::vector<std::string> ConfigurationScripts;
   std::vector<bool> ScriptProcessScope;
-
-  // what time in seconds did this script start running
-  std::chrono::steady_clock::time_point ScriptStartTime =
-    std::chrono::steady_clock::time_point();
 
   std::unique_ptr<cmMakefile> Makefile;
   cmMakefile* ParentMakefile = nullptr;

@@ -37,7 +37,7 @@ cmInstallCommandArguments::cmInstallCommandArguments(
     case cmPolicies::OLD:
       normalizeDest = [this](cm::string_view arg) -> ArgumentParser::Continue {
         this->Destination = std::string(arg.begin(), arg.end());
-        return ArgumentParser::Continue::Yes;
+        return ArgumentParser::Continue::No;
       };
       break;
     case cmPolicies::WARN:
@@ -52,7 +52,7 @@ cmInstallCommandArguments::cmInstallCommandArguments(
             MessageType::AUTHOR_WARNING,
             cmPolicies::GetPolicyWarning(cmPolicies::CMP0177));
         }
-        return ArgumentParser::Continue::Yes;
+        return ArgumentParser::Continue::No;
       };
       break;
     case cmPolicies::NEW:
@@ -63,15 +63,9 @@ cmInstallCommandArguments::cmInstallCommandArguments(
           this->Destination =
             cmStrCat("$<PATH:CMAKE_PATH,NORMALIZE,", arg, '>');
         }
-        return ArgumentParser::Continue::Yes;
+        return ArgumentParser::Continue::No;
       };
       break;
-    case cmPolicies::REQUIRED_ALWAYS:
-    case cmPolicies::REQUIRED_IF_USED:
-      // We should never get here, only OLD, WARN, and NEW are used
-      makefile.IssueMessage(
-        MessageType::FATAL_ERROR,
-        cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0177));
   }
 
   this->Bind("DESTINATION"_s, normalizeDest);

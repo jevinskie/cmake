@@ -97,8 +97,8 @@ bool cmTargetLinkLibrariesCommand(std::vector<std::string> const& args,
   if (!target) {
     MessageType t = MessageType::FATAL_ERROR; // fail by default
     std::ostringstream e;
-    e << "Cannot specify link libraries for target \"" << args[0] << "\" "
-      << "which is not built by this project.";
+    e << "Cannot specify link libraries for target \"" << args[0]
+      << "\" which is not built by this project.";
     // The bad target is the only argument. Check how policy CMP0016 is set,
     // and accept, warn or fail respectively:
     if (args.size() < 2) {
@@ -107,17 +107,13 @@ bool cmTargetLinkLibrariesCommand(std::vector<std::string> const& args,
           t = MessageType::AUTHOR_WARNING;
           // Print the warning.
           e << "\n"
-            << "CMake does not support this but it used to work accidentally "
-            << "and is being allowed for compatibility."
-            << "\n"
+               "CMake does not support this but it used to work accidentally "
+               "and is being allowed for compatibility."
+               "\n"
             << cmPolicies::GetPolicyWarning(cmPolicies::CMP0016);
           break;
         case cmPolicies::OLD: // OLD behavior does not warn.
           t = MessageType::MESSAGE;
-          break;
-        case cmPolicies::REQUIRED_IF_USED:
-        case cmPolicies::REQUIRED_ALWAYS:
-          e << "\n" << cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0016);
           break;
         case cmPolicies::NEW: // NEW behavior prints the error.
           break;
@@ -145,13 +141,11 @@ bool cmTargetLinkLibrariesCommand(std::vector<std::string> const& args,
     MessageType messageType = MessageType::AUTHOR_WARNING;
     switch (mf.GetPolicyStatus(cmPolicies::CMP0039)) {
       case cmPolicies::WARN:
-        e << cmPolicies::GetPolicyWarning(cmPolicies::CMP0039) << "\n";
+        e << cmPolicies::GetPolicyWarning(cmPolicies::CMP0039) << '\n';
         modal = "should";
         CM_FALLTHROUGH;
       case cmPolicies::OLD:
         break;
-      case cmPolicies::REQUIRED_ALWAYS:
-      case cmPolicies::REQUIRED_IF_USED:
       case cmPolicies::NEW:
         modal = "must";
         messageType = MessageType::FATAL_ERROR;
@@ -408,8 +402,6 @@ TLL::TLL(cmMakefile& mf, cmTarget* target)
       case cmPolicies::OLD:
         this->RejectRemoteLinking = true;
         break;
-      case cmPolicies::REQUIRED_ALWAYS:
-      case cmPolicies::REQUIRED_IF_USED:
       case cmPolicies::NEW:
         this->EncodeRemoteReference = true;
         break;
@@ -456,13 +448,11 @@ bool TLL::HandleLibrary(ProcessingState currentProcessingState,
     MessageType messageType = MessageType::AUTHOR_WARNING;
     switch (this->Makefile.GetPolicyStatus(cmPolicies::CMP0023)) {
       case cmPolicies::WARN:
-        e << cmPolicies::GetPolicyWarning(cmPolicies::CMP0023) << "\n";
+        e << cmPolicies::GetPolicyWarning(cmPolicies::CMP0023) << '\n';
         modal = "should";
         CM_FALLTHROUGH;
       case cmPolicies::OLD:
         break;
-      case cmPolicies::REQUIRED_ALWAYS:
-      case cmPolicies::REQUIRED_IF_USED:
       case cmPolicies::NEW:
         modal = "must";
         messageType = MessageType::FATAL_ERROR;

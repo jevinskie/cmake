@@ -120,8 +120,6 @@ cmValue cmTargetPropertyComputer::GetSources<cmTarget>(cmTarget const* tgt,
             CM_FALLTHROUGH;
           case cmPolicies::OLD:
             break;
-          case cmPolicies::REQUIRED_ALWAYS:
-          case cmPolicies::REQUIRED_IF_USED:
           case cmPolicies::NEW:
             addContent = true;
             break;
@@ -375,6 +373,8 @@ struct TargetProperty
 
 TargetProperty const StaticTargetProperties[] = {
   /* clang-format off */
+  // -- Debugger Properties
+  { "DEBUGGER_WORKING_DIRECTORY"_s, IC::ExecutableTarget },
   // Compilation properties
   { "COMPILE_WARNING_AS_ERROR"_s, IC::CanCompileSources },
   { "INTERPROCEDURAL_OPTIMIZATION"_s, IC::CanCompileSources },
@@ -466,6 +466,7 @@ TargetProperty const StaticTargetProperties[] = {
 
   // Linking properties
   { "LINKER_TYPE"_s, IC::CanCompileSources },
+  { "LINK_WARNING_AS_ERROR"_s, IC::CanCompileSources },
   { "ENABLE_EXPORTS"_s, IC::TargetWithSymbolExports },
   { "LINK_LIBRARIES_ONLY_TARGETS"_s, IC::NormalNonImportedTarget },
   { "LINK_LIBRARIES_STRATEGY"_s, IC::NormalNonImportedTarget },
@@ -1090,6 +1091,11 @@ cmTarget::cmTarget(std::string const& name, cmStateEnums::TargetType type,
       }
     }
 
+    // Imported targets must set AIX_SHARED_LIBRARY_ARCHIVE explicitly.
+    if (this->IsImported() && property == "AIX_SHARED_LIBRARY_ARCHIVE"_s) {
+      return;
+    }
+
     // Replace everything after "CMAKE_"
     defKey.replace(defKey.begin() + 6, defKey.end(), property);
     if (cmValue value = mf->GetDefinition(defKey)) {
@@ -1303,8 +1309,25 @@ bool cmTarget::IsFrameworkOnApple() const
 
 bool cmTarget::IsArchivedAIXSharedLibrary() const
 {
-  return (this->GetType() == cmStateEnums::SHARED_LIBRARY && this->IsAIX() &&
-          this->GetPropertyAsBool("AIX_SHARED_LIBRARY_ARCHIVE"));
+  if (this->GetType() == cmStateEnums::SHARED_LIBRARY && this->IsAIX()) {
+    cmValue value = this->GetProperty("AIX_SHARED_LIBRARY_ARCHIVE");
+    if (!value.IsEmpty()) {
+      return value.IsOn();
+    }
+    if (this->IsImported()) {
+      return false;
+    }
+    switch (this->GetPolicyStatusCMP0182()) {
+      case cmPolicies::WARN:
+      case cmPolicies::OLD:
+        // The OLD behavior's default is to disable shared library archives.
+        break;
+      case cmPolicies::NEW:
+        // The NEW behavior's default is to enable shared library archives.
+        return true;
+    }
+  }
+  return false;
 }
 
 bool cmTarget::IsAppBundleOnApple() const
@@ -1415,8 +1438,6 @@ std::string cmTargetInternals::ProcessSourceItemCMP0049(
       case cmPolicies::OLD:
         noMessage = true;
         break;
-      case cmPolicies::REQUIRED_ALWAYS:
-      case cmPolicies::REQUIRED_IF_USED:
       case cmPolicies::NEW:
         messageType = MessageType::FATAL_ERROR;
     }
@@ -2105,8 +2126,6 @@ struct ReadOnlyProperty
         case cmPolicies::OLD:
           readOnly = false;
           break;
-        case cmPolicies::REQUIRED_ALWAYS:
-        case cmPolicies::REQUIRED_IF_USED:
         case cmPolicies::NEW:
           context->IssueMessage(MessageType::FATAL_ERROR,
                                 this->message(prop, target));

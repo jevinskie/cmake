@@ -26,7 +26,6 @@
 #include "cmState.h"
 #include "cmStateSnapshot.h"
 #include "cmStateTypes.h"
-#include "cmSystemTools.h"
 #include "cmValue.h"
 
 #if !defined(CMAKE_BOOTSTRAP)
@@ -300,12 +299,7 @@ public:
   }
 
   //! Set the name of the graphviz file.
-  void SetGraphVizFile(std::string const& ts)
-  {
-    std::string path = cmSystemTools::CollapseFullPath(ts);
-    cmSystemTools::ConvertToUnixSlashes(path);
-    this->GraphVizFile = path;
-  }
+  void SetGraphVizFile(std::string const& ts) { this->GraphVizFile = ts; }
 
   bool IsAKnownSourceExtension(cm::string_view ext) const
   {
@@ -548,8 +542,22 @@ public:
   void SetWarnUnusedCli(bool b) { this->WarnUnusedCli = b; }
   bool GetCheckSystemVars() const { return this->CheckSystemVars; }
   void SetCheckSystemVars(bool b) { this->CheckSystemVars = b; }
-  bool GetIgnoreWarningAsError() const { return this->IgnoreWarningAsError; }
-  void SetIgnoreWarningAsError(bool b) { this->IgnoreWarningAsError = b; }
+  bool GetIgnoreCompileWarningAsError() const
+  {
+    return this->IgnoreCompileWarningAsError;
+  }
+  void SetIgnoreCompileWarningAsError(bool b)
+  {
+    this->IgnoreCompileWarningAsError = b;
+  }
+  bool GetIgnoreLinkWarningAsError() const
+  {
+    return this->IgnoreLinkWarningAsError;
+  }
+  void SetIgnoreLinkWarningAsError(bool b)
+  {
+    this->IgnoreLinkWarningAsError = b;
+  }
 
   void MarkCliAsUsed(const std::string& variable);
 
@@ -759,7 +767,8 @@ private:
   bool WarnUninitialized = false;
   bool WarnUnusedCli = true;
   bool CheckSystemVars = false;
-  bool IgnoreWarningAsError = false;
+  bool IgnoreCompileWarningAsError = false;
+  bool IgnoreLinkWarningAsError = false;
   std::map<std::string, bool> UsedCliVariables;
   std::string CMakeEditCommand;
   std::string CXXEnvironment;
@@ -810,8 +819,6 @@ private:
   std::vector<std::string> CheckInProgressMessages;
 
   std::unique_ptr<cmGlobalGenerator> GlobalGenerator;
-
-  void UpdateConversionPathTable();
 
   //! Print a list of valid generators to stderr.
   void PrintGeneratorList();

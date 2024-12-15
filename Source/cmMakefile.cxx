@@ -211,8 +211,6 @@ bool cmMakefile::CheckCMP0037(std::string const& targetName,
     case cmPolicies::OLD:
       break;
     case cmPolicies::NEW:
-    case cmPolicies::REQUIRED_IF_USED:
-    case cmPolicies::REQUIRED_ALWAYS:
       issueMessage = true;
       messageType = MessageType::FATAL_ERROR;
       break;
@@ -402,20 +400,59 @@ void cmMakefile::PrintCommandTrace(cmListFileFunction const& lff,
   }
 }
 
+cmMakefile::CallRAII::CallRAII(cmMakefile* mf, std::string const& file,
+                               cmExecutionStatus& status)
+  : CallRAII(mf, cmListFileContext::FromListFilePath(file), status)
+{
+}
+
+cmMakefile::CallRAII::CallRAII(cmMakefile* mf, const cmListFileContext& lfc,
+                               cmExecutionStatus& status)
+  : Makefile{ mf }
+{
+  this->Makefile->Backtrace = this->Makefile->Backtrace.Push(lfc);
+  ++this->Makefile->RecursionDepth;
+  this->Makefile->ExecutionStatusStack.push_back(&status);
+}
+
+cmMakefile::CallRAII::~CallRAII()
+{
+  if (this->Makefile) {
+    this->Detach();
+  }
+}
+
+cmMakefile* cmMakefile::CallRAII::Detach()
+{
+  assert(this->Makefile);
+
+  this->Makefile->ExecutionStatusStack.pop_back();
+  --this->Makefile->RecursionDepth;
+  this->Makefile->Backtrace = this->Makefile->Backtrace.Pop();
+
+  auto* const mf = this->Makefile;
+  this->Makefile = nullptr;
+  return mf;
+}
+
 // Helper class to make sure the call stack is valid.
-class cmMakefileCall
+class cmMakefile::CallScope : public CallRAII
 {
 public:
-  cmMakefileCall(cmMakefile* mf, cmListFileFunction const& lff,
-                 cm::optional<std::string> deferId, cmExecutionStatus& status)
-    : Makefile(mf)
+  CallScope(cmMakefile* mf, cmListFileFunction const& lff,
+            cm::optional<std::string> deferId, cmExecutionStatus& status)
+    : CallScope{ mf, lff,
+                 cmListFileContext::FromListFileFunction(
+                   lff, mf->StateSnapshot.GetExecutionListFile(),
+                   std::move(deferId)),
+                 status }
   {
-    cmListFileContext const& lfc = cmListFileContext::FromListFileFunction(
-      lff, this->Makefile->StateSnapshot.GetExecutionListFile(),
-      std::move(deferId));
-    this->Makefile->Backtrace = this->Makefile->Backtrace.Push(lfc);
-    ++this->Makefile->RecursionDepth;
-    this->Makefile->ExecutionStatusStack.push_back(&status);
+  }
+
+  CallScope(cmMakefile* mf, cmListFileFunction const& lff,
+            cmListFileContext const& lfc, cmExecutionStatus& status)
+    : CallRAII{ mf, lfc, status }
+  {
 #if !defined(CMAKE_BOOTSTRAP)
     this->ProfilingDataRAII =
       this->Makefile->GetCMakeInstance()->CreateProfilingEntry(
@@ -442,28 +479,25 @@ public:
 #endif
   }
 
-  ~cmMakefileCall()
+  ~CallScope()
   {
 #if !defined(CMAKE_BOOTSTRAP)
     this->ProfilingDataRAII.reset();
 #endif
-    this->Makefile->ExecutionStatusStack.pop_back();
-    --this->Makefile->RecursionDepth;
-    this->Makefile->Backtrace = this->Makefile->Backtrace.Pop();
+    auto* const mf = this->Detach();
 #ifdef CMake_ENABLE_DEBUGGER
-    if (this->Makefile->GetCMakeInstance()->GetDebugAdapter()) {
-      this->Makefile->GetCMakeInstance()
-        ->GetDebugAdapter()
-        ->OnEndFunctionCall();
+    if (mf->GetCMakeInstance()->GetDebugAdapter()) {
+      mf->GetCMakeInstance()->GetDebugAdapter()->OnEndFunctionCall();
     }
+#else
+    static_cast<void>(mf);
 #endif
   }
 
-  cmMakefileCall(const cmMakefileCall&) = delete;
-  cmMakefileCall& operator=(const cmMakefileCall&) = delete;
+  CallScope(const CallScope&) = delete;
+  CallScope& operator=(const CallScope&) = delete;
 
 private:
-  cmMakefile* Makefile;
 #if !defined(CMAKE_BOOTSTRAP)
   cm::optional<cmMakefileProfilingData::RAII> ProfilingDataRAII;
 #endif
@@ -487,7 +521,7 @@ bool cmMakefile::ExecuteCommand(const cmListFileFunction& lff,
   }
 
   // Place this call on the call stack.
-  cmMakefileCall stack_manager(this, lff, std::move(deferId), status);
+  CallScope stack_manager(this, lff, std::move(deferId), status);
   static_cast<void>(stack_manager);
 
   // Check for maximum recursion depth.
@@ -601,12 +635,6 @@ cmMakefile::IncludeScope::IncludeScope(cmMakefile* mf,
         // OLD behavior is to not push a scope at all.
         this->NoPolicyScope = true;
         break;
-      case cmPolicies::REQUIRED_IF_USED:
-      case cmPolicies::REQUIRED_ALWAYS:
-        // We should never make this policy required, but we handle it
-        // here just in case.
-        this->CheckCMP0011 = true;
-        CM_FALLTHROUGH;
       case cmPolicies::NEW:
         // NEW behavior is to push a (strong) scope.
         this->Makefile->PushPolicy();
@@ -664,17 +692,6 @@ void cmMakefile::IncludeScope::EnforceCMP0011()
         this->Makefile->IssueMessage(MessageType::AUTHOR_WARNING, e);
       }
       break;
-    case cmPolicies::REQUIRED_IF_USED:
-    case cmPolicies::REQUIRED_ALWAYS: {
-      auto e = cmStrCat(
-        cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0011),
-        "\n"
-        "The included script\n  ",
-        this->Makefile->GetBacktrace().Top().FilePath,
-        "\n"
-        "affects policy settings, so it requires this policy to be set.");
-      this->Makefile->IssueMessage(MessageType::FATAL_ERROR, e);
-    } break;
     case cmPolicies::OLD:
     case cmPolicies::NEW:
       // The script set this policy.  We assume the purpose of the
@@ -980,8 +997,6 @@ void cmMakefile::EnforceDirectoryLevelRules() const
         // OLD behavior is to use policy version 2.4 set in
         // cmListFileCache.
         break;
-      case cmPolicies::REQUIRED_IF_USED:
-      case cmPolicies::REQUIRED_ALWAYS:
       case cmPolicies::NEW:
         // NEW behavior is to issue an error.
         this->GetCMakeInstance()->IssueMessage(MessageType::FATAL_ERROR, e,
@@ -1183,8 +1198,6 @@ cmTarget* cmMakefile::GetCustomCommandTarget(
       case cmPolicies::OLD:
         break;
       case cmPolicies::NEW:
-      case cmPolicies::REQUIRED_IF_USED:
-      case cmPolicies::REQUIRED_ALWAYS:
         issueMessage = true;
         messageType = MessageType::FATAL_ERROR;
         break;
@@ -1538,12 +1551,6 @@ bool cmMakefile::ParseDefineFlag(std::string const& def, bool remove)
       case cmPolicies::OLD:
         // OLD behavior is to not escape the value.  We should not
         // convert the definition to use the property.
-        return false;
-      case cmPolicies::REQUIRED_IF_USED:
-      case cmPolicies::REQUIRED_ALWAYS:
-        this->IssueMessage(
-          MessageType::FATAL_ERROR,
-          cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0005));
         return false;
       case cmPolicies::NEW:
         // NEW behavior is to escape the value.  Proceed to convert it
@@ -1923,11 +1930,6 @@ void cmMakefile::ConfigureSubDirectory(cmMakefile* mf)
       case cmPolicies::OLD:
         // OLD behavior does not warn.
         break;
-      case cmPolicies::REQUIRED_IF_USED:
-      case cmPolicies::REQUIRED_ALWAYS:
-        e += cmStrCat('\n',
-                      cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0014));
-        CM_FALLTHROUGH;
       case cmPolicies::NEW:
         // NEW behavior prints the error.
         this->IssueMessage(MessageType::FATAL_ERROR, e);
@@ -2088,7 +2090,7 @@ void cmMakefile::AddCacheDefinition(const std::string& name, cmValue value,
       cmList files(value);
       for (auto& file : files) {
         if (!cmIsOff(file)) {
-          file = cmSystemTools::CollapseFullPath(file);
+          file = cmSystemTools::ToNormalizedPathOnDisk(file);
         }
       }
       nvalue = files.to_string();
@@ -2116,8 +2118,6 @@ void cmMakefile::AddCacheDefinition(const std::string& name, cmValue value,
       this->StateSnapshot.RemoveDefinition(name);
       break;
     case cmPolicies::NEW:
-    case cmPolicies::REQUIRED_IF_USED:
-    case cmPolicies::REQUIRED_ALWAYS:
       break;
   }
 }
@@ -2387,13 +2387,9 @@ cmSourceGroup* cmMakefile::GetOrCreateSourceGroup(
 
 cmSourceGroup* cmMakefile::GetOrCreateSourceGroup(const std::string& name)
 {
-  std::string delimiters;
-  if (cmValue p = this->GetDefinition("SOURCE_GROUP_DELIMITER")) {
-    delimiters = *p;
-  } else {
-    delimiters = "/\\";
-  }
-  return this->GetOrCreateSourceGroup(cmTokenize(name, delimiters));
+  auto p = this->GetDefinition("SOURCE_GROUP_DELIMITER");
+  return this->GetOrCreateSourceGroup(
+    cmTokenize(name, p ? cm::string_view(*p) : R"(\/)"_s));
 }
 
 /**
@@ -2794,8 +2790,6 @@ const std::string& cmMakefile::ExpandVariablesInString(
                                                noEscapes, atOnly, filename,
                                                line, removeEmpty, true);
       break;
-    case cmPolicies::REQUIRED_IF_USED:
-    case cmPolicies::REQUIRED_ALWAYS:
     // Messaging here would be *very* verbose.
     case cmPolicies::NEW:
       mtype = this->ExpandVariablesInStringNew(errorstr, source, escapeQuotes,
@@ -2940,11 +2934,6 @@ MessageType cmMakefile::ExpandVariablesInStringOld(
         case cmPolicies::OLD:
           // OLD behavior is to just warn and continue.
           mtype = MessageType::AUTHOR_WARNING;
-          break;
-        case cmPolicies::REQUIRED_IF_USED:
-        case cmPolicies::REQUIRED_ALWAYS:
-          error += cmStrCat(
-            '\n', cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0010));
           break;
         case cmPolicies::NEW:
           // NEW behavior is to report the error.
@@ -3722,10 +3711,7 @@ int cmMakefile::TryCompile(const std::string& srcdir,
   // use the cmake object instead of calling cmake
   cmWorkingDirectory workdir(bindir);
   if (workdir.Failed()) {
-    this->IssueMessage(MessageType::FATAL_ERROR,
-                       cmStrCat("Failed to set working directory to ", bindir,
-                                " : ",
-                                std::strerror(workdir.GetLastResult())));
+    this->IssueMessage(MessageType::FATAL_ERROR, workdir.GetError());
     cmSystemTools::SetFatalErrorOccurred();
     this->IsSourceFileTryCompile = false;
     return 1;
@@ -3969,8 +3955,6 @@ std::string cmMakefile::GetModulesFile(cm::string_view filename, bool& system,
           system = false;
           result = moduleInCMakeModulePath;
           break;
-        case cmPolicies::REQUIRED_IF_USED:
-        case cmPolicies::REQUIRED_ALWAYS:
         case cmPolicies::NEW:
           system = true;
           result = moduleInCMakeRoot;
@@ -4435,12 +4419,6 @@ bool cmMakefile::EnforceUniqueName(std::string const& name, std::string& msg,
         CM_FALLTHROUGH;
       case cmPolicies::OLD:
         return true;
-      case cmPolicies::REQUIRED_IF_USED:
-      case cmPolicies::REQUIRED_ALWAYS:
-        this->IssueMessage(
-          MessageType::FATAL_ERROR,
-          cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0002));
-        return true;
       case cmPolicies::NEW:
         break;
     }
@@ -4525,11 +4503,6 @@ bool cmMakefile::EnforceUniqueDir(const std::string& srcPath,
     case cmPolicies::OLD:
       // OLD behavior does not warn.
       return true;
-    case cmPolicies::REQUIRED_IF_USED:
-    case cmPolicies::REQUIRED_ALWAYS:
-      e = cmStrCat(cmPolicies::GetRequiredPolicyError(cmPolicies::CMP0013),
-                   '\n');
-      CM_FALLTHROUGH;
     case cmPolicies::NEW:
       // NEW behavior prints the error.
       e += cmStrCat("The binary directory\n"
@@ -4636,10 +4609,9 @@ bool cmMakefile::SetPolicy(const char* id, cmPolicies::PolicyStatus status)
 bool cmMakefile::SetPolicy(cmPolicies::PolicyID id,
                            cmPolicies::PolicyStatus status)
 {
-  // A REQUIRED_ALWAYS policy may be set only to NEW.
-  if (status != cmPolicies::NEW &&
-      cmPolicies::GetPolicyStatus(id) == cmPolicies::REQUIRED_ALWAYS) {
-    std::string msg = cmPolicies::GetRequiredAlwaysPolicyError(id);
+  // A removed policy may be set only to NEW.
+  if (cmPolicies::IsRemoved(id) && status != cmPolicies::NEW) {
+    std::string msg = cmPolicies::GetRemovedPolicyError(id);
     this->IssueMessage(MessageType::FATAL_ERROR, msg);
     return false;
   }
@@ -4750,8 +4722,6 @@ bool cmMakefile::IgnoreErrorsCMP0061() const
       CM_FALLTHROUGH;
     case cmPolicies::OLD:
       break;
-    case cmPolicies::REQUIRED_IF_USED:
-    case cmPolicies::REQUIRED_ALWAYS:
     case cmPolicies::NEW:
       ignoreErrors = false;
       break;

@@ -27,6 +27,7 @@
 #include "cmCustomCommandTypes.h"
 #include "cmGeneratedFileStream.h"
 #include "cmGeneratorExpression.h"
+#include "cmGeneratorOptions.h"
 #include "cmGeneratorTarget.h"
 #include "cmGlobalGeneratorFactory.h"
 #include "cmLinkItem.h"
@@ -354,12 +355,13 @@ bool cmGlobalXCodeGenerator::SetGeneratorToolset(std::string const& ts,
 bool cmGlobalXCodeGenerator::ParseGeneratorToolset(std::string const& ts,
                                                    cmMakefile* mf)
 {
-  std::vector<std::string> const fields = cmTokenize(ts, ",");
-  auto fi = fields.cbegin();
-  if (fi == fields.cend()) {
+  std::vector<std::string> const fields =
+    cmTokenize(ts, ',', cmTokenizerMode::New);
+  if (fields.empty()) {
     return true;
   }
 
+  auto fi = fields.cbegin();
   // The first field may be the Xcode GCC_VERSION.
   if (fi->find('=') == fi->npos) {
     this->GeneratorToolset = *fi;
@@ -775,14 +777,14 @@ void cmGlobalXCodeGenerator::CreateReRunCMakeFile(
   }
 
   makefileStream << ConvertToMakefilePath(checkCache) << ": $(TARGETS)\n";
-  makefileStream << '\t'
-                 << ConvertToMakefilePath(cmSystemTools::GetCMakeCommand())
-                 << " -S" << ConvertToMakefilePath(root->GetSourceDirectory())
-                 << " -B" << ConvertToMakefilePath(root->GetBinaryDirectory())
-                 << (cm->GetIgnoreWarningAsError()
-                       ? " --compile-no-warning-as-error"
-                       : "")
-                 << '\n';
+  makefileStream
+    << '\t' << ConvertToMakefilePath(cmSystemTools::GetCMakeCommand()) << " -S"
+    << ConvertToMakefilePath(root->GetSourceDirectory()) << " -B"
+    << ConvertToMakefilePath(root->GetBinaryDirectory())
+    << (cm->GetIgnoreCompileWarningAsError() ? " --compile-no-warning-as-error"
+                                             : "")
+    << (cm->GetIgnoreLinkWarningAsError() ? " --link-no-warning-as-error" : "")
+    << '\n';
 }
 
 static bool objectIdLessThan(const std::unique_ptr<cmXCodeObject>& l,
@@ -808,7 +810,6 @@ void cmGlobalXCodeGenerator::ClearXCodeObjects()
   this->TargetGroup.clear();
   this->FileRefs.clear();
   this->ExternalLibRefs.clear();
-  this->EmbeddedLibRefs.clear();
   this->FileRefToBuildFileMap.clear();
   this->FileRefToEmbedBuildFileMap.clear();
   this->CommandsVisited.clear();
@@ -2538,7 +2539,8 @@ void cmGlobalXCodeGenerator::CreateBuildSettings(cmGeneratorTarget* gtgt,
   }
   if (!extraLinkOptionsVar.empty()) {
     this->CurrentLocalGenerator->AddConfigVariableFlags(
-      extraLinkOptions, extraLinkOptionsVar, configName);
+      extraLinkOptions, extraLinkOptionsVar, gtgt, cmBuildStep::Link, llang,
+      configName);
   }
 
   if (gtgt->GetType() == cmStateEnums::OBJECT_LIBRARY ||
@@ -2548,6 +2550,8 @@ void cmGlobalXCodeGenerator::CreateBuildSettings(cmGeneratorTarget* gtgt,
   } else {
     this->CurrentLocalGenerator->AppendLinkerTypeFlags(extraLinkOptions, gtgt,
                                                        configName, llang);
+    this->CurrentLocalGenerator->AppendWarningAsErrorLinkerFlags(
+      extraLinkOptions, gtgt, llang);
 
     cmValue targetLinkFlags = gtgt->GetProperty("LINK_FLAGS");
     if (targetLinkFlags) {
@@ -2693,7 +2697,7 @@ void cmGlobalXCodeGenerator::CreateBuildSettings(cmGeneratorTarget* gtgt,
         // in many ways as an application bundle, as far as
         // link flags go
         std::string createFlags = this->LookupFlags(
-          "CMAKE_SHARED_MODULE_CREATE_", llang, "_FLAGS", "-bundle");
+          "CMAKE_SHARED_MODULE_CREATE_", llang, "_FLAGS", gtgt, "-bundle");
         if (!createFlags.empty()) {
           extraLinkOptions += ' ';
           extraLinkOptions += createFlags;
@@ -2719,7 +2723,7 @@ void cmGlobalXCodeGenerator::CreateBuildSettings(cmGeneratorTarget* gtgt,
                                     this->CreateString("NO"));
         // Add the flags to create an executable.
         std::string createFlags =
-          this->LookupFlags("CMAKE_", llang, "_LINK_FLAGS", "");
+          this->LookupFlags("CMAKE_", llang, "_LINK_FLAGS", gtgt, "");
         if (!createFlags.empty()) {
           extraLinkOptions += ' ';
           extraLinkOptions += createFlags;
@@ -2748,8 +2752,9 @@ void cmGlobalXCodeGenerator::CreateBuildSettings(cmGeneratorTarget* gtgt,
                                     this->CreateString(plist));
       } else {
         // Add the flags to create a shared library.
-        std::string createFlags = this->LookupFlags(
-          "CMAKE_SHARED_LIBRARY_CREATE_", llang, "_FLAGS", "-dynamiclib");
+        std::string createFlags =
+          this->LookupFlags("CMAKE_SHARED_LIBRARY_CREATE_", llang, "_FLAGS",
+                            gtgt, "-dynamiclib");
         if (!createFlags.empty()) {
           extraLinkOptions += ' ';
           extraLinkOptions += createFlags;
@@ -2769,7 +2774,7 @@ void cmGlobalXCodeGenerator::CreateBuildSettings(cmGeneratorTarget* gtgt,
     case cmStateEnums::EXECUTABLE: {
       // Add the flags to create an executable.
       std::string createFlags =
-        this->LookupFlags("CMAKE_", llang, "_LINK_FLAGS", "");
+        this->LookupFlags("CMAKE_", llang, "_LINK_FLAGS", gtgt, "");
       if (!createFlags.empty()) {
         extraLinkOptions += ' ';
         extraLinkOptions += createFlags;
@@ -4239,24 +4244,18 @@ void cmGlobalXCodeGenerator::AddEmbeddedObjects(
                cmSystemTools::IsPathToMacOSSharedLibrary(relFile) ||
                cmSystemTools::FileIsDirectory(filePath)) {
       // This is a regular string path - create file reference
-      auto it = this->EmbeddedLibRefs.find(relFile);
-      if (it == this->EmbeddedLibRefs.end()) {
-        cmXCodeObject* fileRef =
-          this->CreateXCodeFileReferenceFromPath(relFile, gt, "", nullptr);
-        if (fileRef) {
-          buildFile = this->CreateObject(cmXCodeObject::PBXBuildFile);
-          buildFile->SetComment(fileRef->GetComment());
-          buildFile->AddAttribute("fileRef",
-                                  this->CreateObjectReference(fileRef));
-        }
-        if (!buildFile) {
-          cmSystemTools::Error(
-            cmStrCat("Can't create build file for ", relFile));
-          continue;
-        }
-        this->EmbeddedLibRefs.emplace(filePath, buildFile);
-      } else {
-        buildFile = it->second;
+      cmXCodeObject* fileRef =
+        this->CreateXCodeFileReferenceFromPath(relFile, gt, "", nullptr);
+      if (fileRef) {
+        buildFile = this->CreateObject(cmXCodeObject::PBXBuildFile);
+        buildFile->SetComment(fileRef->GetComment());
+        buildFile->AddAttribute("fileRef",
+                                this->CreateObjectReference(fileRef));
+      }
+      if (!buildFile) {
+        cmSystemTools::Error(
+          cmStrCat("Can't create build file for ", relFile));
+        continue;
       }
     }
     if (!buildFile) {
@@ -4454,7 +4453,7 @@ cmXCodeObject* cmGlobalXCodeGenerator::CreateOrGetPBXGroup(
   if (it != this->TargetGroup.end()) {
     tgroup = it->second;
   } else {
-    std::vector<std::string> tgt_folders = cmTokenize(target, "/");
+    std::vector<std::string> const tgt_folders = cmTokenize(target, '/');
     std::string curr_tgt_folder;
     for (std::vector<std::string>::size_type i = 0; i < tgt_folders.size();
          i++) {
@@ -4487,7 +4486,7 @@ cmXCodeObject* cmGlobalXCodeGenerator::CreateOrGetPBXGroup(
   // It's a recursive folder structure, let's find the real parent group
   if (sg->GetFullName() != sg->GetName()) {
     std::string curr_folder = cmStrCat(target, '/');
-    for (auto const& folder : cmTokenize(sg->GetFullName(), "\\")) {
+    for (auto const& folder : cmTokenize(sg->GetFullName(), '\\')) {
       curr_folder += folder;
       auto const i_folder = this->GroupNameMap.find(curr_folder);
       // Create new folder
@@ -5207,13 +5206,17 @@ void cmGlobalXCodeGenerator::AppendDirectoryForConfig(
 
 std::string cmGlobalXCodeGenerator::LookupFlags(
   const std::string& varNamePrefix, const std::string& varNameLang,
-  const std::string& varNameSuffix, const std::string& default_flags)
+  const std::string& varNameSuffix, cmGeneratorTarget const* gt,
+  const std::string& default_flags)
 {
   if (!varNameLang.empty()) {
     std::string varName = cmStrCat(varNamePrefix, varNameLang, varNameSuffix);
     if (cmValue varValue = this->CurrentMakefile->GetDefinition(varName)) {
       if (!varValue->empty()) {
-        return *varValue;
+        std::string flags;
+        this->CurrentLocalGenerator->AppendFlags(
+          flags, *varValue, varName, gt, cmBuildStep::Link, varNameLang);
+        return flags;
       }
     }
   }

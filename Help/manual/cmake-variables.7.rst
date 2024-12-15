@@ -175,6 +175,7 @@ Variables that Change Behavior
    :maxdepth: 1
 
    /variable/BUILD_SHARED_LIBS
+   /variable/BUILD_TESTING
    /variable/CMAKE_ABSOLUTE_DESTINATION_FILES
    /variable/CMAKE_ADD_CUSTOM_COMMAND_DEPENDS_EXPLICIT_ONLY
    /variable/CMAKE_APPBUNDLE_PATH
@@ -433,6 +434,7 @@ Variables that Control the Build
    /variable/CMAKE_CXX_MODULE_STD
    /variable/CMAKE_CXX_SCAN_FOR_MODULES
    /variable/CMAKE_DEBUG_POSTFIX
+   /variable/CMAKE_DEBUGGER_WORKING_DIRECTORY
    /variable/CMAKE_DEFAULT_BUILD_TYPE
    /variable/CMAKE_DEFAULT_CONFIGS
    /variable/CMAKE_DEPENDS_USE_COMPILER
@@ -498,6 +500,7 @@ Variables that Control the Build
    /variable/CMAKE_LINK_LIBRARY_FLAG
    /variable/CMAKE_LINK_LIBRARY_USING_FEATURE
    /variable/CMAKE_LINK_LIBRARY_USING_FEATURE_SUPPORTED
+   /variable/CMAKE_LINK_WARNING_AS_ERROR
    /variable/CMAKE_LINK_WHAT_YOU_USE
    /variable/CMAKE_LINK_WHAT_YOU_USE_CHECK
    /variable/CMAKE_LINKER_TYPE
@@ -611,6 +614,8 @@ Variables for Languages
    /variable/CMAKE_LANG_ARCHIVE_APPEND
    /variable/CMAKE_LANG_ARCHIVE_CREATE
    /variable/CMAKE_LANG_ARCHIVE_FINISH
+   /variable/CMAKE_LANG_ARCHIVER_WRAPPER_FLAG
+   /variable/CMAKE_LANG_ARCHIVER_WRAPPER_FLAG_SEP
    /variable/CMAKE_LANG_BYTE_ORDER
    /variable/CMAKE_LANG_COMPILE_OBJECT
    /variable/CMAKE_LANG_COMPILER
