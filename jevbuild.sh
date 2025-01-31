@@ -1,0 +1,12 @@
+#!/usr/bin/env zsh
+set -euo pipefail
+
+export CPPFLAGS="-I/opt/homebrew/opt/bzip2/include -I/opt/homebrew/opt/libarchive/include -I/opt/homebrew/opt/rhash/include"
+export CFLAGS="-I/opt/homebrew/opt/bzip2/include -I/opt/homebrew/opt/libarchive/include -I/opt/homebrew/opt/rhash/include"
+export CXXFLAGS="-I/opt/homebrew/opt/bzip2/include -I/opt/homebrew/opt/libarchive/include -I/opt/homebrew/opt/rhash/include"
+export LDFLAGS="-L/opt/homebrew/opt/bzip2/lib -lbz2 -L/opt/homebrew/opt/libarchive/lib -larchive -L/opt/homebrew/opt/rhash/lib -lrhash -framework OpenGL"
+export PKG_CONFIG_PATH="/opt/homebrew/opt/xz/lib/pkgconfig:/opt/homebrew/opt/curl/lib/pkgconfig:/opt/homebrew/opt/zlib/lib/pkgconfig:/opt/homebrew/opt/png/lib/pkgconfig:/opt/homebrew/opt/harfbuzz/lib/pkgconfig:/opt/homebrew/opt/pcre2/lib/pkgconfig:/opt/homebrew/opt/freetype2/lib/pkgconfig:/opt/homebrew/opt/ncurses/lib/pkgconfig:/opt/homebrew/opt/mozjpeg/lib/pkgconfig:/opt/homebrew/opt/expat/lib/pkgconfig:/opt/homebrew/opt/libarchive/lib/pkgconfig:/opt/homebrew/opt/zstd/lib/pkgconfig:/opt/homebrew/opt/libuv/lib/pkgconfig:/opt/homebrew/opt/jsoncpp/lib/pkgconfig:/opt/homebrew/opt/libnghttp2/lib/pkgconfig"
+export PATH="/opt/homebrew/opt/graphviz/bin:$PATH"
+
+cmake -W Dev ../git/cmake --fresh -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=$(greadlink -f ../prefix) -DCMAKE_USE_SYSTEM_LIBARCHIVE=ON -DCMAKE_USE_SYSTEM_CURL=ON -DCMAKE_USE_SYSTEM_EXPAT=ON -DCMAKE_USE_SYSTEM_ZLIB=ON -DCMAKE_USE_SYSTEM_BZIP2=ON -DCMAKE_USE_SYSTEM_ZSTD=ON -DCMAKE_USE_SYSTEM_LIBLZMA=ON -DCMAKE_USE_SYSTEM_NGHTTP2=ON -DCMAKE_USE_SYSTEM_FORM=ON -DCMAKE_USE_SYSTEM_JSONCPP=ON -DCMAKE_USE_SYSTEM_LIBRHASH=ON -DCMAKE_USE_SYSTEM_LIBUV=ON -DBUILD_QtDialog=ON -DBUILD_CursesDialog=ON -DCMake_BUILD_DEVELOPER_REFERENCE=ON -DCMake_BUILD_LTO=ON -DLibArchive_INCLUDE_DIR=/opt/homebrew/opt/libarchive/include -DLibArchive_LIBRARY=/opt/homebrew/opt/libarchive/lib/libarchive.dylib -DCMAKE_USE_SYSTEM_CPPDAP=OFF -DCURSES_NEED_NCURSES=ON -DCURSES_NEED_WIDE=ON -DCURSES_INCLUDE_PATH=/opt/homebrew/opt/ncurses/include -DCURSES_LIBRARIES="/opt/homebrew/opt/ncurses/lib/libformw.dylib;/opt/homebrew/opt/ncurses/lib/libmenuw.dylib;/opt/homebrew/opt/ncurses/lib/libncursesw.dylib;/opt/homebrew/opt/ncurses/lib/libpanelw.dylib" -DCURSES_CURSES_LIBRARY=/opt/homebrew/opt/ncurses/lib/libncursesw.dylib
+
