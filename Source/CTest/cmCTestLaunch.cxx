@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <utility>
 
@@ -15,6 +16,7 @@
 
 #include "cmCTestLaunchReporter.h"
 #include "cmGlobalGenerator.h"
+#include "cmInstrumentation.h"
 #include "cmMakefile.h"
 #include "cmProcessOutput.h"
 #include "cmState.h"
@@ -33,7 +35,7 @@
 #  include <io.h>    // for _setmode
 #endif
 
-cmCTestLaunch::cmCTestLaunch(int argc, const char* const* argv)
+cmCTestLaunch::cmCTestLaunch(int argc, char const* const* argv, Op operation)
 {
   if (!this->ParseArguments(argc, argv)) {
     return;
@@ -45,11 +47,12 @@ cmCTestLaunch::cmCTestLaunch(int argc, const char* const* argv)
   this->ScrapeRulesLoaded = false;
   this->HaveOut = false;
   this->HaveErr = false;
+  this->Operation = operation;
 }
 
 cmCTestLaunch::~cmCTestLaunch() = default;
 
-bool cmCTestLaunch::ParseArguments(int argc, const char* const* argv)
+bool cmCTestLaunch::ParseArguments(int argc, char const* const* argv)
 {
   // Launcher options occur first and are separated from the real
   // command line by a '--' option.
@@ -59,8 +62,11 @@ bool cmCTestLaunch::ParseArguments(int argc, const char* const* argv)
     DoingOutput,
     DoingSource,
     DoingLanguage,
+    DoingTargetLabels,
     DoingTargetName,
     DoingTargetType,
+    DoingCommandType,
+    DoingRole,
     DoingBuildDir,
     DoingCount,
     DoingFilterPrefix
@@ -68,19 +74,25 @@ bool cmCTestLaunch::ParseArguments(int argc, const char* const* argv)
   Doing doing = DoingNone;
   int arg0 = 0;
   for (int i = 1; !arg0 && i < argc; ++i) {
-    const char* arg = argv[i];
+    char const* arg = argv[i];
     if (strcmp(arg, "--") == 0) {
       arg0 = i + 1;
+    } else if (strcmp(arg, "--command-type") == 0) {
+      doing = DoingCommandType;
     } else if (strcmp(arg, "--output") == 0) {
       doing = DoingOutput;
     } else if (strcmp(arg, "--source") == 0) {
       doing = DoingSource;
     } else if (strcmp(arg, "--language") == 0) {
       doing = DoingLanguage;
+    } else if (strcmp(arg, "--target-labels") == 0) {
+      doing = DoingTargetLabels;
     } else if (strcmp(arg, "--target-name") == 0) {
       doing = DoingTargetName;
     } else if (strcmp(arg, "--target-type") == 0) {
       doing = DoingTargetType;
+    } else if (strcmp(arg, "--role") == 0) {
+      doing = DoingRole;
     } else if (strcmp(arg, "--build-dir") == 0) {
       doing = DoingBuildDir;
     } else if (strcmp(arg, "--filter-prefix") == 0) {
@@ -97,6 +109,9 @@ bool cmCTestLaunch::ParseArguments(int argc, const char* const* argv)
         this->Reporter.OptionLanguage = "C++";
       }
       doing = DoingNone;
+    } else if (doing == DoingTargetLabels) {
+      this->Reporter.OptionTargetLabels = arg;
+      doing = DoingNone;
     } else if (doing == DoingTargetName) {
       this->Reporter.OptionTargetName = arg;
       doing = DoingNone;
@@ -108,6 +123,12 @@ bool cmCTestLaunch::ParseArguments(int argc, const char* const* argv)
       doing = DoingNone;
     } else if (doing == DoingFilterPrefix) {
       this->Reporter.OptionFilterPrefix = arg;
+      doing = DoingNone;
+    } else if (doing == DoingCommandType) {
+      this->Reporter.OptionCommandType = arg;
+      doing = DoingNone;
+    } else if (doing == DoingRole) {
+      this->Reporter.OptionRole = arg;
       doing = DoingNone;
     }
   }
@@ -124,7 +145,7 @@ bool cmCTestLaunch::ParseArguments(int argc, const char* const* argv)
   return false;
 }
 
-void cmCTestLaunch::HandleRealArg(const char* arg)
+void cmCTestLaunch::HandleRealArg(char const* arg)
 {
 #ifdef _WIN32
   // Expand response file arguments.
@@ -233,14 +254,33 @@ void cmCTestLaunch::RunChild()
 
 int cmCTestLaunch::Run()
 {
-  this->RunChild();
+  auto instrumenter = cmInstrumentation(this->Reporter.OptionBuildDir);
+  std::map<std::string, std::string> options;
+  options["target"] = this->Reporter.OptionTargetName;
+  options["source"] = this->Reporter.OptionSource;
+  options["language"] = this->Reporter.OptionLanguage;
+  options["targetType"] = this->Reporter.OptionTargetType;
+  options["role"] = this->Reporter.OptionRole;
+  std::map<std::string, std::string> arrayOptions;
+  arrayOptions["outputs"] = this->Reporter.OptionOutput;
+  arrayOptions["targetLabels"] = this->Reporter.OptionTargetLabels;
+  instrumenter.InstrumentCommand(
+    this->Reporter.OptionCommandType, this->RealArgV,
+    [this]() -> int {
+      this->RunChild();
+      return 0;
+    },
+    options, arrayOptions);
 
-  if (this->CheckResults()) {
-    return this->Reporter.ExitCode;
+  if (this->Operation == Op::Normal) {
+
+    if (this->CheckResults()) {
+      return this->Reporter.ExitCode;
+    }
+
+    this->LoadConfig();
+    this->Reporter.WriteXML();
   }
-
-  this->LoadConfig();
-  this->Reporter.WriteXML();
 
   return this->Reporter.ExitCode;
 }
@@ -279,7 +319,7 @@ void cmCTestLaunch::LoadScrapeRules()
 }
 
 void cmCTestLaunch::LoadScrapeRules(
-  const char* purpose, std::vector<cmsys::RegularExpression>& regexps) const
+  char const* purpose, std::vector<cmsys::RegularExpression>& regexps) const
 {
   std::string fname =
     cmStrCat(this->Reporter.LogDir, "Custom", purpose, ".txt");
@@ -314,14 +354,14 @@ bool cmCTestLaunch::ScrapeLog(std::string const& fname)
   return false;
 }
 
-int cmCTestLaunch::Main(int argc, const char* const argv[])
+int cmCTestLaunch::Main(int argc, char const* const argv[], Op operation)
 {
   if (argc == 2) {
     std::cerr << "ctest --launch: this mode is for internal CTest use only"
               << std::endl;
     return 1;
   }
-  cmCTestLaunch self(argc, argv);
+  cmCTestLaunch self(argc, argv, operation);
   return self.Run();
 }
 

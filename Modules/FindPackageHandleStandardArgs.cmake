@@ -56,7 +56,8 @@ implementing :command:`find_package(<PackageName>)` calls.
     Specifies either ``<PackageName>_FOUND`` or
     ``<PACKAGENAME>_FOUND`` as the result variable.  This exists only
     for compatibility with older versions of CMake and is now ignored.
-    Result variables of both names are always set for compatibility.
+    Result variables of both names are now always set for compatibility
+    also with or without this option.
 
   ``REQUIRED_VARS <required-var>...``
     Specify the variables which are required for this package.
@@ -213,19 +214,12 @@ Example for the usage:
 include(${CMAKE_CURRENT_LIST_DIR}/FindPackageMessage.cmake)
 
 
-cmake_policy(PUSH)
-# numbers and boolean constants
-cmake_policy(SET CMP0012 NEW)
-# IN_LIST operator
-cmake_policy(SET CMP0057 NEW)
-
-
 # internal helper macro
 macro(_FPHSA_FAILURE_MESSAGE _msg)
   set(__msg "${_msg}")
   if(FPHSA_REASON_FAILURE_MESSAGE)
     string(APPEND __msg "\n    Reason given by package: ${FPHSA_REASON_FAILURE_MESSAGE}\n")
-  elseif(NOT DEFINED PROJECT_NAME)
+  elseif(NOT DEFINED PROJECT_NAME AND NOT CMAKE_SCRIPT_MODE_FILE)
     string(APPEND __msg "\n"
       "Hint: The project() command has not yet been called.  It sets up system-specific search paths.")
   endif()
@@ -467,13 +461,12 @@ function(FIND_PACKAGE_HANDLE_STANDARD_ARGS _NAME _FIRST_ARG)
   if(FPHSA_FOUND_VAR)
     set(_FOUND_VAR_UPPER ${_NAME_UPPER}_FOUND)
     set(_FOUND_VAR_MIXED ${_NAME}_FOUND)
-    if(FPHSA_FOUND_VAR STREQUAL _FOUND_VAR_MIXED  OR  FPHSA_FOUND_VAR STREQUAL _FOUND_VAR_UPPER)
-      set(_FOUND_VAR ${FPHSA_FOUND_VAR})
-    else()
+    if(
+      NOT FPHSA_FOUND_VAR STREQUAL _FOUND_VAR_MIXED
+      AND NOT FPHSA_FOUND_VAR STREQUAL _FOUND_VAR_UPPER
+    )
       message(FATAL_ERROR "The argument for FOUND_VAR is \"${FPHSA_FOUND_VAR}\", but only \"${_FOUND_VAR_MIXED}\" and \"${_FOUND_VAR_UPPER}\" are valid names.")
     endif()
-  else()
-    set(_FOUND_VAR ${_NAME_UPPER}_FOUND)
   endif()
 
   # collect all variables which were not found, so they can be printed, so the
@@ -604,6 +597,3 @@ function(FIND_PACKAGE_HANDLE_STANDARD_ARGS _NAME _FIRST_ARG)
   set(${_NAME}_FOUND ${${_NAME}_FOUND} PARENT_SCOPE)
   set(${_NAME_UPPER}_FOUND ${${_NAME}_FOUND} PARENT_SCOPE)
 endfunction()
-
-
-cmake_policy(POP)

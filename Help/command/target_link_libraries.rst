@@ -59,7 +59,8 @@ Each ``<item>`` may be:
   There are some cases where CMake may ask the linker to search for
   the library (e.g. ``/usr/lib/libfoo.so`` becomes ``-lfoo``), such
   as when a shared library is detected to have no ``SONAME`` field.
-  See policy :policy:`CMP0060` for discussion of another case.
+  In CMake versions prior to 4.0, see policy :policy:`CMP0060` for
+  discussion of another case.
 
   If the library file is in a macOS framework, the ``Headers`` directory
   of the framework will also be processed as a
@@ -237,6 +238,8 @@ is not ``NEW``, they are also appended to the
 :prop_tgt:`LINK_INTERFACE_LIBRARIES` property.  Libraries specified as
 ``general`` (or without any keyword) are treated as if specified for both
 ``debug`` and ``optimized``.
+
+.. _`Linking Object Libraries`:
 
 Linking Object Libraries
 ^^^^^^^^^^^^^^^^^^^^^^^^

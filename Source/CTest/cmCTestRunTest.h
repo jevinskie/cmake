@@ -14,6 +14,7 @@
 #include "cmCTest.h"
 #include "cmCTestMultiProcessHandler.h"
 #include "cmCTestTestHandler.h"
+#include "cmInstrumentation.h"
 #include "cmProcess.h"
 
 /** \class cmRunTest
@@ -41,7 +42,7 @@ public:
 
   int GetIndex() { return this->Index; }
 
-  void AddFailedDependency(const std::string& failedTest)
+  void AddFailedDependency(std::string const& failedTest)
   {
     this->FailedDependencies.insert(failedTest);
   }
@@ -87,7 +88,7 @@ public:
 
   std::string& GetActualCommand() { return this->ActualCommand; }
 
-  const std::vector<std::string>& GetArguments() { return this->Arguments; }
+  std::vector<std::string> const& GetArguments() { return this->Arguments; }
 
   void FinalizeTest(bool started = true);
 
@@ -96,9 +97,9 @@ public:
     this->UseAllocatedResources = use;
   }
   void SetAllocatedResources(
-    const std::vector<
-      std::map<std::string,
-               std::vector<cmCTestMultiProcessHandler::ResourceAllocation>>>&
+    std::vector<std::map<
+      std::string,
+      std::vector<cmCTestMultiProcessHandler::ResourceAllocation>>> const&
       resources)
   {
     this->AllocatedResources = resources;
@@ -140,6 +141,7 @@ private:
   int NumberOfRunsTotal = 1; // default to 1 run of the test
   bool RunAgain = false;     // default to not having to run again
   size_t TotalNumberOfTests;
+  cmInstrumentation Instrumentation;
 };
 
 inline int getNumWidth(size_t n)

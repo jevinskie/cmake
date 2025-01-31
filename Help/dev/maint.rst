@@ -302,6 +302,13 @@ Update ``Source/CMakeVersion.cmake`` to set the version to
   set(CMake_VERSION_PATCH $date)
   #set(CMake_VERSION_RC 0)
 
+Update ``Help/manual/cmake-policies.7.rst`` to set the ``...<max>``
+example to ``...$major.$minor``:
+
+.. code-block:: cmake
+
+  cmake_minimum_required(VERSION 3.10...$major.$minor)
+
 Commit with a message such as::
 
   Begin post-$ver development
@@ -318,7 +325,7 @@ Add the following trailing lines in the merge request description::
   Fast-forward: true
   Backport-ff: release:HEAD~1^2
 
-This configures the ``Do: merge`` action to fast-foward the ``master``
+This configures the ``Do: merge`` action to fast-forward the ``master``
 and ``release`` branches to the respective commits created above.
 
 Further steps may proceed after this has been merged.

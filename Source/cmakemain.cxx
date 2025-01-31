@@ -28,6 +28,8 @@
 #include "cmDocumentationEntry.h"
 #include "cmGlobalGenerator.h"
 #include "cmInstallScriptHandler.h"
+#include "cmInstrumentation.h"
+#include "cmInstrumentationQuery.h"
 #include "cmList.h"
 #include "cmMakefile.h"
 #include "cmMessageMetadata.h"
@@ -50,12 +52,12 @@
 
 namespace {
 #ifndef CMAKE_BOOTSTRAP
-const cmDocumentationEntry cmDocumentationName = {
+cmDocumentationEntry const cmDocumentationName = {
   {},
   "  cmake - Cross-Platform Makefile Generator."
 };
 
-const cmDocumentationEntry cmDocumentationUsage[2] = {
+cmDocumentationEntry const cmDocumentationUsage[2] = {
   { {},
     "  cmake [options] <path-to-source>\n"
     "  cmake [options] <path-to-existing-build>\n"
@@ -66,12 +68,12 @@ const cmDocumentationEntry cmDocumentationUsage[2] = {
     "directory to re-generate its build system." }
 };
 
-const cmDocumentationEntry cmDocumentationUsageNote = {
+cmDocumentationEntry const cmDocumentationUsageNote = {
   {},
   "Run 'cmake --help' for more information."
 };
 
-const cmDocumentationEntry cmDocumentationOptions[35] = {
+cmDocumentationEntry const cmDocumentationOptions[35] = {
   { "--preset <preset>,--preset=<preset>", "Specify a configure preset." },
   { "--list-presets[=<type>]", "List available presets." },
   { "--workflow [<options>]", "Run a workflow preset." },
@@ -171,8 +173,8 @@ std::string cmakemainGetStack(cmake* cm)
   return msg;
 }
 
-void cmakemainMessageCallback(const std::string& m,
-                              const cmMessageMetadata& md, cmake* cm)
+void cmakemainMessageCallback(std::string const& m,
+                              cmMessageMetadata const& md, cmake* cm)
 {
 #if defined(_WIN32)
   // FIXME: On Windows we replace cerr's streambuf with a custom
@@ -190,7 +192,7 @@ void cmakemainMessageCallback(const std::string& m,
 #endif
 }
 
-void cmakemainProgressCallback(const std::string& m, float prog, cmake* cm)
+void cmakemainProgressCallback(std::string const& m, float prog, cmake* cm)
 {
   cmMakefile* mf = cmakemainGetMakefile(cm);
   std::string dir;
@@ -398,10 +400,10 @@ int do_cmake(int ac, char const* const* av)
   cm.SetHomeDirectory("");
   cm.SetHomeOutputDirectory("");
   cmSystemTools::SetMessageCallback(
-    [&cm](const std::string& msg, const cmMessageMetadata& md) {
+    [&cm](std::string const& msg, cmMessageMetadata const& md) {
       cmakemainMessageCallback(msg, md, &cm);
     });
-  cm.SetProgressCallback([&cm](const std::string& msg, float prog) {
+  cm.SetProgressCallback([&cm](std::string const& msg, float prog) {
     cmakemainProgressCallback(msg, prog, &cm);
   });
   cm.SetWorkingMode(workingMode);
@@ -481,7 +483,7 @@ int extract_job_number(std::string const& command,
   return jobs;
 }
 std::function<bool(std::string const&)> extract_job_number_lambda_builder(
-  std::string& dir, int& jobs, const std::string& flag)
+  std::string& dir, int& jobs, std::string const& flag)
 {
   return [&dir, &jobs, flag](std::string const& value) -> bool {
     jobs = extract_job_number(flag, value);
@@ -696,22 +698,38 @@ int do_build(int ac, char const* const* av)
 
   cmake cm(cmake::RoleInternal, cmState::Project);
   cmSystemTools::SetMessageCallback(
-    [&cm](const std::string& msg, const cmMessageMetadata& md) {
+    [&cm](std::string const& msg, cmMessageMetadata const& md) {
       cmakemainMessageCallback(msg, md, &cm);
     });
-  cm.SetProgressCallback([&cm](const std::string& msg, float prog) {
+  cm.SetProgressCallback([&cm](std::string const& msg, float prog) {
     cmakemainProgressCallback(msg, prog, &cm);
   });
 
+  cmInstrumentation instrumentation(dir);
+  if (!instrumentation.errorMsg.empty()) {
+    cmSystemTools::Error(instrumentation.errorMsg);
+    return 1;
+  }
   cmBuildOptions buildOptions(cleanFirst, false, resolveMode);
-
-  return cm.Build(jobs, std::move(dir), std::move(targets), std::move(config),
-                  std::move(nativeOptions), buildOptions, verbose, presetName,
-                  listPresets);
+  std::function<int()> doBuild = [&cm, &jobs, &dir, &targets, &config,
+                                  &nativeOptions, &buildOptions, &verbose,
+                                  &presetName, &listPresets]() {
+    return cm.Build(jobs, dir, std::move(targets), std::move(config),
+                    std::move(nativeOptions), buildOptions, verbose,
+                    presetName, listPresets);
+  };
+  instrumentation.CollectTimingData(
+    cmInstrumentationQuery::Hook::PreCMakeBuild);
+  std::vector<std::string> cmd;
+  cm::append(cmd, av, av + ac);
+  int ret = instrumentation.InstrumentCommand("cmakeBuild", cmd, doBuild);
+  instrumentation.CollectTimingData(
+    cmInstrumentationQuery::Hook::PostCMakeBuild);
+  return ret;
 #endif
 }
 
-bool parse_default_directory_permissions(const std::string& permissions,
+bool parse_default_directory_permissions(std::string const& permissions,
                                          std::string& parsedPermissionsVar)
 {
   std::vector<std::string> parsedPermissions;
@@ -727,7 +745,7 @@ bool parse_default_directory_permissions(const std::string& permissions,
   };
   Doing doing = DoingNone;
 
-  auto uniquePushBack = [&parsedPermissions](const std::string& e) {
+  auto uniquePushBack = [&parsedPermissions](std::string const& e) {
     if (std::find(parsedPermissions.begin(), parsedPermissions.end(), e) ==
         parsedPermissions.end()) {
       parsedPermissions.push_back(e);
@@ -952,6 +970,7 @@ int do_install(int ac, char const* const* av)
 
   args.emplace_back("-P");
 
+  cmInstrumentation instrumentation(dir);
   auto handler = cmInstallScriptHandler(dir, component, config, args);
   int ret = 0;
   if (!jobs && handler.IsParallel()) {
@@ -966,27 +985,38 @@ int do_install(int ac, char const* const* av)
       }
     }
   }
-  if (handler.IsParallel()) {
-    ret = handler.Install(jobs);
-  } else {
-    for (auto const& cmd : handler.GetCommands()) {
-      cmake cm(cmake::RoleScript, cmState::Script);
-      cmSystemTools::SetMessageCallback(
-        [&cm](const std::string& msg, const cmMessageMetadata& md) {
-          cmakemainMessageCallback(msg, md, &cm);
-        });
-      cm.SetProgressCallback([&cm](const std::string& msg, float prog) {
-        cmakemainProgressCallback(msg, prog, &cm);
-      });
-      cm.SetHomeDirectory("");
-      cm.SetHomeOutputDirectory("");
-      cm.SetDebugOutputOn(verbose);
-      cm.SetWorkingMode(cmake::SCRIPT_MODE);
-      ret = int(bool(cm.Run(cmd)));
-    }
-  }
 
-  return int(ret > 0);
+  std::function<int()> doInstall = [&handler, &verbose, &jobs,
+                                    &instrumentation]() -> int {
+    int ret_ = 0;
+    if (handler.IsParallel()) {
+      ret_ = handler.Install(jobs, instrumentation);
+    } else {
+      for (auto const& cmd : handler.GetCommands()) {
+        cmake cm(cmake::RoleScript, cmState::Script);
+        cmSystemTools::SetMessageCallback(
+          [&cm](std::string const& msg, cmMessageMetadata const& md) {
+            cmakemainMessageCallback(msg, md, &cm);
+          });
+        cm.SetProgressCallback([&cm](std::string const& msg, float prog) {
+          cmakemainProgressCallback(msg, prog, &cm);
+        });
+        cm.SetHomeDirectory("");
+        cm.SetHomeOutputDirectory("");
+        cm.SetDebugOutputOn(verbose);
+        cm.SetWorkingMode(cmake::SCRIPT_MODE);
+        ret_ = int(bool(cm.Run(cmd)));
+      }
+    }
+    return int(ret_ > 0);
+  };
+
+  std::vector<std::string> cmd;
+  cm::append(cmd, av, av + ac);
+  ret = instrumentation.InstrumentCommand(
+    "cmakeInstall", cmd, [doInstall]() { return doInstall(); });
+  instrumentation.CollectTimingData(cmInstrumentationQuery::Hook::PostInstall);
+  return ret;
 #endif
 }
 
@@ -1009,12 +1039,12 @@ int do_workflow(int ac, char const* const* av)
     CommandArgument{ "--preset", CommandArgument::Values::One,
                      CommandArgument::setToValue(presetName) },
     CommandArgument{ "--list-presets", CommandArgument::Values::Zero,
-                     [&listPresets](const std::string&) -> bool {
+                     [&listPresets](std::string const&) -> bool {
                        listPresets = WorkflowListPresets::Yes;
                        return true;
                      } },
     CommandArgument{ "--fresh", CommandArgument::Values::Zero,
-                     [&fresh](const std::string&) -> bool {
+                     [&fresh](std::string const&) -> bool {
                        fresh = WorkflowFresh::Yes;
                        return true;
                      } },
@@ -1068,10 +1098,10 @@ int do_workflow(int ac, char const* const* av)
 
   cmake cm(cmake::RoleInternal, cmState::Project);
   cmSystemTools::SetMessageCallback(
-    [&cm](const std::string& msg, const cmMessageMetadata& md) {
+    [&cm](std::string const& msg, cmMessageMetadata const& md) {
       cmakemainMessageCallback(msg, md, &cm);
     });
-  cm.SetProgressCallback([&cm](const std::string& msg, float prog) {
+  cm.SetProgressCallback([&cm](std::string const& msg, float prog) {
     cmakemainProgressCallback(msg, prog, &cm);
   });
 
@@ -1112,10 +1142,10 @@ int do_open(int ac, char const* const* av)
 
   cmake cm(cmake::RoleInternal, cmState::Unknown);
   cmSystemTools::SetMessageCallback(
-    [&cm](const std::string& msg, const cmMessageMetadata& md) {
+    [&cm](std::string const& msg, cmMessageMetadata const& md) {
       cmakemainMessageCallback(msg, md, &cm);
     });
-  cm.SetProgressCallback([&cm](const std::string& msg, float prog) {
+  cm.SetProgressCallback([&cm](std::string const& msg, float prog) {
     cmakemainProgressCallback(msg, prog, &cm);
   });
   return cm.Open(dir, false) ? 0 : 1;

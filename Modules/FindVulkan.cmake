@@ -220,7 +220,6 @@ environment.
 #]=======================================================================]
 
 cmake_policy(PUSH)
-cmake_policy(SET CMP0057 NEW)
 cmake_policy(SET CMP0159 NEW) # file(STRINGS) with REGEX updates CMAKE_MATCH_<n>
 
 # Provide compatibility with a common invalid component request that
@@ -591,7 +590,7 @@ if(Vulkan_MoltenVK_FOUND)
   endif()
 endif()
 
-include(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
+include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(Vulkan
   REQUIRED_VARS
     Vulkan_LIBRARY

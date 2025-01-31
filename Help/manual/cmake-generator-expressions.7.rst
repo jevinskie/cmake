@@ -691,7 +691,7 @@ All paths are expected to be in cmake-style format.
   present, ``0`` otherwise. See :ref:`Path Structure And Terminology` for the
   meaning of each path component.
 
-  ::
+  .. code-block:: cmake
 
     $<PATH:HAS_ROOT_NAME,path>
     $<PATH:HAS_ROOT_DIRECTORY,path>
@@ -753,7 +753,7 @@ command.  All paths are expected to be in cmake-style format.
     All operations now accept a list of paths as argument. When a list of paths
     is specified, the operation will be applied to each path.
 
-  ::
+  .. code-block:: cmake
 
     $<PATH:GET_ROOT_NAME,path...>
     $<PATH:GET_ROOT_DIRECTORY,path...>
@@ -794,6 +794,16 @@ in cmake-style format.
 
   When the ``NORMALIZE`` option is specified, the path is :ref:`normalized
   <Normalization>` after the conversion.
+
+.. genex:: $<PATH:NATIVE_PATH[,NORMALIZE],path...>
+
+  .. versionadded:: 4.0
+
+  Returns ``path`` converted into a native format with platform-specific
+  slashes (``\`` on Windows hosts and ``/`` elsewhere).
+
+  When the ``NORMALIZE`` option is specified, the path is :ref:`normalized
+  <Normalization>` before the conversion.
 
 .. genex:: $<PATH:APPEND,path...,input,...>
 
@@ -1405,7 +1415,7 @@ Compile Context
   linking requirements (e.g., all-``inline`` or C++ template libraries).
 
   Note that for proper evaluation of this expression requires policy :policy:`CMP0099`
-  to be set to `NEW`.
+  to be set to ``NEW``.
 
 Linker Language And ID
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -1876,14 +1886,6 @@ These expressions look up the values of
     name occurs in the directory of the target specifying the requirement,
     rather than the directory of the consuming target for which the
     expression is being evaluated.
-
-  .. versionchanged:: 3.31
-    Generator expressions for transitive interface properties, such as
-    ``$<TARGET_PROPERTY:target,INTERFACE_*>``, now correctly handle
-    repeated evaluations within nested generator expressions.
-    Previously, these repeated evaluations returned empty values due
-    to an optimization for transitive closures.
-    This change ensures consistent evaluation for non-union operations.
 
 .. genex:: $<TARGET_PROPERTY:prop>
   :target: TARGET_PROPERTY:prop

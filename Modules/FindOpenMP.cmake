@@ -111,9 +111,6 @@ to know what include directories are needed.
 #]=======================================================================]
 
 cmake_policy(PUSH)
-cmake_policy(SET CMP0012 NEW) # if() recognizes numbers and booleans
-cmake_policy(SET CMP0054 NEW) # if() quoted variables not dereferenced
-cmake_policy(SET CMP0057 NEW) # if IN_LIST
 cmake_policy(SET CMP0159 NEW) # file(STRINGS) with REGEX updates CMAKE_MATCH_<n>
 
 function(_OPENMP_FLAG_CANDIDATES LANG)
@@ -626,7 +623,7 @@ endif()
 
 unset(_OpenMP_MIN_VERSION)
 
-include(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
+include(FindPackageHandleStandardArgs)
 
 foreach(LANG IN LISTS OpenMP_FINDLIST)
   if(CMAKE_${LANG}_COMPILER_LOADED)
@@ -708,8 +705,6 @@ find_package_handle_standard_args(OpenMP
     REQUIRED_VARS ${_OpenMP_REQ_VARS}
     VERSION_VAR ${_OpenMP_MIN_VERSION}
     HANDLE_COMPONENTS)
-
-set(OPENMP_FOUND ${OpenMP_FOUND})
 
 if(CMAKE_Fortran_COMPILER_LOADED AND OpenMP_Fortran_FOUND)
   if(NOT DEFINED OpenMP_Fortran_HAVE_OMPLIB_MODULE)

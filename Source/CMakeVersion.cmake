@@ -1,7 +1,7 @@
 # CMake version number components.
 set(CMake_VERSION_MAJOR 3)
 set(CMake_VERSION_MINOR 31)
-set(CMake_VERSION_PATCH 20241215)
+set(CMake_VERSION_PATCH 20250131)
 #set(CMake_VERSION_RC 0)
 set(CMake_VERSION_IS_DIRTY 0)
 
@@ -52,9 +52,11 @@ if(NOT CMake_VERSION_NO_GIT)
     set(git_subject "${CMAKE_MATCH_2}")
 
     # If this is not the exact commit of a release, add dev info.
+    # noqa: spellcheck off
     if(NOT "${git_subject}" MATCHES "^[Cc][Mm]ake ${CMake_VERSION}$")
       string(APPEND CMake_VERSION "-g${git_hash}")
     endif()
+    # noqa: spellcheck on
 
     # If this is a work tree, check whether it is dirty.
     if(COMMAND _git)

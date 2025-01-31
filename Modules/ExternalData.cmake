@@ -47,7 +47,9 @@ Module Functions
 .. command:: ExternalData_Expand_Arguments
 
   The ``ExternalData_Expand_Arguments`` function evaluates ``DATA{}``
-  references in its arguments and constructs a new list of arguments::
+  references in its arguments and constructs a new list of arguments:
+
+  .. code-block:: cmake
 
     ExternalData_Expand_Arguments(
       <target>   # Name of data management target
@@ -62,7 +64,9 @@ Module Functions
 
   The ``ExternalData_Add_Test`` function wraps around the CMake
   :command:`add_test` command but supports ``DATA{}`` references in
-  its arguments::
+  its arguments:
+
+  .. code-block:: cmake
 
     ExternalData_Add_Test(
       <target>   # Name of data management target
@@ -81,7 +85,9 @@ Module Functions
 .. command:: ExternalData_Add_Target
 
   The ``ExternalData_Add_Target`` function creates a custom target to
-  manage local instances of data files stored externally::
+  manage local instances of data files stored externally:
+
+  .. code-block:: cmake
 
     ExternalData_Add_Target(
       <target>                  # Name of data management target
@@ -869,10 +875,7 @@ macro(_ExternalData_arg_series)
 endmacro()
 
 function(_ExternalData_arg_find_files glob pattern regex)
-  cmake_policy(PUSH)
-  cmake_policy(SET CMP0009 NEW)
   file(${glob} globbed RELATIVE "${top_src}" "${top_src}/${pattern}*")
-  cmake_policy(POP)
   set(externals_count -1)
   foreach(entry IN LISTS globbed)
     if("x${entry}" MATCHES "^x(.*)(\\.(${_ExternalData_REGEX_EXT}))$")

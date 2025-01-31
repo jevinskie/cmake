@@ -167,12 +167,12 @@ the current working directory (cwd) is used for the other.  For example:
 ============================== ============ ===========
  Command Line                   Source Dir   Build Dir
 ============================== ============ ===========
- ``cmake -B build``             `cwd`        ``build``
+ ``cmake -B build``             *cwd*        ``build``
  ``cmake -B build src``         ``src``      ``build``
  ``cmake -B build -S src``      ``src``      ``build``
- ``cmake src``                  ``src``      `cwd`
- ``cmake build`` (existing)     `loaded`     ``build``
- ``cmake -S src``               ``src``      `cwd`
+ ``cmake src``                  ``src``      *cwd*
+ ``cmake build`` (existing)     *loaded*     ``build``
+ ``cmake -S src``               ``src``      *cwd*
  ``cmake -S src build``         ``src``      ``build``
  ``cmake -S src -B build``      ``src``      ``build``
 ============================== ============ ===========
@@ -306,6 +306,16 @@ Options
  :variable:`CMAKE_MESSAGE_CONTEXT_SHOW` as a cache variable instead.
  When this command line option is given, :variable:`CMAKE_MESSAGE_CONTEXT_SHOW`
  is ignored.
+
+.. option:: --sarif-output=<path>
+
+ .. versionadded:: 4.0
+
+ Enable logging of diagnostic messages produced by CMake in the SARIF format.
+
+ Write diagnostic messages to a SARIF file at the path specified. Projects can
+ also set :variable:`CMAKE_EXPORT_SARIF` to ``ON`` to enable this feature for a
+ build tree.
 
 .. option:: --debug-trycompile
 
@@ -515,7 +525,7 @@ Options
 
 .. option:: --link-no-warning-as-error
 
- .. versionadded:: 3.32
+ .. versionadded:: 4.0
 
  Ignore target property :prop_tgt:`LINK_WARNING_AS_ERROR` and variable
  :variable:`CMAKE_LINK_WARNING_AS_ERROR`, preventing warnings from being

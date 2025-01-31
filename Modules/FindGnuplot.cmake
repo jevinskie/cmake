@@ -49,8 +49,8 @@ endif()
 # for compatibility
 set(GNUPLOT ${GNUPLOT_EXECUTABLE})
 
-include(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(Gnuplot
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(Gnuplot
                                   REQUIRED_VARS GNUPLOT_EXECUTABLE
                                   VERSION_VAR GNUPLOT_VERSION_STRING)
 

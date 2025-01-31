@@ -25,7 +25,7 @@
 class cmUVPipeBuffer
 {
 public:
-  using DataRange = cmRange<const char*>;
+  using DataRange = cmRange<char const*>;
   using DataFunction = std::function<void(DataRange)>;
   /// On error the ssize_t argument is a non zero libuv error code
   using EndFunction = std::function<void(ssize_t)>;
@@ -61,7 +61,7 @@ private:
   // -- Libuv callbacks
   static void UVAlloc(uv_handle_t* handle, size_t suggestedSize,
                       uv_buf_t* buf);
-  static void UVData(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf);
+  static void UVData(uv_stream_t* stream, ssize_t nread, uv_buf_t const* buf);
 
   cm::uv_pipe_ptr UVPipe_;
   std::vector<char> Buffer_;
@@ -116,7 +116,7 @@ void cmUVPipeBuffer::UVAlloc(uv_handle_t* handle, size_t suggestedSize,
 }
 
 void cmUVPipeBuffer::UVData(uv_stream_t* stream, ssize_t nread,
-                            const uv_buf_t* buf)
+                            uv_buf_t const* buf)
 {
   auto& pipe = *reinterpret_cast<cmUVPipeBuffer*>(stream->data);
   if (nread > 0) {
@@ -178,7 +178,7 @@ private:
   bool IsStarted_ = false;
   bool IsFinished_ = false;
   std::function<void()> FinishedCallback_;
-  std::vector<const char*> CommandPtr_;
+  std::vector<char const*> CommandPtr_;
   std::array<uv_stdio_container_t, 3> UVOptionsStdIO_;
   uv_process_options_t UVOptions_;
   cm::uv_process_ptr UVProcess_;
@@ -261,7 +261,7 @@ bool cmUVReadOnlyProcess::start(uv_loop_t* uv_loop,
     int uvErrorCode = this->UVProcess_.spawn(*uv_loop, this->UVOptions_, this);
     if (uvErrorCode != 0) {
       this->Result()->ErrorMessage = "libuv process spawn failed";
-      if (const char* uvErr = uv_strerror(uvErrorCode)) {
+      if (char const* uvErr = uv_strerror(uvErrorCode)) {
         this->Result()->ErrorMessage += ": ";
         this->Result()->ErrorMessage += uvErr;
       }
@@ -455,19 +455,19 @@ bool cmWorkerPoolWorker::RunProcess(cmWorkerPool::ProcessResultT& result,
 
 void cmWorkerPoolWorker::UVProcessStart(uv_async_t* handle)
 {
-  auto* wrk = reinterpret_cast<cmWorkerPoolWorker*>(handle->data);
+  auto* worker = reinterpret_cast<cmWorkerPoolWorker*>(handle->data);
   bool startFailed = false;
   {
-    auto& Proc = wrk->Proc_;
+    auto& Proc = worker->Proc_;
     std::lock_guard<std::mutex> lock(Proc.Mutex);
     if (Proc.ROP && !Proc.ROP->IsStarted()) {
-      startFailed =
-        !Proc.ROP->start(handle->loop, [wrk] { wrk->UVProcessFinished(); });
+      startFailed = !Proc.ROP->start(
+        handle->loop, [worker] { worker->UVProcessFinished(); });
     }
   }
   // Clean up if starting of the process failed
   if (startFailed) {
-    wrk->UVProcessFinished();
+    worker->UVProcessFinished();
   }
 }
 
@@ -735,8 +735,8 @@ bool cmWorkerPool::JobT::RunProcess(ProcessResultT& result,
                                     std::string const& workingDirectory)
 {
   // Get worker by index
-  auto* wrk = this->Pool_->Int_->Workers.at(this->WorkerIndex_).get();
-  return wrk->RunProcess(result, command, workingDirectory);
+  auto* worker = this->Pool_->Int_->Workers.at(this->WorkerIndex_).get();
+  return worker->RunProcess(result, command, workingDirectory);
 }
 
 cmWorkerPool::cmWorkerPool()
