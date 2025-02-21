@@ -114,7 +114,7 @@ If wxWidgets is required (i.e., not an optional part):
    # and for each of your dependent executable/library targets:
    target_link_libraries(<YourTarget> ${wxWidgets_LIBRARIES})
 
-Imported targets
+Imported Targets
 ^^^^^^^^^^^^^^^^
 
 .. versionadded:: 3.27
@@ -963,6 +963,10 @@ if(wxWidgets_FIND_STYLE STREQUAL "unix")
     foreach(_wx_lib_ ${wxWidgets_LIBRARIES})
       if("${_wx_lib_}" MATCHES "^-l(.*)")
         set(_wx_lib_name "${CMAKE_MATCH_1}")
+        if(_wx_lib_name STREQUAL "atomic")
+          continue()
+        endif()
+
         unset(_wx_lib_found CACHE)
         find_library(_wx_lib_found NAMES ${_wx_lib_name} HINTS ${wxWidgets_LIBRARY_DIRS})
         if(_wx_lib_found STREQUAL _wx_lib_found-NOTFOUND)

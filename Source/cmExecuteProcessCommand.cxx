@@ -120,7 +120,7 @@ bool cmExecuteProcessCommand(std::vector<std::string> const& args,
       .Bind("COMMAND_ERROR_IS_FATAL"_s, &Arguments::CommandErrorIsFatal);
 
   std::vector<std::string> unparsedArguments;
-  Arguments const arguments = parser.Parse(args, &unparsedArguments);
+  Arguments arguments = parser.Parse(args, &unparsedArguments);
 
   if (arguments.MaybeReportError(status.GetMakefile())) {
     return true;
@@ -161,11 +161,12 @@ bool cmExecuteProcessCommand(std::vector<std::string> const& args,
     status.SetError(" called with no COMMAND argument.");
     return false;
   }
-  for (std::vector<std::string> const& cmd : arguments.Commands) {
+  for (std::vector<std::string>& cmd : arguments.Commands) {
     if (cmd.empty()) {
       status.SetError(" given COMMAND argument with no value.");
       return false;
     }
+    cmSystemTools::MaybePrependCmdExe(cmd);
   }
 
   // Parse the timeout string.

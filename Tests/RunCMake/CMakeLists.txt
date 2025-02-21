@@ -179,6 +179,7 @@ add_RunCMake_test(CMP0169)
 add_RunCMake_test(CMP0170)
 add_RunCMake_test(CMP0171)
 add_RunCMake_test(CMP0173)
+add_RunCMake_test(CMP0187)
 
 # The test for Policy 65 requires the use of the
 # CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS variable, which both the VS and Xcode
@@ -396,6 +397,7 @@ set_property(TEST RunCMake.CompilerId APPEND PROPERTY LABELS "CUDA" "HIP" "ISPC"
 add_RunCMake_test(CompilerTest ${CMake_TEST_LANG_VARS})
 set_property(TEST RunCMake.CompilerTest APPEND PROPERTY LABELS "CUDA" "HIP" "ISPC" "Fortran")
 add_RunCMake_test(Configure -DMSVC_IDE=${MSVC_IDE})
+add_RunCMake_test(CpsExportImport)
 add_RunCMake_test(DisallowedCommands)
 if("${CMAKE_GENERATOR}" MATCHES "Unix Makefiles|Ninja")
   add_RunCMake_test(ExportCompileCommands)
@@ -414,7 +416,7 @@ if(CMAKE_USE_SYSTEM_JSONCPP)
 endif()
 add_RunCMake_test(FileAPI -DPython_EXECUTABLE=${Python_EXECUTABLE}
                           -DCMAKE_CXX_COMPILER_ID=${CMAKE_CXX_COMPILER_ID})
-if("${CMAKE_GENERATOR}" MATCHES "Unix Makefiles|Ninja")
+if(CMAKE_GENERATOR MATCHES "Make|Ninja")
   add_RunCMake_test(Instrumentation)
 endif()
 add_RunCMake_test(ConfigDir)
@@ -605,6 +607,9 @@ add_RunCMake_test(ctest_upload)
 add_RunCMake_test(ctest_environment)
 add_RunCMake_test(ctest_empty_binary_directory)
 add_RunCMake_test(ctest_fixtures)
+if(CMAKE_GENERATOR MATCHES "Make|Ninja")
+  add_RunCMake_test(ctest_instrumentation)
+endif()
 add_RunCMake_test(define_property)
 add_RunCMake_test(file -DCYGWIN=${CYGWIN} -DMSYS=${MSYS})
 add_RunCMake_test(file-CHMOD -DMSYS=${MSYS})
@@ -629,6 +634,7 @@ add_RunCMake_test(file-STRINGS)
 add_RunCMake_test(find_file -DMINGW=${MINGW})
 add_RunCMake_test(find_library -DMINGW=${MINGW} -DCYGWIN=${CYGWIN} -DMSYS=${MSYS} -DMSVC=${MSVC})
 add_RunCMake_test(find_package -DMINGW=${MINGW} -DMSYS=${MSYS})
+add_RunCMake_test(find_package-CPS)
 add_RunCMake_test(find_path -DMINGW=${MINGW})
 add_RunCMake_test(find_program -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME})
 add_RunCMake_test(foreach)
@@ -1126,6 +1132,7 @@ set(cpack_tests
   RPM.COMPONENT_WITH_SPECIAL_CHARS
 
   7Z
+  TAR
   TBZ2
   TGZ
   TXZ

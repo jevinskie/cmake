@@ -236,7 +236,7 @@ For more information on regular expressions look under
         list(TRANSFORM <list> GENEX_STRIP ...)
         :target: TRANSFORM_GENEX_STRIP
 
-    :command:`REPLACE <string(REGEX REPLACE)>`:
+    :command:`REPLACE <string(REGEX REPLACE)>`
       Match the regular expression as many times as possible and substitute
       the replacement expression for the match for each element of the list
       (same semantic as :command:`string(REGEX REPLACE)`).
@@ -245,6 +245,11 @@ For more information on regular expressions look under
         list(TRANSFORM <list> REPLACE <regular_expression>
                                       <replace_expression> ...)
         :target: TRANSFORM_REPLACE
+
+      .. versionchanged:: 4.1
+        The ``^`` anchor now matches only at the beginning of the input
+        element instead of the beginning of each repeated search.
+        See policy :policy:`CMP0186`.
 
   ``<SELECTOR>`` determines which elements of the list will be transformed.
   Only one type of selector can be specified at a time.

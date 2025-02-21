@@ -27,6 +27,7 @@ Environment Variables that Change Behavior
    /envvar/CMAKE_INCLUDE_PATH
    /envvar/CMAKE_LIBRARY_PATH
    /envvar/CMAKE_MAXIMUM_RECURSION_DEPTH
+   /envvar/CMAKE_POLICY_VERSION_MINIMUM
    /envvar/CMAKE_PREFIX_PATH
    /envvar/CMAKE_PROGRAM_PATH
    /envvar/CMAKE_TLS_VERIFY
@@ -116,7 +117,9 @@ Environment Variables for CTest
    /envvar/CTEST_OUTPUT_ON_FAILURE
    /envvar/CTEST_PARALLEL_LEVEL
    /envvar/CTEST_PROGRESS_OUTPUT
+   /envvar/CTEST_USE_INSTRUMENTATION
    /envvar/CTEST_USE_LAUNCHERS_DEFAULT
+   /envvar/CTEST_USE_VERBOSE_INSTRUMENTATION
    /envvar/DASHBOARD_TEST_FROM_CTEST
 
 Environment Variables for the CMake curses interface

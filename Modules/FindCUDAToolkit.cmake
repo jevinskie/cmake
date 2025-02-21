@@ -102,7 +102,7 @@ Options
     If specified, the CUDA Toolkit is considered found only if the exact
     ``VERSION`` specified is recovered.
 
-Imported targets
+Imported Targets
 ^^^^^^^^^^^^^^^^
 
 An :ref:`imported target <Imported targets>` named ``CUDA::toolkit`` is provided.
@@ -1203,7 +1203,7 @@ if(CUDAToolkit_FOUND)
   # when CUDA language is disabled
   if(NOT TARGET CUDA::cudart_static_deps)
     add_library(CUDA::cudart_static_deps IMPORTED INTERFACE)
-    if(UNIX AND (CMAKE_C_COMPILER OR CMAKE_CXX_COMPILER))
+    if(UNIX AND (CMAKE_C_COMPILER_LOADED OR CMAKE_CXX_COMPILER_LOADED))
       find_package(Threads REQUIRED)
       target_link_libraries(CUDA::cudart_static_deps INTERFACE Threads::Threads ${CMAKE_DL_LIBS})
     endif()

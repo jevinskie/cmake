@@ -439,9 +439,9 @@ t:cuda12.6-clang:
     variables:
         CMAKE_CI_JOB_NIGHTLY: "true"
 
-t:hip5.5-nvidia:
+t:hip6.3-nvidia:
     extends:
-        - .hip5.5_nvidia
+        - .hip6.3_nvidia
         - .cmake_test_linux_release
         - .linux_x86_64_tags_cuda
         - .run_dependent
@@ -449,9 +449,9 @@ t:hip5.5-nvidia:
     variables:
         CMAKE_CI_JOB_NIGHTLY: "true"
 
-t:hip5.5-radeon:
+t:hip6.3-radeon:
     extends:
-        - .hip5.5_radeon
+        - .hip6.3_radeon
         - .cmake_test_linux_release
         - .linux_x86_64_tags_radeon
         - .run_dependent
@@ -829,6 +829,46 @@ u:linux-aarch64-package:
         - .run_only_for_package
     needs:
         - b:linux-aarch64-package
+
+b:sunos-i386-package:
+    extends:
+        - .sunos_package
+        - .sunos_release_i386
+        - .cmake_build_sunos_release
+        - .cmake_release_artifacts
+        - .linux_x86_64_tags
+        - .run_only_for_package
+    needs:
+        - p:doc-package
+    variables:
+        CMAKE_CI_ARTIFACTS_NAME: "artifacts-sunos-i386"
+
+u:sunos-i386-package:
+    extends:
+        - .rsync_upload_package
+        - .run_only_for_package
+    needs:
+        - b:sunos-i386-package
+
+b:sunos-sparc-package:
+    extends:
+        - .sunos_package
+        - .sunos_release_sparc
+        - .cmake_build_sunos_release
+        - .cmake_release_artifacts
+        - .linux_x86_64_tags
+        - .run_only_for_package
+    needs:
+        - p:doc-package
+    variables:
+        CMAKE_CI_ARTIFACTS_NAME: "artifacts-sunos-sparc"
+
+u:sunos-sparc-package:
+    extends:
+        - .rsync_upload_package
+        - .run_only_for_package
+    needs:
+        - b:sunos-sparc-package
 
 ## Sanitizer builds
 

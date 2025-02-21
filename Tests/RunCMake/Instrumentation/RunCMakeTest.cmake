@@ -6,7 +6,7 @@ function(instrument test)
   set(config "${CMAKE_CURRENT_LIST_DIR}/config")
   set(ENV{CMAKE_CONFIG_DIR} ${config})
   cmake_parse_arguments(ARGS
-    "BUILD;INSTALL;TEST;COPY_QUERIES;NO_WARN;STATIC_QUERY;DYNAMIC_QUERY;INSTALL_PARALLEL;MANUAL_HOOK"
+    "BUILD;BUILD_MAKE_PROGRAM;INSTALL;TEST;COPY_QUERIES;NO_WARN;STATIC_QUERY;DYNAMIC_QUERY;INSTALL_PARALLEL;MANUAL_HOOK"
     "CHECK_SCRIPT;CONFIGURE_ARG" "" ${ARGN})
   set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/${test})
   set(uuid "a37d1069-1972-4901-b9c9-f194aaf2b6e0")
@@ -38,7 +38,7 @@ function(instrument test)
   if (ARGS_COPY_QUERIES)
     file(MAKE_DIRECTORY ${RunCMake_TEST_BINARY_DIR}/query)
     set(generated_queries "0;1;2")
-    foreach(n ${generated_queries})
+    foreach(n IN LISTS generated_queries)
       configure_file(
         "${query_dir}/generated/query-${n}.json.in"
         "${RunCMake_TEST_BINARY_DIR}/query/query-${n}.json"
@@ -52,11 +52,17 @@ function(instrument test)
     list(APPEND ARGS_CONFIGURE_ARG "-Wno-dev")
   endif()
   set(RunCMake_TEST_SOURCE_DIR ${RunCMake_SOURCE_DIR}/project)
-  run_cmake_with_options(${test} ${ARGS_CONFIGURE_ARG})
+  if(NOT RunCMake_GENERATOR_IS_MULTI_CONFIG)
+    set(maybe_CMAKE_BUILD_TYPE -DCMAKE_BUILD_TYPE=Debug)
+  endif()
+  run_cmake_with_options(${test} ${ARGS_CONFIGURE_ARG} ${maybe_CMAKE_BUILD_TYPE})
 
   # Follow-up Commands
   if (ARGS_BUILD)
     run_cmake_command(${test}-build ${CMAKE_COMMAND} --build . --config Debug)
+  endif()
+  if (ARGS_BUILD_MAKE_PROGRAM)
+    run_cmake_command(${test}-make-program ${RunCMake_MAKE_PROGRAM})
   endif()
   if (ARGS_INSTALL)
     run_cmake_command(${test}-install ${CMAKE_COMMAND} --install . --prefix install --config Debug)
@@ -112,3 +118,10 @@ instrument(cmake-command-bad-arg NO_WARN)
 instrument(cmake-command-parallel-install
   BUILD INSTALL TEST NO_WARN INSTALL_PARALLEL DYNAMIC_QUERY
   CHECK_SCRIPT check-data-dir.cmake)
+
+# FIXME(#26668) This does not work on Windows
+if (UNIX)
+  instrument(cmake-command-make-program NO_WARN
+    BUILD_MAKE_PROGRAM
+    CHECK_SCRIPT check-make-program-hooks.cmake)
+endif()

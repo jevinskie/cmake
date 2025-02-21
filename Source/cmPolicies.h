@@ -552,7 +552,18 @@ class cmMakefile;
          "add_feature_info() supports full Condition Syntax.", 4, 0, 0, WARN) \
   SELECT(POLICY, CMP0184,                                                     \
          "MSVC runtime check flags are selected by an abstraction.", 4, 0, 0, \
-         WARN)
+         WARN)                                                                \
+  SELECT(POLICY, CMP0185,                                                     \
+         "FindRuby no longer provides upper-case RUBY_* variables.", 4, 0, 0, \
+         WARN)                                                                \
+  SELECT(POLICY, CMP0186,                                                     \
+         "Regular expressions match ^ at most once in repeated searches.", 4, \
+         1, 0, WARN)                                                          \
+  SELECT(POLICY, CMP0187,                                                     \
+         "Include source file without an extension after the same name with " \
+         "an extension.",                                                     \
+         4, 1, 0, WARN)                                                       \
+  SELECT(POLICY, CMP0188, "The FindGCCXML module is removed.", 4, 1, 0, WARN)
 
 #define CM_SELECT_ID(F, A1, A2, A3, A4, A5, A6) F(A1)
 #define CM_FOR_EACH_POLICY_ID(POLICY)                                         \

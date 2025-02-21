@@ -34,10 +34,10 @@ For example:
 
 .. code-block:: cmake
 
-  cmake_minimum_required(VERSION 3.10...3.31)
+  cmake_minimum_required(VERSION 3.10...4.0)
 
 This uses the ``<min>...<max>`` syntax to enable the ``NEW`` behaviors
-of policies introduced in CMake 3.31 and earlier while only requiring a
+of policies introduced in CMake 4.0 and earlier while only requiring a
 minimum version of CMake 3.10.  The project is expected to work with
 both the ``OLD`` and ``NEW`` behaviors of policies introduced between
 those versions.
@@ -92,12 +92,23 @@ Supported Policies
 
 The following policies are supported.
 
+Policies Introduced by CMake 4.1
+--------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   CMP0188: The FindGCCXML module is removed. </policy/CMP0188>
+   CMP0187: Include source file without an extension after the same name with an extension. </policy/CMP0187>
+   CMP0186: Regular expressions match ^ at most once in repeated searches. </policy/CMP0186>
+
 Policies Introduced by CMake 4.0
 --------------------------------
 
 .. toctree::
    :maxdepth: 1
 
+   CMP0185: FindRuby no longer provides upper-case RUBY_* variables. </policy/CMP0185>
    CMP0184: MSVC runtime checks flags are selected by an abstraction. </policy/CMP0184>
    CMP0183: add_feature_info() supports full Condition Syntax. </policy/CMP0183>
    CMP0182: Create shared library archives by default on AIX. </policy/CMP0182>

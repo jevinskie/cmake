@@ -117,6 +117,17 @@ Search and Replace With Regular Expressions
   two backslashes (``\\1``) are required in CMake code to get a backslash
   through argument parsing.
 
+.. versionchanged:: 4.1
+  The ``^`` anchor now matches only at the beginning of the input
+  string instead of the beginning of each repeated search.
+  See policy :policy:`CMP0186`.
+
+  Zero-length matches are allowed in ``MATCHALL`` and ``REPLACE``.
+  Previously, they triggered an error.
+
+  The replacement expression may contain references to subexpressions that
+  didn't match anything. Previously, such references triggered an error.
+
 .. _`Regex Specification`:
 
 Regex Specification
@@ -478,10 +489,8 @@ Generation
 
   If no explicit ``<format_string>`` is given, it will default to:
 
-  ::
-
-    %Y-%m-%dT%H:%M:%S    for local time.
-    %Y-%m-%dT%H:%M:%SZ   for UTC.
+  * ``%Y-%m-%dT%H:%M:%S`` for local time.
+  * ``%Y-%m-%dT%H:%M:%SZ`` for UTC.
 
   .. versionadded:: 3.8
     If the ``SOURCE_DATE_EPOCH`` environment variable is set,

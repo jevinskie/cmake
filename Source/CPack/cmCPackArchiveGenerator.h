@@ -29,6 +29,7 @@ public:
   static cmCPackGenerator* CreateTXZGenerator();
   static cmCPackGenerator* CreateTZGenerator();
   static cmCPackGenerator* CreateTZSTGenerator();
+  static cmCPackGenerator* CreateTarGenerator();
   static cmCPackGenerator* CreateZIPGenerator();
 
   /**
@@ -43,6 +44,7 @@ public:
   bool SupportsComponentInstallation() const override;
 
 private:
+  std::string GetArchiveFileName();
   // get archive component filename
   std::string GetArchiveComponentFileName(std::string const& component,
                                           bool isGroupName);

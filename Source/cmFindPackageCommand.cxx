@@ -59,6 +59,7 @@
 namespace {
 
 using pdt = cmFindPackageCommand::PackageDescriptionType;
+using ParsedVersion = cmPackageInfoReader::Pep440Version;
 
 template <template <typename> class Op>
 struct StrverscmpOp
@@ -531,6 +532,7 @@ cmFindPackageCommand::cmFindPackageCommand(cmExecutionStatus& status)
   this->DeprecatedFindModules["Boost"] = cmPolicies::CMP0167;
   this->DeprecatedFindModules["CUDA"] = cmPolicies::CMP0146;
   this->DeprecatedFindModules["Dart"] = cmPolicies::CMP0145;
+  this->DeprecatedFindModules["GCCXML"] = cmPolicies::CMP0188;
   this->DeprecatedFindModules["PythonInterp"] = cmPolicies::CMP0148;
   this->DeprecatedFindModules["PythonLibs"] = cmPolicies::CMP0148;
   this->DeprecatedFindModules["Qt"] = cmPolicies::CMP0084;
@@ -1846,7 +1848,7 @@ bool cmFindPackageCommand::FindEnvironmentConfig()
 }
 
 cmFindPackageCommand::AppendixMap cmFindPackageCommand::FindAppendices(
-  std::string const& base) const
+  std::string const& base, cmPackageInfoReader const& baseReader) const
 {
   AppendixMap appendices;
 
@@ -1865,9 +1867,11 @@ cmFindPackageCommand::AppendixMap cmFindPackageCommand::FindAppendices(
       }
 
       std::unique_ptr<cmPackageInfoReader> reader =
-        cmPackageInfoReader::Read(extra, this->CpsReader.get());
+        cmPackageInfoReader::Read(extra, &baseReader);
       if (reader && reader->GetName() == this->Name) {
-        appendices.emplace(extra, std::move(reader));
+        std::vector<std::string> components = reader->GetComponentNames();
+        Appendix appendix{ std::move(reader), std::move(components) };
+        appendices.emplace(extra, std::move(appendix));
       }
     }
   }
@@ -1894,27 +1898,55 @@ bool cmFindPackageCommand::ReadListFile(std::string const& f,
 
 bool cmFindPackageCommand::ReadPackage()
 {
-  // Resolve any transitive dependencies.
+  // Resolve any transitive dependencies for the root file.
   if (!FindPackageDependencies(this->FileFound, *this->CpsReader,
                                this->Required)) {
     return false;
   }
 
+  auto const hasComponentsRequested =
+    !this->RequiredComponents.empty() || !this->OptionalComponents.empty();
+
   cmMakefile::CallRAII scope{ this->Makefile, this->FileFound, this->Status };
 
-  // Locate appendices.
-  cmFindPackageCommand::AppendixMap appendices =
-    this->FindAppendices(this->FileFound);
+  // Loop over appendices.
+  auto iter = this->CpsAppendices.begin();
+  while (iter != this->CpsAppendices.end()) {
+    bool required = false;
+    bool important = false;
 
-  auto iter = appendices.begin();
-  while (iter != appendices.end()) {
-    bool providesRequiredComponents = false; // TODO
-    bool required = providesRequiredComponents && this->Required;
-    if (!this->FindPackageDependencies(iter->first, *iter->second, required)) {
-      if (providesRequiredComponents) {
+    // Check if this appendix provides any requested components.
+    if (hasComponentsRequested) {
+      auto providesAny = [&iter](
+                           std::set<std::string> const& desiredComponents) {
+        return std::any_of(iter->second.Components.begin(),
+                           iter->second.Components.end(),
+                           [&desiredComponents](std::string const& component) {
+                             return cm::contains(desiredComponents, component);
+                           });
+      };
+
+      if (providesAny(this->RequiredComponents)) {
+        important = true;
+        required = this->Required;
+      } else if (!providesAny(this->OptionalComponents)) {
+        // This appendix doesn't provide any requested components; remove it
+        // from the set to be imported.
+        iter = this->CpsAppendices.erase(iter);
+        continue;
+      }
+    }
+
+    // Resolve any transitive dependencies for the appendix.
+    if (!this->FindPackageDependencies(iter->first, iter->second, required)) {
+      if (important) {
+        // Some dependencies are missing, and we need(ed) this appendix; fail.
         return false;
       }
-      iter = appendices.erase(iter);
+
+      // Some dependencies are missing, but we don't need this appendix; remove
+      // it from the set to be imported.
+      iter = this->CpsAppendices.erase(iter);
     } else {
       ++iter;
     }
@@ -1926,10 +1958,11 @@ bool cmFindPackageCommand::ReadPackage()
   }
 
   // Import targets from appendices.
-  for (auto const& appendix : appendices) {
+  // NOLINTNEXTLINE(readability-use-anyofallof)
+  for (auto const& appendix : this->CpsAppendices) {
     cmMakefile::CallRAII appendixScope{ this->Makefile, appendix.first,
                                         this->Status };
-    if (!this->ImportPackageTargets(appendix.first, *appendix.second)) {
+    if (!this->ImportPackageTargets(appendix.first, appendix.second)) {
       return false;
     }
   }
@@ -1969,6 +2002,8 @@ bool cmFindPackageCommand::FindPackageDependencies(
 
     // Try to find the requirement; fail if we can't.
     if (!fp.FindPackage() || fp.FileFound.empty()) {
+      this->SetError(cmStrCat("could not find "_s, dep.Name,
+                              ", required by "_s, this->Name, '.'));
       return false;
     }
   }
@@ -1989,7 +2024,7 @@ bool cmFindPackageCommand::ImportPackageTargets(std::string const& fileName,
   cmsys::Glob glob;
   glob.RecurseOff();
   if (glob.FindFiles(
-        cmStrCat(cmSystemTools::GetFilenamePath(fileName), "/"_s,
+        cmStrCat(cmSystemTools::GetFilenamePath(fileName), '/',
                  cmSystemTools::GetFilenameWithoutExtension(fileName),
                  "@*.[Cc][Pp][Ss]"_s))) {
 
@@ -2684,32 +2719,122 @@ bool cmFindPackageCommand::CheckVersion(std::string const& config_file)
     std::unique_ptr<cmPackageInfoReader> reader =
       cmPackageInfoReader::Read(config_file);
     if (reader && reader->GetName() == this->Name) {
+      // Read version information.
       cm::optional<std::string> cpsVersion = reader->GetVersion();
-      if (cpsVersion) {
-        // TODO: Implement version check for CPS
-        this->VersionFound = (version = std::move(*cpsVersion));
+      cm::optional<ParsedVersion> const& parsedVersion =
+        reader->ParseVersion(cpsVersion);
+      bool const hasVersion = cpsVersion.has_value();
 
-        std::vector<unsigned> const& versionParts = reader->ParseVersion();
-        this->VersionFoundCount = static_cast<unsigned>(versionParts.size());
-        switch (this->VersionFoundCount) {
-          case 4:
-            this->VersionFoundTweak = versionParts[3];
-            CM_FALLTHROUGH;
-          case 3:
-            this->VersionFoundPatch = versionParts[2];
-            CM_FALLTHROUGH;
-          case 2:
-            this->VersionFoundMinor = versionParts[1];
-            CM_FALLTHROUGH;
-          case 1:
-            this->VersionFoundMajor = versionParts[0];
-            CM_FALLTHROUGH;
-          default:
-            break;
+      // Test for version compatibility.
+      result = this->Version.empty();
+      if (hasVersion) {
+        version = std::move(*cpsVersion);
+
+        if (!this->Version.empty()) {
+          if (!parsedVersion) {
+            // If we don't understand the version, compare the exact versions
+            // using full string comparison. This is the correct behavior for
+            // the "custom" schema, and the best we can do otherwise.
+            result = (this->Version == version);
+          } else if (this->VersionExact) {
+            // If EXACT is specified, the version must be exactly the requested
+            // version.
+            result =
+              cmSystemTools::VersionCompareEqual(this->Version, version);
+          } else {
+            // Do we have a compat_version?
+            cm::optional<std::string> const& compatVersion =
+              reader->GetCompatVersion();
+            if (reader->ParseVersion(compatVersion)) {
+              // If yes, the initial result is whether the requested version is
+              // between the actual version and the compat version, inclusive.
+              result = cmSystemTools::VersionCompareGreaterEq(version,
+                                                              this->Version) &&
+                cmSystemTools::VersionCompareGreaterEq(this->Version,
+                                                       *compatVersion);
+
+              if (result && !this->VersionMax.empty()) {
+                // We must also check that the version is less than the version
+                // limit.
+                if (this->VersionRangeMax == VERSION_ENDPOINT_EXCLUDED) {
+                  result = cmSystemTools::VersionCompareGreater(
+                    this->VersionMax, version);
+                } else {
+                  result = cmSystemTools::VersionCompareGreaterEq(
+                    this->VersionMax, version);
+                }
+              }
+            } else {
+              // If no, compat_version is assumed to be exactly the actual
+              // version, so the result is whether the requested version is
+              // exactly the actual version, and we can ignore the version
+              // limit.
+              result =
+                cmSystemTools::VersionCompareEqual(this->Version, version);
+            }
+          }
         }
       }
-      this->CpsReader = std::move(reader);
-      result = true;
+
+      if (result) {
+        // Locate appendices.
+        cmFindPackageCommand::AppendixMap appendices =
+          this->FindAppendices(config_file, *reader);
+
+        // Collect available components.
+        std::set<std::string> allComponents;
+
+        std::vector<std::string> const& rootComponents =
+          reader->GetComponentNames();
+        allComponents.insert(rootComponents.begin(), rootComponents.end());
+
+        for (auto const& appendix : appendices) {
+          allComponents.insert(appendix.second.Components.begin(),
+                               appendix.second.Components.end());
+        }
+
+        // Verify that all required components are available.
+        std::vector<std::string> missingComponents;
+        std::set_difference(this->RequiredComponents.begin(),
+                            this->RequiredComponents.end(),
+                            allComponents.begin(), allComponents.end(),
+                            std::back_inserter(missingComponents));
+        if (!missingComponents.empty()) {
+          result = false;
+        }
+
+        if (result && hasVersion) {
+          this->VersionFound = version;
+
+          if (parsedVersion) {
+            std::vector<unsigned> const& versionParts =
+              parsedVersion->ReleaseComponents;
+
+            this->VersionFoundCount =
+              static_cast<unsigned>(versionParts.size());
+            switch (std::min(this->VersionFoundCount, 4u)) {
+              case 4:
+                this->VersionFoundTweak = versionParts[3];
+                CM_FALLTHROUGH;
+              case 3:
+                this->VersionFoundPatch = versionParts[2];
+                CM_FALLTHROUGH;
+              case 2:
+                this->VersionFoundMinor = versionParts[1];
+                CM_FALLTHROUGH;
+              case 1:
+                this->VersionFoundMajor = versionParts[0];
+                CM_FALLTHROUGH;
+              default:
+                break;
+            }
+          } else {
+            this->VersionFoundCount = 0;
+          }
+        }
+        this->CpsReader = std::move(reader);
+        this->CpsAppendices = std::move(appendices);
+      }
     }
   } else {
     // Get the filename without the .cmake extension.

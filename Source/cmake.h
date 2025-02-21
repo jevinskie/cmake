@@ -49,6 +49,7 @@ class cmDebuggerAdapter;
 
 class cmExternalMakefileProjectGeneratorFactory;
 class cmFileAPI;
+class cmInstrumentation;
 class cmFileTimeCache;
 class cmGlobalGenerator;
 class cmMakefile;
@@ -639,7 +640,8 @@ public:
   int Build(int jobs, std::string dir, std::vector<std::string> targets,
             std::string config, std::vector<std::string> nativeOptions,
             cmBuildOptions& buildOptions, bool verbose,
-            std::string const& presetName, bool listPresets);
+            std::string const& presetName, bool listPresets,
+            std::vector<std::string> const& args);
 
   //! run the --open option
   bool Open(std::string const& dir, bool dryRun);
@@ -663,6 +665,10 @@ public:
 
 #if !defined(CMAKE_BOOTSTRAP)
   cmFileAPI* GetFileAPI() const { return this->FileAPI.get(); }
+  cmInstrumentation* GetInstrumentation() const
+  {
+    return this->Instrumentation.get();
+  }
 #endif
 
   cmState* GetState() const { return this->State.get(); }
@@ -816,6 +822,7 @@ private:
 #if !defined(CMAKE_BOOTSTRAP)
   std::unique_ptr<cmVariableWatch> VariableWatch;
   std::unique_ptr<cmFileAPI> FileAPI;
+  std::unique_ptr<cmInstrumentation> Instrumentation;
 #endif
 
   std::unique_ptr<cmState> State;

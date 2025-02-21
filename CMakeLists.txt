@@ -1,7 +1,7 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
 # file Copyright.txt or https://cmake.org/licensing for details.
 
-cmake_minimum_required(VERSION 3.13...3.30 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.13...3.31 FATAL_ERROR)
 set(CMAKE_USER_MAKE_RULES_OVERRIDE_C ${CMAKE_CURRENT_SOURCE_DIR}/Source/Modules/OverrideC.cmake)
 set(CMAKE_USER_MAKE_RULES_OVERRIDE_CXX ${CMAKE_CURRENT_SOURCE_DIR}/Source/Modules/OverrideCXX.cmake)
 
@@ -325,8 +325,8 @@ if(CMake_RUN_CLANG_TIDY)
     unset(clang_tidy_module_sha1)
   endif()
 
+  configure_file(.clang-tidy .clang-tidy COPYONLY)
 endif()
-configure_file(.clang-tidy .clang-tidy COPYONLY)
 
 
 option(CMake_RUN_IWYU "Run include-what-you-use with the compiler." OFF)

@@ -141,6 +141,14 @@
 #  include <sys/utsname.h>
 #endif
 
+#if defined(CMAKE_BOOTSTRAP) && defined(__sun) && defined(__i386)
+#  define CMAKE_NO_MKDTEMP
+#endif
+
+#ifdef CMAKE_NO_MKDTEMP
+#  include <dlfcn.h>
+#endif
+
 #if defined(_MSC_VER) && _MSC_VER >= 1800
 #  define CM_WINDOWS_DEPRECATED_GetVersionEx
 #endif
@@ -787,6 +795,34 @@ std::size_t cmSystemTools::CalculateCommandLineLengthLimit()
   return sz;
 }
 
+void cmSystemTools::MaybePrependCmdExe(std::vector<std::string>& cmdLine)
+{
+#if defined(_WIN32) && !defined(__CYGWIN__)
+  if (!cmdLine.empty()) {
+    std::string& applicationName = cmdLine.at(0);
+    static cmsys::RegularExpression const winCmdRegex(
+      "\\.([Bb][Aa][Tt]|[Cc][Mm][Dd])$");
+    cmsys::RegularExpressionMatch winCmdMatch;
+    if (winCmdRegex.find(applicationName.c_str(), winCmdMatch)) {
+      // Wrap `.bat` and `.cmd` commands with `cmd /c call`.
+      std::vector<std::string> output;
+      output.reserve(cmdLine.size() + 3);
+      output.emplace_back(cmSystemTools::GetComspec());
+      output.emplace_back("/c");
+      output.emplace_back("call");
+      // Convert the batch file path to use backslashes for cmd.exe to parse.
+      std::replace(applicationName.begin(), applicationName.end(), '/', '\\');
+      output.emplace_back(applicationName);
+      std::move(cmdLine.begin() + 1, cmdLine.end(),
+                std::back_inserter(output));
+      cmdLine = std::move(output);
+    }
+  }
+#else
+  static_cast<void>(cmdLine);
+#endif
+}
+
 bool cmSystemTools::RunSingleCommand(std::vector<std::string> const& command,
                                      std::string* captureStdOut,
                                      std::string* captureStdErr, int* retVal,
@@ -1334,6 +1370,29 @@ inline int Mkdir(char const* dir, mode_t const* mode)
 #endif
 }
 
+#ifdef CMAKE_NO_MKDTEMP
+namespace {
+char* cm_mkdtemp_fallback(char* template_)
+{
+  if (mktemp(template_) == nullptr || mkdir(template_, 0700) != 0) {
+    return nullptr;
+  }
+  return template_;
+}
+using cm_mkdtemp_t = char* (*)(char*);
+cm_mkdtemp_t const cm_mkdtemp = []() -> cm_mkdtemp_t {
+  cm_mkdtemp_t f = (cm_mkdtemp_t)dlsym(RTLD_DEFAULT, "mkdtemp");
+  dlerror(); // Ignore/cleanup dlsym errors.
+  if (!f) {
+    f = cm_mkdtemp_fallback;
+  }
+  return f;
+}();
+}
+#else
+#  define cm_mkdtemp mkdtemp
+#endif
+
 cmsys::Status cmSystemTools::MakeTempDirectory(std::string& path,
                                                mode_t const* mode)
 {
@@ -1387,7 +1446,7 @@ cmsys::Status cmSystemTools::MakeTempDirectory(char* path, mode_t const* mode)
   }
   return cmsys::Status::POSIX(EAGAIN);
 #else
-  if (mkdtemp(path)) {
+  if (cm_mkdtemp(path)) {
     if (mode) {
       chmod(path, *mode);
     }

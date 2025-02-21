@@ -32,6 +32,7 @@
 #include "cmGeneratedFileStream.h"
 #include "cmGeneratorTarget.h"
 #include "cmGlobalGenerator.h"
+#include "cmInstrumentation.h"
 #include "cmLinkLineComputer.h"
 #include "cmList.h"
 #include "cmListFileCache.h"
@@ -386,7 +387,6 @@ void cmGlobalNinjaGenerator::WriteCustomCommandBuild(
       std::string cmd = command; // NOLINT(*)
 #ifdef _WIN32
       if (cmd.empty())
-        // TODO Shouldn't an empty command be handled by ninja?
         cmd = "cmd.exe /c";
 #endif
       vars["COMMAND"] = std::move(cmd);
@@ -1213,11 +1213,8 @@ void cmGlobalNinjaGenerator::AddCXXCompileCommand(
     *this->CompileCommandsStream << ",\n";
   }
 
-  std::string sourceFileName = sourceFile;
-  if (!cmSystemTools::FileIsFullPath(sourceFileName)) {
-    sourceFileName = cmSystemTools::CollapseFullPath(
-      sourceFileName, this->GetCMakeInstance()->GetHomeOutputDirectory());
-  }
+  std::string sourceFileName =
+    cmSystemTools::CollapseFullPath(sourceFile, buildFileDir);
 
   /* clang-format off */
   *this->CompileCommandsStream << "{\n"
@@ -1228,7 +1225,9 @@ void cmGlobalNinjaGenerator::AddCXXCompileCommand(
      << R"(  "file": ")"
      << cmGlobalGenerator::EscapeJSON(sourceFileName) << "\",\n"
      << R"(  "output": ")"
-     << cmGlobalGenerator::EscapeJSON(objPath) << "\"\n"
+     << cmGlobalGenerator::EscapeJSON(
+           cmSystemTools::CollapseFullPath(objPath, buildFileDir))
+           << "\"\n"
      << "}";
   /* clang-format on */
 }
@@ -1236,7 +1235,7 @@ void cmGlobalNinjaGenerator::AddCXXCompileCommand(
 void cmGlobalNinjaGenerator::CloseCompileCommandsStream()
 {
   if (this->CompileCommandsStream) {
-    *this->CompileCommandsStream << "\n]";
+    *this->CompileCommandsStream << "\n]\n";
     this->CompileCommandsStream.reset();
   }
 }
@@ -1761,6 +1760,14 @@ void cmGlobalNinjaGenerator::WriteBuiltinTargets(std::ostream& os)
   this->WriteTargetRebuildManifest(os);
   this->WriteTargetClean(os);
   this->WriteTargetHelp(os);
+#if !defined(CMAKE_BOOTSTRAP) && !defined(_WIN32)
+  // FIXME(#26668) This does not work on Windows
+  if (this->GetCMakeInstance()
+        ->GetInstrumentation()
+        ->HasPreOrPostBuildHook()) {
+    this->WriteTargetInstrument(os);
+  }
+#endif
 
   for (std::string const& config : this->GetConfigNames()) {
     this->WriteTargetDefault(*this->GetConfigFileStream(config));
@@ -1834,6 +1841,15 @@ void cmGlobalNinjaGenerator::WriteTargetRebuildManifest(std::ostream& os)
     }
   }
   reBuild.ImplicitDeps.push_back(this->CMakeCacheFile);
+
+#if !defined(CMAKE_BOOTSTRAP) && !defined(_WIN32)
+  // FIXME(#26668) This does not work on Windows
+  if (this->GetCMakeInstance()
+        ->GetInstrumentation()
+        ->HasPreOrPostBuildHook()) {
+    reBuild.ExplicitDeps.push_back(this->NinjaOutputPath("start_instrument"));
+  }
+#endif
 
   // Use 'console' pool to get non buffered output of the CMake re-run call
   // Available since Ninja 1.5
@@ -2179,6 +2195,43 @@ void cmGlobalNinjaGenerator::WriteTargetHelp(std::ostream& os)
     this->WriteBuild(os, build);
   }
 }
+
+#if !defined(CMAKE_BOOTSTRAP) && !defined(_WIN32)
+// FIXME(#26668) This does not work on Windows
+void cmGlobalNinjaGenerator::WriteTargetInstrument(std::ostream& os)
+{
+  // Write rule
+  {
+    cmNinjaRule rule("START_INSTRUMENT");
+    rule.Command = cmStrCat(
+      "\"", cmSystemTools::GetCTestCommand(), "\" --start-instrumentation \"",
+      this->GetCMakeInstance()->GetHomeOutputDirectory(), "\"");
+    /*
+     * On Unix systems, Ninja will prefix the command with `/bin/sh -c`.
+     * Use exec so that Ninja is the parent process of the command.
+     */
+    rule.Command = cmStrCat("exec ", rule.Command);
+    rule.Description = "Collecting build metrics";
+    rule.Comment = "Rule to initialize instrumentation daemon.";
+    rule.Restat = "1";
+    WriteRule(*this->RulesFileStream, rule);
+  }
+
+  // Write build
+  {
+    cmNinjaBuild phony("phony");
+    phony.Comment = "Phony target to keep START_INSTRUMENTATION out of date.";
+    phony.Outputs.push_back(this->NinjaOutputPath("CMakeFiles/instrument"));
+    cmNinjaBuild instrument("START_INSTRUMENT");
+    instrument.Comment = "Start instrumentation daemon.";
+    instrument.Outputs.push_back(this->NinjaOutputPath("start_instrument"));
+    instrument.ExplicitDeps.push_back(
+      this->NinjaOutputPath("CMakeFiles/instrument"));
+    WriteBuild(os, phony);
+    WriteBuild(os, instrument);
+  }
+}
+#endif
 
 void cmGlobalNinjaGenerator::InitOutputPathPrefix()
 {

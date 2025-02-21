@@ -68,8 +68,10 @@ bool cmCTestLaunch::ParseArguments(int argc, char const* const* argv)
     DoingCommandType,
     DoingRole,
     DoingBuildDir,
+    DoingCurrentBuildDir,
     DoingCount,
-    DoingFilterPrefix
+    DoingFilterPrefix,
+    DoingConfig
   };
   Doing doing = DoingNone;
   int arg0 = 0;
@@ -95,8 +97,12 @@ bool cmCTestLaunch::ParseArguments(int argc, char const* const* argv)
       doing = DoingRole;
     } else if (strcmp(arg, "--build-dir") == 0) {
       doing = DoingBuildDir;
+    } else if (strcmp(arg, "--current-build-dir") == 0) {
+      doing = DoingCurrentBuildDir;
     } else if (strcmp(arg, "--filter-prefix") == 0) {
       doing = DoingFilterPrefix;
+    } else if (strcmp(arg, "--config") == 0) {
+      doing = DoingConfig;
     } else if (doing == DoingOutput) {
       this->Reporter.OptionOutput = arg;
       doing = DoingNone;
@@ -121,6 +127,9 @@ bool cmCTestLaunch::ParseArguments(int argc, char const* const* argv)
     } else if (doing == DoingBuildDir) {
       this->Reporter.OptionBuildDir = arg;
       doing = DoingNone;
+    } else if (doing == DoingCurrentBuildDir) {
+      this->Reporter.OptionCurrentBuildDir = arg;
+      doing = DoingNone;
     } else if (doing == DoingFilterPrefix) {
       this->Reporter.OptionFilterPrefix = arg;
       doing = DoingNone;
@@ -129,6 +138,9 @@ bool cmCTestLaunch::ParseArguments(int argc, char const* const* argv)
       doing = DoingNone;
     } else if (doing == DoingRole) {
       this->Reporter.OptionRole = arg;
+      doing = DoingNone;
+    } else if (doing == DoingConfig) {
+      this->Reporter.OptionConfig = arg;
       doing = DoingNone;
     }
   }
@@ -254,17 +266,20 @@ void cmCTestLaunch::RunChild()
 
 int cmCTestLaunch::Run()
 {
-  auto instrumenter = cmInstrumentation(this->Reporter.OptionBuildDir);
+  auto instrumentation = cmInstrumentation(this->Reporter.OptionBuildDir);
   std::map<std::string, std::string> options;
-  options["target"] = this->Reporter.OptionTargetName;
+  if (this->Reporter.OptionTargetName != "TARGET_NAME") {
+    options["target"] = this->Reporter.OptionTargetName;
+  }
   options["source"] = this->Reporter.OptionSource;
   options["language"] = this->Reporter.OptionLanguage;
   options["targetType"] = this->Reporter.OptionTargetType;
   options["role"] = this->Reporter.OptionRole;
+  options["config"] = this->Reporter.OptionConfig;
   std::map<std::string, std::string> arrayOptions;
   arrayOptions["outputs"] = this->Reporter.OptionOutput;
   arrayOptions["targetLabels"] = this->Reporter.OptionTargetLabels;
-  instrumenter.InstrumentCommand(
+  instrumentation.InstrumentCommand(
     this->Reporter.OptionCommandType, this->RealArgV,
     [this]() -> int {
       this->RunChild();

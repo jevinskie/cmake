@@ -4,6 +4,7 @@
 .clang-tidy      export-ignore
 .codespellrc     export-ignore
 .editorconfig    export-ignore
+.pre-commit-config.yaml export-ignore
 .typos.toml      export-ignore
 
 # Custom attribute to mark sources as using our C code style.
@@ -25,6 +26,7 @@ configure        eol=lf
 
 *.bat            eol=crlf
 *.bat.in         eol=crlf
+*.cmd            eol=crlf
 *.sln            eol=crlf
 *.vcproj         eol=crlf
 

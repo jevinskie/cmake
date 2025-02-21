@@ -21,6 +21,7 @@
 
 class cmake;
 class cmGeneratedFileStream;
+class cmInstrumentation;
 class cmMakefile;
 class cmValue;
 class cmXMLWriter;
@@ -385,7 +386,16 @@ public:
 
   bool GetVerbose() const;
   bool GetExtraVerbose() const;
-  int GetSubmitIndex() const;
+
+  bool StartResultingXML(Part part, char const* name, int submitIndex,
+                         cmGeneratedFileStream& xofs);
+  bool StartLogFile(char const* name, int submitIndex,
+                    cmGeneratedFileStream& xofs);
+
+  void ConvertInstrumentationSnippetsToXML(cmXMLWriter& xml,
+                                           std::string const& subdir);
+  bool ConvertInstrumentationJSONFileToXML(std::string const& fpath,
+                                           cmXMLWriter& xml);
 
   void AddSiteProperties(cmXMLWriter& xml, cmake* cm);
 
@@ -429,6 +439,9 @@ public:
   cmCTestTestOptions const& GetTestOptions() const;
   std::vector<std::string> GetCommandLineHttpHeaders() const;
 
+  cmInstrumentation& GetInstrumentation();
+  bool GetUseVerboseInstrumentation() const;
+
 private:
   int GenerateNotesFile(cmake* cm, std::string const& files);
 
@@ -467,7 +480,7 @@ private:
 
   int RunCMakeAndTest();
   int RunScripts(std::vector<std::pair<std::string, bool>> const& scripts);
-  int ExecuteTests();
+  int ExecuteTests(std::vector<std::string> const& args);
 
   struct Private;
   std::unique_ptr<Private> Impl;

@@ -547,6 +547,21 @@ void cmake::PrintPresetEnvironment()
 // Parse the args
 bool cmake::SetCacheArgs(std::vector<std::string> const& args)
 {
+  static std::string const kCMAKE_POLICY_VERSION_MINIMUM =
+    "CMAKE_POLICY_VERSION_MINIMUM";
+  if (!this->State->GetInitializedCacheValue(kCMAKE_POLICY_VERSION_MINIMUM)) {
+    cm::optional<std::string> policyVersion =
+      cmSystemTools::GetEnvVar(kCMAKE_POLICY_VERSION_MINIMUM);
+    if (policyVersion && !policyVersion->empty()) {
+      this->AddCacheEntry(
+        kCMAKE_POLICY_VERSION_MINIMUM, *policyVersion,
+        "Override policy version for cmake_minimum_required calls.",
+        cmStateEnums::STRING);
+      this->State->SetCacheEntryProperty(kCMAKE_POLICY_VERSION_MINIMUM,
+                                         "ADVANCED", "1");
+    }
+  }
+
   auto DefineLambda = [](std::string const& entry, cmake* state) -> bool {
     std::string var;
     std::string value;
@@ -2611,21 +2626,24 @@ int cmake::ActualConfigure()
       cmStrCat(this->GetHomeOutputDirectory(), "/CMakeFiles"_s),
       this->FileAPI->GetConfigureLogVersions());
   }
+
+  this->Instrumentation =
+    cm::make_unique<cmInstrumentation>(this->State->GetBinaryDirectory());
+  this->Instrumentation->ClearGeneratedQueries();
 #endif
 
   // actually do the configure
   auto startTime = std::chrono::steady_clock::now();
 #if !defined(CMAKE_BOOTSTRAP)
-  cmInstrumentation instrumentation(this->State->GetBinaryDirectory(), true);
-  if (!instrumentation.errorMsg.empty()) {
-    cmSystemTools::Error(instrumentation.errorMsg);
+  if (!this->Instrumentation->errorMsg.empty()) {
+    cmSystemTools::Error(this->Instrumentation->errorMsg);
     return 1;
   }
-  std::function<int()> doConfigure = [this]() -> int {
+  auto doConfigure = [this]() -> int {
     this->GlobalGenerator->Configure();
     return 0;
   };
-  int ret = instrumentation.InstrumentCommand(
+  int ret = this->Instrumentation->InstrumentCommand(
     "configure", this->cmdArgs, [doConfigure]() { return doConfigure(); },
     cm::nullopt, cm::nullopt, true);
   if (ret != 0) {
@@ -2662,37 +2680,38 @@ int cmake::ActualConfigure()
 
   if (mf->IsOn("CTEST_USE_LAUNCHERS") &&
       !this->State->GetGlobalProperty("RULE_LAUNCH_COMPILE")) {
-    cmSystemTools::Error(
-      "CTEST_USE_LAUNCHERS is enabled, but the "
-      "RULE_LAUNCH_COMPILE global property is not defined.\n"
-      "Did you forget to include(CTest) in the toplevel "
-      "CMakeLists.txt ?");
+    this->IssueMessage(MessageType::FATAL_ERROR,
+                       "CTEST_USE_LAUNCHERS is enabled, but the "
+                       "RULE_LAUNCH_COMPILE global property is not defined.\n"
+                       "Did you forget to include(CTest) in the toplevel "
+                       "CMakeLists.txt ?");
   }
   // Setup launchers for instrumentation
 #if !defined(CMAKE_BOOTSTRAP)
-  instrumentation.LoadQueries();
-  if (instrumentation.HasQuery()) {
+  this->Instrumentation->LoadQueries();
+  if (this->Instrumentation->HasQuery()) {
     std::string launcher;
     if (mf->IsOn("CTEST_USE_LAUNCHERS")) {
       launcher =
-        cmStrCat("\"", cmSystemTools::GetCTestCommand(), "\" --launch ");
+        cmStrCat("\"", cmSystemTools::GetCTestCommand(), "\" --launch ",
+                 "--current-build-dir <CMAKE_CURRENT_BINARY_DIR> ");
     } else {
       launcher =
         cmStrCat("\"", cmSystemTools::GetCTestCommand(), "\" --instrument ");
     }
     std::string common_args =
-      cmStrCat(" --target-name <TARGET_NAME> ", "--build-dir \"",
+      cmStrCat(" --target-name <TARGET_NAME> --build-dir \"",
                this->State->GetBinaryDirectory(), "\" ");
     this->State->SetGlobalProperty(
       "RULE_LAUNCH_COMPILE",
       cmStrCat(
-        launcher, "--command-type compile", common_args,
+        launcher, "--command-type compile", common_args, "--config <CONFIG> ",
         "--output <OBJECT> --source <SOURCE> --language <LANGUAGE> -- "));
     this->State->SetGlobalProperty(
       "RULE_LAUNCH_LINK",
       cmStrCat(
         launcher, "--command-type link", common_args,
-        "--output <TARGET> --target-type <TARGET_TYPE> ",
+        "--output <TARGET> --target-type <TARGET_TYPE> --config <CONFIG> ",
         "--language <LANGUAGE> --target-labels \"<TARGET_LABELS>\" -- "));
     this->State->SetGlobalProperty(
       "RULE_LAUNCH_CUSTOM",
@@ -2931,8 +2950,12 @@ int cmake::Run(std::vector<std::string> const& args, bool noconfigure)
     return -1;
   }
 #ifndef CMAKE_BOOTSTRAP
-  this->PrintPresetVariables();
-  this->PrintPresetEnvironment();
+  if (this->GetLogLevel() == Message::LogLevel::LOG_VERBOSE ||
+      this->GetLogLevel() == Message::LogLevel::LOG_DEBUG ||
+      this->GetLogLevel() == Message::LogLevel::LOG_TRACE) {
+    this->PrintPresetVariables();
+    this->PrintPresetEnvironment();
+  }
 #endif
 
   // In script mode we terminate after running the script.
@@ -3015,8 +3038,7 @@ int cmake::Generate()
   auto startTime = std::chrono::steady_clock::now();
 #if !defined(CMAKE_BOOTSTRAP)
   auto profilingRAII = this->CreateProfilingEntry("project", "generate");
-  cmInstrumentation instrumentation(this->State->GetBinaryDirectory());
-  std::function<int()> doGenerate = [this]() -> int {
+  auto doGenerate = [this]() -> int {
     if (!this->GlobalGenerator->Compute()) {
       return -1;
     }
@@ -3024,7 +3046,8 @@ int cmake::Generate()
     return 0;
   };
 
-  int ret = instrumentation.InstrumentCommand(
+  this->Instrumentation->LoadQueries();
+  int ret = this->Instrumentation->InstrumentCommand(
     "generate", this->cmdArgs, [doGenerate]() { return doGenerate(); });
   if (ret != 0) {
     return ret;
@@ -3045,7 +3068,7 @@ int cmake::Generate()
     this->UpdateProgress(msg.str(), -1);
   }
 #if !defined(CMAKE_BOOTSTRAP)
-  instrumentation.CollectTimingData(
+  this->Instrumentation->CollectTimingData(
     cmInstrumentationQuery::Hook::PostGenerate);
 #endif
   if (!this->GraphVizFile.empty()) {
@@ -3712,7 +3735,8 @@ std::vector<std::string> cmake::GetDebugConfigs()
 int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
                  std::string config, std::vector<std::string> nativeOptions,
                  cmBuildOptions& buildOptions, bool verbose,
-                 std::string const& presetName, bool listPresets)
+                 std::string const& presetName, bool listPresets,
+                 std::vector<std::string> const& args)
 {
   this->SetHomeDirectory("");
   this->SetHomeOutputDirectory("");
@@ -3846,7 +3870,8 @@ int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
 
   std::string cachePath = FindCacheFile(dir);
   if (!this->LoadCache(cachePath)) {
-    std::cerr << "Error: could not load cache\n";
+    std::cerr
+      << "Error: not a CMake build directory (missing CMakeCache.txt)\n";
     return 1;
   }
   cmValue cachedGenerator = this->State->GetCacheEntryValue("CMAKE_GENERATOR");
@@ -3950,16 +3975,38 @@ int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
     return 1;
   }
 
+#if !defined(CMAKE_BOOTSTRAP)
+  cmInstrumentation instrumentation(dir);
+  if (!instrumentation.errorMsg.empty()) {
+    cmSystemTools::Error(instrumentation.errorMsg);
+    return 1;
+  }
+  instrumentation.CollectTimingData(
+    cmInstrumentationQuery::Hook::PreCMakeBuild);
+#endif
+
   this->GlobalGenerator->PrintBuildCommandAdvice(std::cerr, jobs);
   std::stringstream ostr;
   // `cmGlobalGenerator::Build` logs metadata about what directory and commands
   // are being executed to the `output` parameter. If CMake is verbose, print
   // this out.
   std::ostream& verbose_ostr = verbose ? std::cout : ostr;
-  int buildresult = this->GlobalGenerator->Build(
-    jobs, "", dir, projName, targets, verbose_ostr, "", config, buildOptions,
-    verbose, cmDuration::zero(), cmSystemTools::OUTPUT_PASSTHROUGH,
-    nativeOptions);
+  auto doBuild = [this, jobs, dir, projName, targets, &verbose_ostr, config,
+                  buildOptions, verbose, nativeOptions]() -> int {
+    return this->GlobalGenerator->Build(
+      jobs, "", dir, projName, targets, verbose_ostr, "", config, buildOptions,
+      verbose, cmDuration::zero(), cmSystemTools::OUTPUT_PASSTHROUGH,
+      nativeOptions);
+  };
+
+#if !defined(CMAKE_BOOTSTRAP)
+  int buildresult =
+    instrumentation.InstrumentCommand("cmakeBuild", args, doBuild);
+  instrumentation.CollectTimingData(
+    cmInstrumentationQuery::Hook::PostCMakeBuild);
+#else
+  int buildresult = doBuild();
+#endif
 
   return buildresult;
 }
@@ -3975,7 +4022,8 @@ bool cmake::Open(std::string const& dir, bool dryRun)
 
   std::string cachePath = FindCacheFile(dir);
   if (!this->LoadCache(cachePath)) {
-    std::cerr << "Error: could not load cache\n";
+    std::cerr
+      << "Error: not a CMake build directory (missing CMakeCache.txt)\n";
     return false;
   }
   cmValue genName = this->State->GetCacheEntryValue("CMAKE_GENERATOR");
