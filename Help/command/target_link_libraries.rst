@@ -127,11 +127,15 @@ Each ``<item>`` may be:
   in the :prop_gbl:`DEBUG_CONFIGURATIONS` global property if it is set).
   The ``optimized`` keyword corresponds to all other configurations.  The
   ``general`` keyword corresponds to all configurations, and is purely
-  optional.  Higher granularity may be achieved for per-configuration
-  rules by creating and linking to
-  :ref:`IMPORTED library targets <Imported Targets>`.
-  These keywords are interpreted immediately by this command and therefore
-  have no special meaning when produced by a generator expression.
+  optional.  These keywords are interpreted immediately by this command and
+  therefore have no special meaning when produced by a generator expression.
+
+  Alternatively, generator expressions like :genex:`$<CONFIG>` provide finer
+  per-configuration linking of ``<item>``.  For a more structured approach,
+  higher granularity can be achieved by creating and linking to
+  :ref:`IMPORTED library targets <Imported Targets>` with the
+  :prop_tgt:`IMPORTED_CONFIGURATIONS` property set, particularly in find
+  modules.
 
 Items containing ``::``, such as ``Foo::Bar``, are assumed to be
 :ref:`IMPORTED <Imported Targets>` or :ref:`ALIAS <Alias Targets>` library
@@ -146,7 +150,7 @@ command lines.
 See the :manual:`cmake-buildsystem(7)` manual for more on defining
 buildsystem properties.
 
-.. include:: ../command/LINK_LIBRARIES_LINKER.txt
+.. include:: ../command/include/LINK_LIBRARIES_LINKER.rst
 
 Libraries for a Target and/or its Dependents
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -412,7 +416,7 @@ Creating Relocatable Packages
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. |INTERFACE_PROPERTY_LINK| replace:: :prop_tgt:`INTERFACE_LINK_LIBRARIES`
-.. include:: /include/INTERFACE_LINK_LIBRARIES_WARNING.txt
+.. include:: /include/INTERFACE_LINK_LIBRARIES_WARNING.rst
 
 See Also
 ^^^^^^^^

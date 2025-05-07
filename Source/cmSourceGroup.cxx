@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmSourceGroup.h"
 
 #include <utility>
@@ -40,11 +40,13 @@ cmSourceGroup::cmSourceGroup(cmSourceGroup const& r)
 
 cmSourceGroup& cmSourceGroup::operator=(cmSourceGroup const& r)
 {
-  this->Name = r.Name;
-  this->GroupRegex = r.GroupRegex;
-  this->GroupFiles = r.GroupFiles;
-  this->SourceFiles = r.SourceFiles;
-  *(this->Internal) = *(r.Internal);
+  if (this != &r) {
+    this->Name = r.Name;
+    this->GroupRegex = r.GroupRegex;
+    this->GroupFiles = r.GroupFiles;
+    this->SourceFiles = r.SourceFiles;
+    *(this->Internal) = *(r.Internal);
+  }
   return *this;
 }
 

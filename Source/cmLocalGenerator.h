@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #pragma once
 
 #include "cmConfigure.h" // IWYU pragma: keep
@@ -103,10 +103,7 @@ public:
   bool IsRootMakefile() const;
 
   //! Get the makefile for this generator
-  cmMakefile* GetMakefile() { return this->Makefile; }
-
-  //! Get the makefile for this generator, const version
-  cmMakefile const* GetMakefile() const { return this->Makefile; }
+  cmMakefile* GetMakefile() const { return this->Makefile; }
 
   //! Get the GlobalGenerator this is associated with
   cmGlobalGenerator* GetGlobalGenerator() { return this->GlobalGenerator; }

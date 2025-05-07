@@ -1,5 +1,5 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-# file Copyright.txt or https://cmake.org/licensing for details.
+# file LICENSE.rst or https://cmake.org/licensing for details.
 
 
 # Function to compile a source file to identify the compiler ABI.
@@ -67,6 +67,8 @@ function(CMAKE_DETERMINE_COMPILER_ABI lang src)
       # executables.  This may lead to issues when their stderr output (which
       # contains the relevant compiler internals) becomes interweaved.
       string(REGEX REPLACE "(^| )-pipe( |$)" " " ${v} "${${v}}")
+      # Suppress any formatting of warnings and/or errors
+      string(REGEX REPLACE "(-f|/)diagnostics(-|:)color(=[a-z]+)?" "" ${v} "${${v}}")
     endforeach()
 
     # Save the current LC_ALL, LC_MESSAGES, and LANG environment variables
@@ -148,6 +150,7 @@ function(CMAKE_DETERMINE_COMPILER_ABI lang src)
       set(ABI_SIZEOF_DPTR "NOTFOUND")
       set(ABI_BYTE_ORDER "NOTFOUND")
       set(ABI_NAME "NOTFOUND")
+      set(ARCHITECTURE_ID "")
       foreach(info ${ABI_STRINGS})
         if("${info}" MATCHES "INFO:sizeof_dptr\\[0*([^]]*)\\]" AND NOT ABI_SIZEOF_DPTR)
           set(ABI_SIZEOF_DPTR "${CMAKE_MATCH_1}")
@@ -165,6 +168,9 @@ function(CMAKE_DETERMINE_COMPILER_ABI lang src)
         if("${info}" MATCHES "INFO:abi\\[([^]]*)\\]" AND NOT ABI_NAME)
           set(ABI_NAME "${CMAKE_MATCH_1}")
         endif()
+        if("${info}" MATCHES "INFO:arch\\[([^]\"]*)\\]")
+          list(APPEND ARCHITECTURE_ID "${CMAKE_MATCH_1}")
+        endif()
       endforeach()
 
       if(ABI_SIZEOF_DPTR)
@@ -179,6 +185,28 @@ function(CMAKE_DETERMINE_COMPILER_ABI lang src)
 
       if(ABI_NAME)
         set(CMAKE_${lang}_COMPILER_ABI "${ABI_NAME}" PARENT_SCOPE)
+      endif()
+
+      # The GNU Fortran compiler does not predefine architecture macros.
+      if(NOT CMAKE_${lang}_COMPILER_ARCHITECTURE_ID AND NOT ARCHITECTURE_ID
+         AND lang STREQUAL "Fortran" AND CMAKE_${lang}_COMPILER_ID STREQUAL "GNU")
+        execute_process(COMMAND "${CMAKE_${lang}_COMPILER}" -dumpmachine
+          OUTPUT_VARIABLE _dumpmachine_triple OUTPUT_STRIP_TRAILING_WHITESPACE
+          ERROR_VARIABLE  _dumpmachine_stderr
+          RESULT_VARIABLE _dumpmachine_result
+          )
+        if(_dumpmachine_result EQUAL 0)
+          include(Internal/CMakeParseCompilerArchitectureId)
+          cmake_parse_compiler_architecture_id("${_dumpmachine_triple}" ARCHITECTURE_ID)
+        endif()
+      endif()
+
+      # For some compilers we detect the architecture id during compiler identification.
+      # If this was not one of those, use what was detected during compiler ABI detection,
+      # which might be a list, e.g., when CMAKE_OSX_ARCHITECTURES has multiple values.
+      if(NOT CMAKE_${lang}_COMPILER_ARCHITECTURE_ID AND ARCHITECTURE_ID)
+        list(SORT ARCHITECTURE_ID)
+        set(CMAKE_${lang}_COMPILER_ARCHITECTURE_ID "${ARCHITECTURE_ID}" PARENT_SCOPE)
       endif()
 
       # Parse implicit include directory for this language, if available.
@@ -254,6 +282,15 @@ function(CMAKE_DETERMINE_COMPILER_ABI lang src)
         endif()
       endif()
 
+      # Filter out implicit link directories excluded by our Platform/<os>* modules.
+      if(DEFINED CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES_EXCLUDE)
+        list(REMOVE_ITEM implicit_dirs ${CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES_EXCLUDE})
+      endif()
+
+      # Filter out implicit link information excluded by the environment.
+      if(DEFINED ENV{CMAKE_${lang}_IMPLICIT_LINK_LIBRARIES_EXCLUDE})
+        list(REMOVE_ITEM implicit_libs $ENV{CMAKE_${lang}_IMPLICIT_LINK_LIBRARIES_EXCLUDE})
+      endif()
       if(DEFINED ENV{CMAKE_${lang}_IMPLICIT_LINK_DIRECTORIES_EXCLUDE})
         list(REMOVE_ITEM implicit_dirs $ENV{CMAKE_${lang}_IMPLICIT_LINK_DIRECTORIES_EXCLUDE})
       endif()

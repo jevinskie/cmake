@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmCacheManager.h"
 
 #include <algorithm>
@@ -58,9 +58,8 @@ bool cmCacheManager::LoadCache(std::string const& path, bool internal,
     cmSystemTools::GetLineFromStream(fin, buffer);
     lineno++;
     realbuffer = buffer.c_str();
-    while (*realbuffer != '0' &&
-           (*realbuffer == ' ' || *realbuffer == '\t' || *realbuffer == '\r' ||
-            *realbuffer == '\n')) {
+    while (*realbuffer == ' ' || *realbuffer == '\t' || *realbuffer == '\r' ||
+           *realbuffer == '\n') {
       if (*realbuffer == '\n') {
         lineno++;
       }

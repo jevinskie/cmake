@@ -1,5 +1,5 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-# file Copyright.txt or https://cmake.org/licensing for details.
+# file LICENSE.rst or https://cmake.org/licensing for details.
 
 #[=======================================================================[.rst:
 FindX11
@@ -359,7 +359,7 @@ if (UNIX)
   if(X11_Xft_LIB AND X11_Xft_INCLUDE_PATH)
     find_package(Freetype QUIET)
     find_package(Fontconfig QUIET)
-    if (FREETYPE_FOUND AND Fontconfig_FOUND)
+    if (Freetype_FOUND AND Fontconfig_FOUND)
       set(X11_Xft_FOUND TRUE)
     endif ()
     list(APPEND X11_INCLUDE_DIR ${X11_Xft_INCLUDE_PATH})

@@ -1,11 +1,13 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmFindProgramCommand.h"
 
 #include <algorithm>
 #include <string>
-#include <utility>
 
+#include <cm/memory>
+
+#include "cmFindCommon.h"
 #include "cmMakefile.h"
 #include "cmMessageType.h"
 #include "cmPolicies.h"
@@ -18,14 +20,16 @@
 class cmExecutionStatus;
 
 #if defined(__APPLE__)
-#  include <CoreFoundation/CoreFoundation.h>
+#  include <CoreFoundation/CFBundle.h>
+#  include <CoreFoundation/CFString.h>
+#  include <CoreFoundation/CFURL.h>
 #endif
 
 struct cmFindProgramHelper
 {
-  cmFindProgramHelper(std::string debugName, cmMakefile* makefile,
-                      cmFindBase const* base)
-    : DebugSearches(std::move(debugName), base)
+  cmFindProgramHelper(cmMakefile* makefile, cmFindBase const* base,
+                      cmFindCommonDebugState* debugState)
+    : DebugState(debugState)
     , Makefile(makefile)
     , FindBase(base)
     , PolicyCMP0109(makefile->GetPolicyStatus(cmPolicies::CMP0109))
@@ -49,7 +53,7 @@ struct cmFindProgramHelper
   std::vector<std::string> Names;
 
   // Debug state
-  cmFindBaseDebugState DebugSearches;
+  cmFindCommonDebugState* DebugState;
   cmMakefile* Makefile;
   cmFindBase const* FindBase;
 
@@ -93,11 +97,15 @@ struct cmFindProgramHelper
                              cmSystemTools::ToNormalizedPathOnDisk(testPath);
                            if (this->FindBase->Validate(testPath)) {
                              this->BestPath = testPath;
-                             this->DebugSearches.FoundAt(testPath);
+                             if (this->DebugState) {
+                               this->DebugState->FoundAt(testPath);
+                             }
                              return true;
                            }
                          }
-                         this->DebugSearches.FailedAt(testPath);
+                         if (this->DebugState) {
+                           this->DebugState->FailedAt(testPath);
+                         }
                          return false;
                        });
   }
@@ -191,9 +199,11 @@ bool cmFindProgramCommand::InitialPass(std::vector<std::string> const& argsIn)
   if (!this->ParseArguments(argsIn)) {
     return false;
   }
-  this->DebugMode = this->ComputeIfDebugModeWanted(this->VariableName);
+  if (this->ComputeIfDebugModeWanted(this->VariableName)) {
+    this->DebugState = cm::make_unique<cmFindBaseDebugState>(this);
+  }
 
-  if (this->AlreadyDefined) {
+  if (this->IsFound()) {
     this->NormalizeFindResult();
     return true;
   }
@@ -231,7 +241,7 @@ std::string cmFindProgramCommand::FindNormalProgram()
 std::string cmFindProgramCommand::FindNormalProgramNamesPerDir()
 {
   // Search for all names in each directory.
-  cmFindProgramHelper helper(this->FindCommandName, this->Makefile, this);
+  cmFindProgramHelper helper(this->Makefile, this, this->DebugState.get());
   for (std::string const& n : this->Names) {
     helper.AddName(n);
   }
@@ -254,7 +264,7 @@ std::string cmFindProgramCommand::FindNormalProgramNamesPerDir()
 std::string cmFindProgramCommand::FindNormalProgramDirsPerName()
 {
   // Search the entire path for each name.
-  cmFindProgramHelper helper(this->FindCommandName, this->Makefile, this);
+  cmFindProgramHelper helper(this->Makefile, this, this->DebugState.get());
   for (std::string const& n : this->Names) {
     // Switch to searching for this name.
     helper.SetName(n);

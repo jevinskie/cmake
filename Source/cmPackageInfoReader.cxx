@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmPackageInfoReader.h"
 
 #include <initializer_list>
@@ -212,7 +212,7 @@ std::string NormalizeTargetName(std::string const& name,
                                 std::string const& context)
 {
   if (cmHasLiteralPrefix(name, ":")) {
-    return cmStrCat(context, name);
+    return cmStrCat(context, ':', name);
   }
 
   std::string::size_type const n = name.find_first_of(':');
@@ -472,7 +472,11 @@ std::unique_ptr<cmPackageInfoReader> cmPackageInfoReader::Read(
     reader->ComponentTargets = parent->ComponentTargets;
     reader->DefaultConfigurations = parent->DefaultConfigurations;
   } else {
-    reader->DefaultConfigurations = ReadList(reader->Data, "configurations");
+    for (std::string const& config :
+         ReadList(reader->Data, "configurations")) {
+      reader->DefaultConfigurations.emplace_back(
+        cmSystemTools::UpperCase(config));
+    }
   }
 
   return reader;
@@ -664,17 +668,17 @@ cmTarget* cmPackageInfoReader::AddLibraryComponent(
   // Create the imported target.
   cmTarget* const target = makefile->AddImportedTarget(name, type, false);
 
+  // Set default configurations.
+  if (!this->DefaultConfigurations.empty()) {
+    target->SetProperty("IMPORTED_CONFIGURATIONS",
+                        cmJoin(this->DefaultConfigurations, ";"_s));
+  }
+
   // Set target properties.
   this->SetTargetProperties(makefile, target, data, package, {});
   auto const& cfgData = data["configurations"];
   for (auto ci = cfgData.begin(), ce = cfgData.end(); ci != ce; ++ci) {
     this->SetTargetProperties(makefile, target, *ci, package, IterKey(ci));
-  }
-
-  // Set default configurations.
-  if (!this->DefaultConfigurations.empty()) {
-    target->SetProperty("IMPORTED_CONFIGURATIONS",
-                        cmJoin(this->DefaultConfigurations, ";"_s));
   }
 
   return target;

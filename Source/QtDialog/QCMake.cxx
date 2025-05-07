@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "QCMake.h"
 
 #include <algorithm>
@@ -64,17 +64,6 @@ QCMake::QCMake(QObject* p)
   for (cmake::GeneratorInfo const& gen : generators) {
     this->AvailableGenerators.push_back(gen);
   }
-
-  connect(&this->LoadPresetsTimer, &QTimer::timeout, this, [this]() {
-    this->loadPresets();
-    if (!this->PresetName.isEmpty() &&
-        this->CMakePresetsGraph.ConfigurePresets.find(
-          std::string(this->PresetName.toStdString())) ==
-          this->CMakePresetsGraph.ConfigurePresets.end()) {
-      this->setPreset(QString{});
-    }
-  });
-  this->LoadPresetsTimer.start(1000);
 }
 
 QCMake::~QCMake() = default;
@@ -93,7 +82,8 @@ void QCMake::setSourceDirectory(QString const& _dir)
     emit this->sourceDirChanged(this->SourceDirectory);
     this->loadPresets();
     this->setPreset(QString{});
-    if (!cmSystemTools::FileIsFullPath(
+    if (!this->MaybeRelativeBinaryDirectory.isEmpty() &&
+        !cmSystemTools::FileIsFullPath(
           this->MaybeRelativeBinaryDirectory.toStdString())) {
       this->setBinaryDirectory(this->MaybeRelativeBinaryDirectory);
     }
@@ -320,8 +310,8 @@ void QCMake::open()
   InterruptFlag = 0;
   cmSystemTools::ResetErrorOccurredFlag();
 
-  auto successful =
-    this->CMakeInstance->Open(this->BinaryDirectory.toStdString(), false);
+  auto successful = this->CMakeInstance->Open(
+    this->BinaryDirectory.toStdString(), cmake::DryRun::No);
 
 #ifdef Q_OS_WIN
   SetErrorMode(lastErrorMode);
@@ -572,13 +562,12 @@ void QCMake::loadPresets()
 {
   auto result = this->CMakePresetsGraph.ReadProjectPresets(
     this->SourceDirectory.toStdString(), true);
-  if (result != this->LastLoadPresetsResult && !result) {
+  if (!result) {
     emit this->presetLoadError(
       this->SourceDirectory,
       QString::fromStdString(
         this->CMakePresetsGraph.parseState.GetErrorMessage(false)));
   }
-  this->LastLoadPresetsResult = result;
 
   QVector<QCMakePreset> presets;
   for (auto const& name : this->CMakePresetsGraph.ConfigurePresetOrder) {
@@ -726,6 +715,6 @@ void QCMake::setWarnUninitializedMode(bool value)
 void QCMake::checkOpenPossible()
 {
   std::string data = this->BinaryDirectory.toStdString();
-  auto possible = this->CMakeInstance->Open(data, true);
+  auto possible = this->CMakeInstance->Open(data, cmake::DryRun::Yes);
   emit openPossible(possible);
 }

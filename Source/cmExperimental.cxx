@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 
 #include "cmExperimental.h"
 
@@ -39,7 +39,7 @@ cmExperimental::FeatureData LookupTable[] = {
     false },
   // CxxImportStd
   { "CxxImportStd",
-    "a9e1cf81-9932-4810-974b-6eccaf14e457",
+    "d0edc3af-4c50-42ea-a356-e2862fe7a444",
     "CMAKE_EXPERIMENTAL_CXX_IMPORT_STD",
     "CMake's support for `import std;` in C++23 and newer is experimental. It "
     "is meant only for experimentation and feedback to CMake developers.",
@@ -68,7 +68,7 @@ cmExperimental::FeatureData LookupTable[] = {
     false },
   // ExportBuildDatabase
   { "ExportBuildDatabase",
-    "4bd552e2-b7fb-429a-ab23-c83ef53f3f13",
+    "73194a1d-c0b5-41b9-9190-a4512925e192",
     "CMAKE_EXPERIMENTAL_EXPORT_BUILD_DATABASE",
     "CMake's support for exporting build databases is experimental. It is "
     "meant only for experimentation and feedback to CMake developers.",

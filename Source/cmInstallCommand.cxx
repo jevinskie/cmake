@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmInstallCommand.h"
 
 #include <algorithm>
@@ -1804,6 +1804,14 @@ bool HandleDirectoryMode(std::vector<std::string> const& args,
         return false;
       }
       exclude_from_all = true;
+      doing = DoingNone;
+    } else if (args[i] == "EXCLUDE_EMPTY_DIRECTORIES") {
+      if (in_match_mode) {
+        status.SetError(cmStrCat(args[0], " does not allow \"", args[i],
+                                 "\" after PATTERN or REGEX."));
+        return false;
+      }
+      literal_args += " EXCLUDE_EMPTY_DIRECTORIES";
       doing = DoingNone;
     } else if (doing == DoingDirs) {
       // Convert this directory to a full path.

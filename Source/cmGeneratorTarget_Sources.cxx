@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 /* clang-format off */
 #include "cmGeneratorTarget.h"
 /* clang-format on */
@@ -240,8 +240,9 @@ std::vector<BT<std::string>> cmGeneratorTarget::GetSourceFilePaths(
 
   this->DebugSourcesDone = true;
 
-  cmGeneratorExpressionDAGChecker dagChecker(this, "SOURCES", nullptr, nullptr,
-                                             this->LocalGenerator, config);
+  cmGeneratorExpressionDAGChecker dagChecker{
+    this, "SOURCES", nullptr, nullptr, this->LocalGenerator, config,
+  };
 
   EvaluatedTargetPropertyEntries entries = EvaluateTargetPropertyEntries(
     this, config, std::string(), &dagChecker, this->SourceEntries);

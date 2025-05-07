@@ -1,8 +1,9 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #pragma once
 
 #include "QCMake.h"
+#include "QCMakeSizeType.h"
 #include <QItemDelegate>
 #include <QSet>
 #include <QStandardItemModel>
@@ -99,7 +100,7 @@ public:
   bool editEnabled() const;
 
   // returns how many new properties there are
-  int newPropertyCount() const;
+  cm_qsizetype newPropertyCount() const;
 
   // return flags (overloaded to modify flag based on EditEnabled flag)
   Qt::ItemFlags flags(QModelIndex const& index) const;
@@ -114,7 +115,7 @@ public:
 
 protected:
   bool EditEnabled;
-  int NewPropertyCount;
+  cm_qsizetype NewPropertyCount;
   bool ShowNewProperties;
   ViewType View;
 

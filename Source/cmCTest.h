@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #pragma once
 
 #include "cmConfigure.h" // IWYU pragma: keep
@@ -198,6 +198,8 @@ public:
   std::string GetScheduleType() const;
   void SetScheduleType(std::string const& type);
 
+  cm::optional<unsigned int> GetRandomSeed() const;
+
   /** The max output width */
   int GetMaxTestNameWidth() const;
   void SetMaxTestNameWidth(int w);
@@ -297,12 +299,6 @@ public:
 
   /** Decode a URL to the original string.  */
   static std::string DecodeURL(std::string const&);
-
-  /**
-   * Should ctect configuration be updated. When using new style ctest
-   * script, this should be true.
-   */
-  void SetSuppressUpdatingCTestConfiguration(bool val);
 
   /**
    * Add overwrite to ctest configuration.

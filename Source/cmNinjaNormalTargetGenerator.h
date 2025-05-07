@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #pragma once
 
 #include "cmConfigure.h" // IWYU pragma: keep
@@ -30,7 +30,9 @@ private:
   char const* GetVisibleTypeName() const;
   void WriteLanguagesRules(std::string const& config);
 
-  void WriteLinkRule(bool useResponseFile, std::string const& config);
+  void WriteLinkRule(bool useResponseFile, std::string const& config,
+                     std::vector<std::string> const& preLinkComments,
+                     std::vector<std::string> const& postBuildComments);
   void WriteDeviceLinkRules(std::string const& config);
   void WriteNvidiaDeviceLinkRule(bool useResponseFile,
                                  std::string const& config);

@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #pragma once
 
 #include "cmConfigure.h" // IWYU pragma: keep
@@ -53,7 +53,7 @@ public:
   int CollectTimingAfterBuild(int ppid);
   void AddHook(cmInstrumentationQuery::Hook hook);
   void AddQuery(cmInstrumentationQuery::Query query);
-  std::string errorMsg;
+  bool HasErrors() const;
   std::string const& GetCDashDir();
 
 private:
@@ -83,5 +83,6 @@ private:
   std::vector<std::string> queryFiles;
   std::map<std::string, std::string> cdashSnippetsMap;
   Json::Value preTestStats;
+  std::string errorMsg;
   bool hasQuery = false;
 };

@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmCPackNSISGenerator.h"
 
 #include <algorithm>
@@ -473,7 +473,7 @@ int cmCPackNSISGenerator::InitializeInternal()
 
   this->SetOptionIfNotSet("CPACK_NSIS_EXECUTABLE", "makensis");
   nsisPath = cmSystemTools::FindProgram(
-    *this->GetOption("CPACK_NSIS_EXECUTABLE"), path, false);
+    *this->GetOption("CPACK_NSIS_EXECUTABLE"), path);
 
   if (nsisPath.empty()) {
     cmCPackLogger(

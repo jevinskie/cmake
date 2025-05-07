@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 /*-------------------------------------------------------------------------
   Portions of this source have been derived from the 'bindexplib' tool
   provided by the CERN ROOT Data Analysis Framework project (root.cern.ch).
@@ -469,7 +469,7 @@ static bool DumpFile(std::string const& nmPath, char const* filename,
       // check for /bigobj and llvm LTO format
       cmANON_OBJECT_HEADER_BIGOBJ* h =
         (cmANON_OBJECT_HEADER_BIGOBJ*)lpFileBase;
-      if (h->Sig1 == 0x0 && h->Sig2 == 0xffff) {
+      if (h->Sig1 == 0x0 && h->Sig2 == 0xffff && h->Version >= 2) {
         // bigobj
         DumpSymbols<cmANON_OBJECT_HEADER_BIGOBJ, cmIMAGE_SYMBOL_EX>
           symbolDumper(

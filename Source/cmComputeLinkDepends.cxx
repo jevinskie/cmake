@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmComputeLinkDepends.h"
 
 #include <algorithm>
@@ -193,8 +193,8 @@ bool IsFeatureSupported(cmMakefile* makefile, std::string const& linkLanguage,
 {
   auto featureSupported = cmStrCat(
     "CMAKE_", linkLanguage, "_LINK_LIBRARY_USING_", feature, "_SUPPORTED");
-  if (makefile->GetDefinition(featureSupported).IsOn()) {
-    return true;
+  if (cmValue perLangVar = makefile->GetDefinition(featureSupported)) {
+    return perLangVar.IsOn();
   }
 
   featureSupported =
@@ -626,18 +626,18 @@ cmComputeLinkDepends::cmComputeLinkDepends(cmGeneratorTarget const* target,
         if (cmValue feature = this->Target->GetProperty(key)) {
           if (!feature->empty() && key.length() > lloPrefix.length()) {
             auto item = key.substr(lloPrefix.length());
-            cmGeneratorExpressionDAGChecker dag{
-              this->Target->GetBacktrace(),
+            cmGeneratorExpressionDAGChecker dagChecker{
               this->Target,
               "LINK_LIBRARY_OVERRIDE",
               nullptr,
               nullptr,
               this->Target->GetLocalGenerator(),
-              config
+              config,
+              this->Target->GetBacktrace(),
             };
             auto overrideFeature = cmGeneratorExpression::Evaluate(
               *feature, this->Target->GetLocalGenerator(), config,
-              this->Target, &dag, this->Target, linkLanguage);
+              this->Target, &dagChecker, this->Target, linkLanguage);
             this->LinkLibraryOverride.emplace(item, overrideFeature);
           }
         }
@@ -646,16 +646,18 @@ cmComputeLinkDepends::cmComputeLinkDepends(cmGeneratorTarget const* target,
   // global override property
   if (cmValue linkLibraryOverride =
         this->Target->GetProperty("LINK_LIBRARY_OVERRIDE")) {
-    cmGeneratorExpressionDAGChecker dag{ target->GetBacktrace(),
-                                         target,
-                                         "LINK_LIBRARY_OVERRIDE",
-                                         nullptr,
-                                         nullptr,
-                                         target->GetLocalGenerator(),
-                                         config };
+    cmGeneratorExpressionDAGChecker dagChecker{
+      target,
+      "LINK_LIBRARY_OVERRIDE",
+      nullptr,
+      nullptr,
+      target->GetLocalGenerator(),
+      config,
+      target->GetBacktrace(),
+    };
     auto overrideValue = cmGeneratorExpression::Evaluate(
-      *linkLibraryOverride, target->GetLocalGenerator(), config, target, &dag,
-      target, linkLanguage);
+      *linkLibraryOverride, target->GetLocalGenerator(), config, target,
+      &dagChecker, target, linkLanguage);
 
     std::vector<std::string> overrideList =
       cmTokenize(overrideValue, ',', cmTokenizerMode::New);

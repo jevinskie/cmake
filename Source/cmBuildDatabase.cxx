@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmBuildDatabase.h"
 
 #include <cstdlib>
@@ -447,7 +447,7 @@ cmBuildDatabase cmBuildDatabase::ForTarget(cmGeneratorTarget* gt,
 
     bool isCXXModule = false;
     bool isPrivate = true;
-    if (sf->GetLanguage() != "CXX"_s) {
+    if (sf->GetLanguage() == "CXX"_s) {
       auto const* fs = gt->GetFileSetForSource(config, sf);
       if (fs && fs->GetType() == "CXX_MODULES"_s) {
         isCXXModule = true;

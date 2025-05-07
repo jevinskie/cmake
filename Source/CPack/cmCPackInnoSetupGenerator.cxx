@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-file Copyright.txt or https://cmake.org/licensing for details. */
+file LICENSE.rst or https://cmake.org/licensing for details. */
 
 #include "cmCPackInnoSetupGenerator.h"
 
@@ -46,8 +46,8 @@ int cmCPackInnoSetupGenerator::InitializeInternal()
 #endif
 
   SetOptionIfNotSet("CPACK_INNOSETUP_EXECUTABLE", "ISCC");
-  std::string const& isccPath = cmSystemTools::FindProgram(
-    GetOption("CPACK_INNOSETUP_EXECUTABLE"), path, false);
+  std::string const& isccPath =
+    cmSystemTools::FindProgram(GetOption("CPACK_INNOSETUP_EXECUTABLE"), path);
 
   if (isccPath.empty()) {
     cmCPackLogger(cmCPackLog::LOG_ERROR,
@@ -662,12 +662,11 @@ bool cmCPackInnoSetupGenerator::ProcessComponents()
     if (cmNonempty(userUploadDirectory)) {
       uploadDirectory = *userUploadDirectory;
     } else {
-      if (!RequireOption("CPACK_PACKAGE_DIRECTORY")) {
+      cmValue pkgDirectory = RequireOption("CPACK_PACKAGE_DIRECTORY");
+      if (!pkgDirectory) {
         return false;
       }
-
-      uploadDirectory =
-        cmStrCat(GetOption("CPACK_PACKAGE_DIRECTORY"), "/CPackUploads");
+      uploadDirectory = cmStrCat(*pkgDirectory, "/CPackUploads");
     }
 
     if (!cmSystemTools::FileExists(uploadDirectory)) {

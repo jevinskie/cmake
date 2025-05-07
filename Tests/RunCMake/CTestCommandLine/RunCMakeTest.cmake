@@ -554,8 +554,14 @@ set(ENV{CMAKE_TLS_VERIFY} 0) # Test fallback to env variable.
 run_FailDrop(TLSVerify-OFF-env)
 unset(ENV{CMAKE_TLS_VERIFY})
 
+run_cmake_command(EmptyDirTest-ctest
+  ${CMAKE_CTEST_COMMAND} -C Debug -M Experimental -T Test
+  )
+
 run_cmake_command(EmptyDirCoverage-ctest
-  ${CMAKE_CTEST_COMMAND} -C Debug -M Experimental -T Coverage
+  # Isolate this test from any surrounding coverage tool.
+  ${CMAKE_COMMAND} -E env --unset=COVFILE
+    ${CMAKE_CTEST_COMMAND} -C Debug -M Experimental -T Coverage
   )
 
 function(run_MemCheckSan case opts)
@@ -652,3 +658,17 @@ set_tests_properties(test1 PROPERTIES TIMEOUT_SIGNAL_GRACE_PERIOD 1000)
     run_cmake_command(TimeoutSignalBad ${CMAKE_CTEST_COMMAND})
   endblock()
 endif()
+
+block()
+  set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/ScheduleRandomSeed)
+  set(RunCMake_TEST_NO_CLEAN 1)
+  file(REMOVE_RECURSE "${RunCMake_TEST_BINARY_DIR}")
+  file(MAKE_DIRECTORY "${RunCMake_TEST_BINARY_DIR}")
+  file(WRITE "${RunCMake_TEST_BINARY_DIR}/CTestTestfile.cmake" "
+foreach(i RANGE 1 5)
+  add_test(test\${i} \"${CMAKE_COMMAND}\" -E true)
+endforeach()
+")
+  run_cmake_command(ScheduleRandomSeed1 ${CMAKE_CTEST_COMMAND} --schedule-random --schedule-random-seed 42)
+  run_cmake_command(ScheduleRandomSeed2 ${CMAKE_CTEST_COMMAND} --schedule-random --schedule-random-seed 42)
+endblock()

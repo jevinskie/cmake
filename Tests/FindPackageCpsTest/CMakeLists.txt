@@ -80,14 +80,15 @@ endif()
 ###############################################################################
 # Test glob sorting.
 
-set(SortLib_DIR "" CACHE FILEPATH "Wipe out find results for testing." FORCE)
-set(CMAKE_FIND_PACKAGE_SORT_ORDER NAME)
-set(CMAKE_FIND_PACKAGE_SORT_DIRECTION ASC)
-find_package(SortLib CONFIG)
-if(NOT "${SortLib_VERSION}" STREQUAL "3.1.1")
-  message(SEND_ERROR "FIND_PACKAGE_SORT_ORDER Name Asc! ${SortLib_VERSION}")
-endif()
-unset(SortLib_VERSION)
+foreach(CMAKE_FIND_PACKAGE_SORT_DIRECTION IN ITEMS "" ASC Bogus)
+  set(SortLib_DIR "" CACHE FILEPATH "Wipe out find results for testing." FORCE)
+  set(CMAKE_FIND_PACKAGE_SORT_ORDER NAME)
+  find_package(SortLib CONFIG)
+  if(NOT "${SortLib_VERSION}" STREQUAL "3.1.1")
+    message(SEND_ERROR "FIND_PACKAGE_SORT_ORDER Name Asc! ${SortLib_VERSION}")
+  endif()
+  unset(SortLib_VERSION)
+endforeach()
 
 set(SortLib_DIR "" CACHE FILEPATH "Wipe out find results for testing." FORCE)
 set(CMAKE_FIND_PACKAGE_SORT_ORDER NATURAL)
@@ -173,6 +174,14 @@ else()
   add_library(defs-test STATIC defs-test-c.c defs-test-cxx.cxx)
   target_link_libraries(defs-test defs::defs)
 endif()
+
+###############################################################################
+# Test importing and mangling of requirements (i.e. link libraries).
+
+find_package(RequiresTest CONFIG REQUIRED)
+
+add_library(requires-test STATIC requires-test.cxx)
+target_link_libraries(requires-test RequiresTest::Indirect)
 
 ###############################################################################
 # Test importing of (language-specific) include paths.
@@ -266,4 +275,36 @@ elseif(TARGET TransitiveDep::Target4)
   message(SEND_ERROR "TransitiveDep::Target4 exists ?!")
 elseif(TARGET TransitiveDep::Target5)
   message(SEND_ERROR "TransitiveDep::Target5 exists ?!")
+endif()
+
+###############################################################################
+# Test finding a package more than once.
+
+find_package(Repeat REQUIRED OPTIONAL_COMPONENTS DoesNotExist)
+if(NOT TARGET Repeat::Base)
+  message(SEND_ERROR "Repeat::Base missing !")
+elseif(TARGET Repeat::Extra)
+  message(SEND_ERROR "Repeat::Extra exists ?!")
+endif()
+
+find_package(Repeat REQUIRED COMPONENTS Extra)
+if(NOT TARGET Repeat::Extra)
+  message(SEND_ERROR "Repeat::Extra missing !")
+endif()
+
+###############################################################################
+# Test default configurations.
+
+find_package(DefaultConfigurationsTest)
+if(NOT DefaultConfigurationsTest_FOUND)
+  message(SEND_ERROR "DefaultConfigurationsTest not found !")
+elseif(NOT TARGET DefaultConfigurationsTest::Target)
+  message(SEND_ERROR "DefaultConfigurationsTest::Target missing !")
+else()
+  get_property(dct_configs
+    TARGET DefaultConfigurationsTest::Target PROPERTY IMPORTED_CONFIGURATIONS)
+  if(NOT "${dct_configs}" STREQUAL "DEFAULT;TEST")
+    message(SEND_ERROR "DefaultConfigurationsTest::Target has wrong configurations '${dct_configs}' !")
+  endif()
+  set(dct_configs)
 endif()

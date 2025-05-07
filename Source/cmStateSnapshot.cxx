@@ -1,17 +1,19 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 
 #include "cmStateSnapshot.h"
 
 #include <algorithm>
 #include <cassert>
 #include <string>
+#include <unordered_map>
 
 #include <cm/iterator>
 
 #include "cmDefinitions.h"
 #include "cmLinkedTree.h"
 #include "cmListFileCache.h"
+#include "cmPackageState.h"
 #include "cmPropertyMap.h"
 #include "cmState.h"
 #include "cmStateDirectory.h"
@@ -416,6 +418,12 @@ void cmStateSnapshot::SetProjectName(std::string const& name)
 std::string cmStateSnapshot::GetProjectName() const
 {
   return this->Position->BuildSystemDirectory->ProjectName;
+}
+
+cmPackageState& cmStateSnapshot::GetPackageState(
+  std::string const& packagePath)
+{
+  return this->Position->BuildSystemDirectory->Packages[packagePath];
 }
 
 void cmStateSnapshot::InitializeFromParent_ForSubdirsCommand()

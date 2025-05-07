@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #pragma once
 
 #include "cmConfigure.h" // IWYU pragma: keep
@@ -953,7 +953,7 @@ public:
   /** Return whether this target is an executable Bundle on Apple.  */
   bool IsAppBundleOnApple() const;
 
-  /** Return whether this target is a XCTest on Apple.  */
+  /** Return whether this target is an XCTest on Apple.  */
   bool IsXCTestOnApple() const;
 
   /** Return whether this target is a CFBundle (plugin) on Apple.  */
@@ -1006,7 +1006,8 @@ public:
 
   cm::optional<TransitiveProperty> IsTransitiveProperty(
     cm::string_view prop, cmLocalGenerator const* lg,
-    std::string const& config, bool evaluatingLinkLibraries) const;
+    std::string const& config,
+    cmGeneratorExpressionDAGChecker const* dagChecker) const;
 
   bool HaveInstallTreeRPATH(std::string const& config) const;
 
@@ -1370,6 +1371,9 @@ private:
 
   using OutputInfoMapType = std::map<std::string, OutputInfo>;
   mutable OutputInfoMapType OutputInfoMap;
+
+  using PdbOutputNameMapType = std::map<std::string, std::string>;
+  mutable PdbOutputNameMapType PdbOutputNameMap;
 
   using ModuleDefinitionInfoMapType =
     std::map<std::string, ModuleDefinitionInfo>;

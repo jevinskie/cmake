@@ -78,6 +78,11 @@ Variables
   The :envvar:`CMAKE_POLICY_VERSION_MINIMUM` environment variable was
   added to initialize it.
 
+* The :variable:`CMAKE_UNITY_BUILD_RELOCATABLE` variable and corresponding
+  :prop_tgt:`UNITY_BUILD_RELOCATABLE` target property were added to make
+  sources generated for :variable:`CMAKE_UNITY_BUILD` to ``#include`` the
+  original source files using relative paths where possible.
+
 * The :variable:`CMAKE_XCODE_SCHEME_LLDB_INIT_FILE` variable and corresponding
   :prop_tgt:`XCODE_SCHEME_LLDB_INIT_FILE` target property were added to tell
   the :generator:`Xcode` generator what to put in the scheme's "LLDB Init File"
@@ -166,7 +171,7 @@ CTest
 CPack
 -----
 
-* The :cpack_gen:`CPack Archive Generator` learned to generated ``.tar``
+* The :cpack_gen:`CPack Archive Generator` learned to generate ``.tar``
   packages without compression.
 
 * The :cpack_gen:`CPack Archive Generator` now honors the
@@ -224,11 +229,31 @@ Other Changes
   behavior can override user-specified compiler paths.  Therefore, this
   behavior has been reverted.
 
-* Builds targeting macOS no longer choose any SDK or pass an ``-isysroot``
-  flag to the compiler by default.  Instead, compilers are expected to
-  choose a default macOS SDK on their own.  In order to use a compiler that
-  does not do this, users must now specify ``-DCMAKE_OSX_SYSROOT=macosx``
-  when configuring their build.
+* In builds targeting macOS, :variable:`CMAKE_OSX_SYSROOT` now defaults to
+  empty, deferring to the compiler's default macOS SDK selection.  In order
+  to pass an explicit macOS SDK via the compiler's ``-isysroot`` flag, users
+  may configure their build tree with ``-DCMAKE_OSX_SYSROOT=macosx``, or
+  ``export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"`` in their
+  environment.
+
+  Notes:
+
+  * macOS compilers in ``/usr/bin``, when not invoked with ``-isysroot``,
+    search for headers in ``/usr/local/include`` before system SDK paths,
+    matching the convention on many platforms.  Users on macOS-x86_64 hosts
+    with Homebrew installed in ``/usr/local`` should pass an explicit SDK,
+    as described above, when not building with Homebrew tools.
+
+  * Some Clang compilers have no default macOS SDK selection.  For these,
+    if :variable:`CMAKE_OSX_SYSROOT` is empty, CMake will automatically pass
+    ``-isysroot`` with the macOS SDK printed by ``xcrun --show-sdk-path``.
+
+* On Windows, file paths named in project code, e.g., in ``CMakeLists.txt``,
+  are no longer automatically converted to their on-disk upper/lower case.
+  Projects are expected to spell source file paths consistently using
+  their canonical case, e.g., in calls to :command:`add_library`,
+  :command:`set_property(SOURCE)`, or :command:`set_source_files_properties`.
+  This matches the behavior on platforms with case-sensitive filesystems.
 
 * On AIX, ``SHARED`` library targets now produce a shared library archive
   by default.  See policy :policy:`CMP0182`.
@@ -239,7 +264,33 @@ Other Changes
   or ``TRACE`` via the   :option:`cmake --log-level` option or the
   :variable:`CMAKE_MESSAGE_LOG_LEVEL` cache variable.
 
-* Precompiled SunOS ``sparc`` and ``i386`` binaries are now provided
+* Precompiled SunOS ``sparc64`` and ``x86_64`` binaries are now provided
   on `cmake.org`_.
 
 .. _`cmake.org`: https://cmake.org/download/
+
+Updates
+=======
+
+Changes made since CMake 4.0.0 include the following.
+
+4.0.1
+-----
+
+* This version made no changes to documented features or interfaces.
+  Some implementation updates were made to support ecosystem changes
+  and/or fix regressions.
+
+4.0.2
+-----
+
+* When building for macOS with a Clang that has no default macOS SDK,
+  if :variable:`CMAKE_OSX_SYSROOT` is empty, CMake now automatically passes
+  ``-isysroot`` with the macOS SDK printed by ``xcrun --show-sdk-path``.
+  This restores support for using LLVM/Clang on macOS without manually
+  setting ``CMAKE_OSX_SYSROOT``, which was broken by CMake 4.0.0's
+  removal of a default value.
+
+* The :prop_tgt:`DEBUGGER_WORKING_DIRECTORY` target property is now
+  used by the :generator:`Xcode` generator as a fallback for the
+  :prop_tgt:`XCODE_SCHEME_WORKING_DIRECTORY` target property.

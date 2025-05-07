@@ -1,5 +1,5 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-# file Copyright.txt or https://cmake.org/licensing for details.
+# file LICENSE.rst or https://cmake.org/licensing for details.
 
 foreach(
   arg
@@ -164,8 +164,12 @@ function(run_cmake test)
   else()
     set(old_pwd)
   endif()
-  # Emulate a shell using this directory.
-  set(ENV{PWD} "${RunCMake_TEST_COMMAND_WORKING_DIRECTORY}")
+  if(RunCMake_TEST_COMMAND_PWD)
+    set(ENV{PWD} "${RunCMake_TEST_COMMAND_PWD}")
+  else()
+    # Emulate a shell using this directory.
+    set(ENV{PWD} "${RunCMake_TEST_COMMAND_WORKING_DIRECTORY}")
+  endif()
   cmake_language(EVAL CODE "${_code}")
   if(DEFINED old_pwd)
     set(ENV{PWD} "${old_pwd}")
@@ -197,6 +201,7 @@ function(run_cmake test)
     "|icp?x: remark: Note that use of .-g. without any optimization-level option will turn off most compiler optimizations"
     "|ifx: remark #10440: Note that use of a debug option without any optimization-level option will turnoff most compiler optimizations"
     "|lld-link: warning: procedure symbol record for .* refers to PDB item index [0-9A-Fa-fx]+ which is not a valid function ID record"
+    "|ld: warning: .* has a LOAD segment with RWX permissions"
     "|Error kstat returned"
     "|Hit xcodebuild bug"
     "|Recompacting log\\.\\.\\."

@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmCTestTestHandler.h"
 
 #include <algorithm>
@@ -1324,7 +1324,14 @@ bool cmCTestTestHandler::ProcessDirectory(std::vector<std::string>& passed,
 
   bool randomSchedule = this->CTest->GetScheduleType() == "Random";
   if (randomSchedule) {
-    srand(static_cast<unsigned>(time(nullptr)));
+    cm::optional<unsigned int> scheduleRandomSeed =
+      this->CTest->GetRandomSeed();
+    if (!scheduleRandomSeed.has_value()) {
+      scheduleRandomSeed = static_cast<unsigned int>(time(nullptr));
+    }
+    srand(*scheduleRandomSeed);
+    *this->LogFile << "Test order random seed: " << *scheduleRandomSeed
+                   << std::endl;
   }
 
   for (cmCTestTestProperties& p : this->TestList) {
@@ -1708,7 +1715,7 @@ std::string cmCTestTestHandler::FindExecutable(
   // if everything else failed, check the users path, but only if a full path
   // wasn't specified
   if (fullPath.empty() && filepath.empty()) {
-    std::string path = cmSystemTools::FindProgram(filename.c_str());
+    std::string path = cmSystemTools::FindProgram(filename);
     if (!path.empty()) {
       resultingConfig.clear();
       return path;

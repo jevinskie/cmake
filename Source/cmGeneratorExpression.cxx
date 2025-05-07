@@ -1,10 +1,11 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmGeneratorExpression.h"
 
 #include <algorithm>
 #include <cassert>
 #include <memory>
+#include <stack>
 #include <utility>
 
 #include <cm/string_view>
@@ -42,7 +43,7 @@ std::unique_ptr<cmCompiledGeneratorExpression> cmGeneratorExpression::Parse(
 }
 
 std::string cmGeneratorExpression::Evaluate(
-  std::string input, cmLocalGenerator* lg, std::string const& config,
+  std::string input, cmLocalGenerator const* lg, std::string const& config,
   cmGeneratorTarget const* headTarget,
   cmGeneratorExpressionDAGChecker* dagChecker,
   cmGeneratorTarget const* currentTarget, std::string const& language)
@@ -62,7 +63,7 @@ std::string cmGeneratorExpression::Evaluate(
 }
 
 std::string const& cmCompiledGeneratorExpression::Evaluate(
-  cmLocalGenerator* lg, std::string const& config,
+  cmLocalGenerator const* lg, std::string const& config,
   cmGeneratorTarget const* headTarget,
   cmGeneratorExpressionDAGChecker* dagChecker,
   cmGeneratorTarget const* currentTarget, std::string const& language) const
@@ -156,27 +157,40 @@ std::string cmGeneratorExpression::StripEmptyListElements(
   return result;
 }
 
-static std::string stripAllGeneratorExpressions(std::string const& input)
+static std::string extractAllGeneratorExpressions(
+  std::string const& input,
+  std::map<std::string, std::vector<std::string>>* collected)
 {
   std::string result;
   std::string::size_type pos = 0;
   std::string::size_type lastPos = pos;
-  int nestingLevel = 0;
+  // stack of { Generator Expression Name, Start Position of Value }
+  std::stack<std::pair<std::string, std::string::size_type>> genexps;
   while ((pos = input.find("$<", lastPos)) != std::string::npos) {
     result += input.substr(lastPos, pos - lastPos);
     pos += 2;
-    nestingLevel = 1;
     char const* c = input.c_str() + pos;
+    char const* cName = c;
     char const* const cStart = c;
     for (; *c; ++c) {
       if (cmGeneratorExpression::StartsWithGeneratorExpression(c)) {
-        ++nestingLevel;
         ++c;
+        cName = c + 1;
         continue;
       }
-      if (c[0] == '>') {
-        --nestingLevel;
-        if (nestingLevel == 0) {
+      if (c[0] == ':' && cName) {
+        genexps.push({ input.substr(pos + (cName - cStart), c - cName),
+                       pos + (c + 1 - cStart) });
+        cName = nullptr;
+      } else if (c[0] == '>') {
+        if (!cName && !genexps.empty()) {
+          if (collected) {
+            (*collected)[genexps.top().first].push_back(input.substr(
+              genexps.top().second, pos + c - cStart - genexps.top().second));
+          }
+          genexps.pop();
+        }
+        if (genexps.empty()) {
           break;
         }
       }
@@ -188,10 +202,15 @@ static std::string stripAllGeneratorExpressions(std::string const& input)
     pos += traversed;
     lastPos = pos;
   }
-  if (nestingLevel == 0) {
+  if (genexps.empty()) {
     result += input.substr(lastPos);
   }
   return cmGeneratorExpression::StripEmptyListElements(result);
+}
+
+static std::string stripAllGeneratorExpressions(std::string const& input)
+{
+  return extractAllGeneratorExpressions(input, nullptr);
 }
 
 static void prefixItems(std::string const& content, std::string& result,
@@ -375,6 +394,13 @@ std::string cmGeneratorExpression::Preprocess(std::string const& input,
   return std::string();
 }
 
+std::string cmGeneratorExpression::Collect(
+  std::string const& input,
+  std::map<std::string, std::vector<std::string>>& collected)
+{
+  return extractAllGeneratorExpressions(input, &collected);
+}
+
 cm::string_view::size_type cmGeneratorExpression::Find(
   cm::string_view const& input)
 {
@@ -425,10 +451,14 @@ std::string const& cmGeneratorExpressionInterpreter::Evaluate(
     this->GeneratorExpression.Parse(std::move(expression));
 
   // Specify COMPILE_OPTIONS to DAGchecker, same semantic as COMPILE_FLAGS
-  cmGeneratorExpressionDAGChecker dagChecker(
+  cmGeneratorExpressionDAGChecker dagChecker{
     this->HeadTarget,
-    property == "COMPILE_FLAGS" ? "COMPILE_OPTIONS" : property, nullptr,
-    nullptr, this->LocalGenerator, this->Config);
+    property == "COMPILE_FLAGS" ? "COMPILE_OPTIONS" : property,
+    nullptr,
+    nullptr,
+    this->LocalGenerator,
+    this->Config,
+  };
 
   return this->CompiledGeneratorExpression->Evaluate(
     this->LocalGenerator, this->Config, this->HeadTarget, &dagChecker, nullptr,

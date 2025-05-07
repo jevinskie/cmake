@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmLocalGenerator.h"
 
 #include <algorithm>
@@ -2014,6 +2014,11 @@ void cmLocalGenerator::AddArchitectureFlags(std::string& flags,
     }
 
     cmValue sysroot = this->Makefile->GetDefinition("CMAKE_OSX_SYSROOT");
+    if (sysroot.IsEmpty() &&
+        this->Makefile->IsOn(
+          cmStrCat("CMAKE_", lang, "_COMPILER_APPLE_SYSROOT_REQUIRED"))) {
+      sysroot = this->Makefile->GetDefinition("_CMAKE_OSX_SYSROOT_PATH");
+    }
     if (sysroot && *sysroot == "/") {
       sysroot = nullptr;
     }
@@ -2639,7 +2644,8 @@ void cmLocalGenerator::AppendFlags(std::string& flags,
       }
       CM_FALLTHROUGH;
     case cmPolicies::OLD:
-      this->AppendFlags(flags, newFlags);
+      this->AppendFlags(
+        flags, this->GetGlobalGenerator()->GetEncodedLiteral(newFlags));
       break;
     case cmPolicies::NEW:
       if (compileOrLink == cmBuildStep::Link) {

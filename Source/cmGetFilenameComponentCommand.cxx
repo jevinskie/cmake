@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmGetFilenameComponentCommand.h"
 
 #include "cmExecutionStatus.h"
@@ -107,15 +107,9 @@ bool cmGetFilenameComponentCommand(std::vector<std::string> const& args,
         }
       }
     }
-    if (args[2] == "ABSOLUTE") {
-      // Collapse the path to its simplest form.
-      result = cmSystemTools::CollapseFullPath(filename, baseDir);
-    } else {
-      // Convert relative paths to absolute paths
-      result = filename;
-      if (!cmSystemTools::FileIsFullPath(result)) {
-        result = cmStrCat(baseDir, '/', result);
-      }
+    // Collapse the path to its simplest form.
+    result = cmSystemTools::CollapseFullPath(filename, baseDir);
+    if (args[2] == "REALPATH") {
       // Resolve symlinks if possible
       result = cmSystemTools::GetRealPath(result);
     }

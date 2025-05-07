@@ -1,6 +1,6 @@
 #!/bin/sh
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-# file Copyright.txt or https://cmake.org/licensing for details.
+# file LICENSE.rst or https://cmake.org/licensing for details.
 
 die() {
   echo "$@" 1>&2 ; exit 1
@@ -64,7 +64,8 @@ if test "$cmake_version_rc" != ""; then
   cmake_version="${cmake_version}-rc${cmake_version_rc}"
 fi
 
-cmake_copyright="`grep '^Copyright .* Kitware' "${cmake_source_dir}/Copyright.txt"`"
+cmake_copyright="`grep '^Copyright .* Kitware' "${cmake_source_dir}/LICENSE.rst" |
+                  sed 's/\`Contributors.*\`_/Contributors/'`"
 
 cmake_bin_dir_keyword="OTHER"
 cmake_data_dir_keyword="OTHER"
@@ -1782,11 +1783,10 @@ else
       uv_c_flags="${uv_c_flags} -D_GNU_SOURCE"
       libs="${libs} -ldl -lrt"
       ;;
-    *kFreeBSD*)
-      libs="${libs} -lkvm -lfreebsd-glue"
+    *NetBSD*)
+      libs="${libs} -lkvm"
       ;;
     *BSD*)
-      libs="${libs} -lkvm"
       ;;
     *SunOS*)
       uv_c_flags="${uv_c_flags} -D__EXTENSIONS__ -D_XOPEN_SOURCE=600"

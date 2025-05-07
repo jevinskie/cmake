@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #pragma once
 
 #include "cmConfigure.h" // IWYU pragma: keep
@@ -43,6 +43,7 @@ protected:
     cm::optional<ArgumentParser::Maybe<std::string>> ParallelLevel;
     std::string Repeat;
     std::string ScheduleRandom;
+    std::string ScheduleRandomSeed;
     std::string StopTime;
     std::string TestLoad;
     std::string ResourceSpecFile;
@@ -70,6 +71,7 @@ protected:
       .Bind("PARALLEL_LEVEL"_s, &TestArguments::ParallelLevel)
       .Bind("REPEAT"_s, &TestArguments::Repeat)
       .Bind("SCHEDULE_RANDOM"_s, &TestArguments::ScheduleRandom)
+      .Bind("SCHEDULE_RANDOM_SEED"_s, &TestArguments::ScheduleRandomSeed)
       .Bind("STOP_TIME"_s, &TestArguments::StopTime)
       .Bind("TEST_LOAD"_s, &TestArguments::TestLoad)
       .Bind("RESOURCE_SPEC_FILE"_s, &TestArguments::ResourceSpecFile)

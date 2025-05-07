@@ -1,5 +1,5 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-# file Copyright.txt or https://cmake.org/licensing for details.
+# file LICENSE.rst or https://cmake.org/licensing for details.
 
 
 # This file sets the basic flags for the Objective-C language in CMake.
@@ -27,7 +27,7 @@ endif()
 
 set(CMAKE_BASE_NAME)
 get_filename_component(CMAKE_BASE_NAME "${CMAKE_OBJC_COMPILER}" NAME_WE)
-if(CMAKE_COMPILER_IS_GNUOBJC)
+if(CMAKE_OBJC_COMPILER_ID STREQUAL "GNU")
   set(CMAKE_BASE_NAME gcc)
 endif()
 

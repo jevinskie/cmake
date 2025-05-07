@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmExportTryCompileFileGenerator.h"
 
 #include <map>
@@ -86,9 +86,14 @@ std::string cmExportTryCompileFileGenerator::FindTargets(
       tgt, "LINK_OPTIONS", nullptr, nullptr, tgt->GetLocalGenerator(),
       this->Config);
   }
-  cmGeneratorExpressionDAGChecker dagChecker(
-    tgt, propName, nullptr, parentDagChecker.get(), tgt->GetLocalGenerator(),
-    this->Config);
+  cmGeneratorExpressionDAGChecker dagChecker{
+    tgt,
+    propName,
+    nullptr,
+    parentDagChecker.get(),
+    tgt->GetLocalGenerator(),
+    this->Config,
+  };
 
   std::unique_ptr<cmCompiledGeneratorExpression> cge = ge.Parse(*prop);
 

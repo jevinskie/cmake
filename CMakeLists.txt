@@ -1,5 +1,5 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-# file Copyright.txt or https://cmake.org/licensing for details.
+# file LICENSE.rst or https://cmake.org/licensing for details.
 
 cmake_minimum_required(VERSION 3.13...3.31 FATAL_ERROR)
 set(CMAKE_USER_MAKE_RULES_OVERRIDE_C ${CMAKE_CURRENT_SOURCE_DIR}/Source/Modules/OverrideC.cmake)
@@ -99,6 +99,9 @@ configure_file(Utilities/std/cmSTL.hxx.in Utilities/cmSTL.hxx @ONLY)
 
 # set the internal encoding of CMake to UTF-8
 set(KWSYS_ENCODING_DEFAULT_CODEPAGE CP_UTF8)
+
+# enable parallel install
+set_property(GLOBAL PROPERTY INSTALL_PARALLEL ON)
 
 # option to use COMPONENT with install command
 option(CMake_INSTALL_COMPONENTS "Using components when installing" OFF)
@@ -386,13 +389,14 @@ endif()
 # The main section of the CMakeLists file
 #
 #-----------------------------------------------------------------------
+include(Source/CMakeCopyright.cmake)
 include(Source/CMakeVersion.cmake)
 
 include(CTest)
 
 # Set up test-time configuration.
-set_directory_properties(PROPERTIES
-  TEST_INCLUDE_FILE "${CMake_BINARY_DIR}/Tests/EnforceConfig.cmake")
+set_property(DIRECTORY APPEND PROPERTY
+  TEST_INCLUDE_FILES "${CMake_BINARY_DIR}/Tests/EnforceConfig.cmake")
 
 if(NOT CMake_TEST_EXTERNAL_CMAKE)
   # where to write the resulting executables and libraries
@@ -533,7 +537,10 @@ endif()
 
 if(NOT CMake_TEST_EXTERNAL_CMAKE)
   # Install license file as it requires.
-  install(FILES Copyright.txt DESTINATION ${CMAKE_DOC_DIR})
+  install(FILES
+    "${CMake_LICENSE_FILE}"
+    "${CMake_SOURCE_DIR}/CONTRIBUTORS.rst"
+    DESTINATION ${CMAKE_DOC_DIR})
 
   # Install script directories.
   install(

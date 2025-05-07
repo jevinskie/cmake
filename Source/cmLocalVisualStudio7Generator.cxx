@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmLocalVisualStudio7Generator.h"
 
 #include <algorithm>
@@ -2043,7 +2043,7 @@ void cmLocalVisualStudio7Generator::WriteProjectStartFortran(
   }
   this->WriteProjectSCC(fout, target);
   /* clang-format off */
-  fout<< "\tKeyword=\"" << keyword << "\">\n"
+  fout<< "\tKeyword=\"" << keyword << "\"\n"
          "\tProjectGUID=\"{" << gg->GetGUID(libName) << "}\">\n"
          "\t<Platforms>\n"
          "\t\t<Platform\n\t\t\tName=\"" << gg->GetPlatformName() << "\"/>\n"

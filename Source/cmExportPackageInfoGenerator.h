@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #pragma once
 
 #include "cmConfigure.h" // IWYU pragma: keep
@@ -62,8 +62,7 @@ protected:
   bool GenerateInterfaceProperties(Json::Value& component,
                                    cmGeneratorTarget const* target,
                                    ImportPropertyMap const& properties) const;
-  void GenerateInterfaceConfigProperties(
-    Json::Value& components, cmGeneratorTarget const* target,
+  Json::Value GenerateInterfaceConfigProperties(
     std::string const& suffix, ImportPropertyMap const& properties) const;
 
   cm::string_view GetImportPrefixWithSlash() const override;

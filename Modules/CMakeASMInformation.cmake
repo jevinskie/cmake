@@ -1,5 +1,5 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-# file Copyright.txt or https://cmake.org/licensing for details.
+# file LICENSE.rst or https://cmake.org/licensing for details.
 
 
 if(UNIX)
@@ -22,7 +22,7 @@ if(CMAKE_ASM${ASM_DIALECT}_COMPILER_ID)
   include(Compiler/${CMAKE_ASM${ASM_DIALECT}_COMPILER_ID}-ASM${ASM_DIALECT} OPTIONAL  RESULT_VARIABLE _INCLUDED_FILE)
 endif()
 if(NOT _INCLUDED_FILE)
-  if("ASM${ASM_DIALECT}" STREQUAL "ASM")
+  if("ASM${ASM_DIALECT}" STREQUAL "ASM" AND CMAKE_ASM${ASM_DIALECT}_COMPILER_ID)
     message(STATUS "Warning: Did not find file Compiler/${CMAKE_ASM${ASM_DIALECT}_COMPILER_ID}-ASM${ASM_DIALECT}")
   endif()
   include(Platform/${CMAKE_BASE_NAME} OPTIONAL)

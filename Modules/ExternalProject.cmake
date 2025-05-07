@@ -1,5 +1,5 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-# file Copyright.txt or https://cmake.org/licensing for details.
+# file LICENSE.rst or https://cmake.org/licensing for details.
 
 include_guard(GLOBAL)
 
@@ -300,6 +300,10 @@ URL
 
 .. versionadded:: 3.1
   Added support for `tbz2`, `.tar.xz`, `.txz`, and `.7z` extensions.
+
+.. versionadded:: 4.1
+  All archive types that :option:`cmake -E tar <cmake-E tar>` can extract
+  are supported regardless of file extension.
 
 Git
 ~~~

@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 /* clang-format off */
 #include "cmGeneratorTarget.h"
 /* clang-format on */
@@ -122,8 +122,9 @@ std::vector<BT<std::string>> cmGeneratorTarget::GetLinkDirectories(
   std::vector<BT<std::string>> result;
   std::unordered_set<std::string> uniqueDirectories;
 
-  cmGeneratorExpressionDAGChecker dagChecker(
-    this, "LINK_DIRECTORIES", nullptr, nullptr, this->LocalGenerator, config);
+  cmGeneratorExpressionDAGChecker dagChecker{
+    this, "LINK_DIRECTORIES", nullptr, nullptr, this->LocalGenerator, config,
+  };
 
   cmList debugProperties{ this->Makefile->GetDefinition(
     "CMAKE_DEBUG_TARGET_PROPERTIES") };

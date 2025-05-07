@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmCTestEmptyBinaryDirectoryCommand.h"
 
 #include "cmsys/Directory.hxx"
@@ -7,6 +7,7 @@
 #include "cmExecutionStatus.h"
 #include "cmMakefile.h"
 #include "cmMessageType.h"
+#include "cmMessenger.h"
 #include "cmStringAlgorithms.h"
 #include "cmSystemTools.h"
 
@@ -94,10 +95,12 @@ bool cmCTestEmptyBinaryDirectoryCommand(std::vector<std::string> const& args,
 
   std::string err;
   if (!EmptyBinaryDirectory(args[0], err)) {
-    status.GetMakefile().IssueMessage(
+    cmMakefile& mf = status.GetMakefile();
+    mf.GetMessenger()->DisplayMessage(
       MessageType::FATAL_ERROR,
       cmStrCat("Did not remove the binary directory:\n ", args[0],
-               "\nbecause:\n ", err));
+               "\nbecause:\n ", err),
+      mf.GetBacktrace());
     return true;
   }
 

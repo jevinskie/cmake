@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 
 #if !defined(_WIN32) && !defined(__sun) && !defined(__OpenBSD__)
 // POSIX APIs are needed
@@ -11,11 +11,19 @@
 // NOLINTNEXTLINE(bugprone-reserved-identifier)
 #  define _XOPEN_SOURCE 700
 #endif
+#if defined(__APPLE__)
+// Restore Darwin APIs removed by _POSIX_C_SOURCE:
+//   aligned_alloc
+//   timespec_get
+// NOLINTNEXTLINE(bugprone-reserved-identifier)
+#  define _DARWIN_C_SOURCE
+#endif
 
 #include "cmTimestamp.h"
 
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <sstream>
 #include <utility>
 
@@ -62,7 +70,8 @@ std::string cmTimestamp::FileModificationTime(char const* path,
                                               std::string const& formatString,
                                               bool utcFlag) const
 {
-  std::string real_path = cmSystemTools::GetRealPath(path);
+  std::string real_path =
+    cmSystemTools::GetRealPathResolvingWindowsSubst(path);
 
   if (!cmsys::SystemTools::FileExists(real_path)) {
     return std::string();
@@ -275,7 +284,8 @@ std::string cmTimestamp::AddTimestampComponent(
         return std::string();
       }
 
-      return std::to_string(static_cast<long int>(difftime(timeT, unixEpoch)));
+      return std::to_string(
+        static_cast<int64_t>(std::difftime(timeT, unixEpoch)));
     }
     case 'f': // microseconds
     {

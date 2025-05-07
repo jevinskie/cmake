@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #pragma once
 
 #include "cmConfigure.h" // IWYU pragma: keep
@@ -476,6 +476,8 @@ public:
     return this->ImportedTargetsOwned;
   }
   std::vector<cmTarget*> GetImportedTargets() const;
+
+  cmTarget* FindImportedTarget(std::string const& name) const;
 
   cmTarget* FindLocalNonAliasTarget(std::string const& name) const;
 

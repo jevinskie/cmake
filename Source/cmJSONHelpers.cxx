@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmConfigure.h" // IWYU pragma: keep
 
 #include "cmJSONHelpers.h"
@@ -52,6 +52,11 @@ ObjectErrorGenerator INVALID_NAMED_OBJECT(
   std::function<std::string(Json::Value const*, cmJSONState*)> const&
     nameGenerator)
 {
+#if defined(__GNUC__) && __GNUC__ >= 15
+#  define CM_GCC_diagnostic_push_Wmaybe_uninitialized
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
   return [nameGenerator](
            ObjectError errorType,
            Json::Value::Members const& extraFields) -> ErrorGenerator {
@@ -85,6 +90,10 @@ ObjectErrorGenerator INVALID_NAMED_OBJECT(
       }
     };
   };
+#ifdef CM_GCC_diagnostic_push_Wmaybe_uninitialized
+#  pragma GCC diagnostic pop
+#  undef CM_GCC_diagnostic_push_Wmaybe_uninitialized
+#endif
 }
 
 ErrorGenerator INVALID_OBJECT(ObjectError errorType,

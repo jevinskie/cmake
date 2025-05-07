@@ -1,5 +1,5 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-# file Copyright.txt or https://cmake.org/licensing for details.
+# file LICENSE.rst or https://cmake.org/licensing for details.
 
 #[=======================================================================[.rst:
 CPack
@@ -571,6 +571,11 @@ function(_cpack_escape_for_cmake var value)
   string(REGEX REPLACE "([\\\$\"])" "\\\\\\1" escaped "${value}")
   set("${var}" "${escaped}" PARENT_SCOPE)
 endfunction()
+
+# Resolve CPACK_PROJECT_CONFIG_FILE relative to the source directory
+if(DEFINED CPACK_PROJECT_CONFIG_FILE)
+  cmake_path(ABSOLUTE_PATH CPACK_PROJECT_CONFIG_FILE)
+endif()
 
 # Set the package name
 _cpack_set_default(CPACK_PACKAGE_NAME "${CMAKE_PROJECT_NAME}")

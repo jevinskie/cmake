@@ -219,24 +219,6 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
   list(APPEND uv_libraries
-    kvm
-    )
-  list(APPEND uv_headers
-    include/uv/bsd.h
-    )
-  list(APPEND uv_sources
-    src/unix/bsd-ifaddrs.c
-    src/unix/bsd-proctitle.c
-    src/unix/freebsd.c
-    src/unix/kqueue.c
-    src/unix/posix-hrtime.c
-    )
-endif()
-
-if(CMAKE_SYSTEM_NAME STREQUAL "kFreeBSD")
-  list(APPEND uv_libraries
-    freebsd-glue
-    kvm
     )
   list(APPEND uv_headers
     include/uv/bsd.h
@@ -268,7 +250,6 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
   list(APPEND uv_libraries
-    kvm
     )
   list(APPEND uv_headers
     include/uv/bsd.h
@@ -302,7 +283,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
   endif()
   if(CMAKE_SYSTEM_VERSION STREQUAL "5.10")
     list(APPEND uv_defines SUNOS_NO_IFADDRS)
-    if(CMAKE_SYSTEM_PROCESSOR STREQUAL "i386")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i386|x86_64)$")
       list(APPEND uv_defines CMAKE_NO_MKDTEMP)
     endif()
   endif()

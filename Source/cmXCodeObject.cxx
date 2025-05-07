@@ -1,12 +1,10 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmXCodeObject.h"
 
 #include <ostream>
 
 #include <cmext/string_view>
-
-#include <CoreFoundation/CoreFoundation.h>
 
 char const* cmXCodeObject::PBXTypeNames[] = {
   /* clang-format needs this comment to break after the opening brace */

@@ -1,5 +1,5 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-# file Copyright.txt or https://cmake.org/licensing for details.
+# file LICENSE.rst or https://cmake.org/licensing for details.
 
 # See adjacent README.rst for documentation of this test infrastructure.
 
@@ -180,6 +180,10 @@ add_RunCMake_test(CMP0170)
 add_RunCMake_test(CMP0171)
 add_RunCMake_test(CMP0173)
 add_RunCMake_test(CMP0187)
+
+if(CMAKE_C_COMPILER_ID STREQUAL "MSVC")
+  add_RunCMake_test(CMP0194 -DCMAKE_C_COMPILER_VERSION=${CMAKE_C_COMPILER_VERSION})
+endif()
 
 # The test for Policy 65 requires the use of the
 # CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS variable, which both the VS and Xcode
@@ -397,7 +401,8 @@ set_property(TEST RunCMake.CompilerId APPEND PROPERTY LABELS "CUDA" "HIP" "ISPC"
 add_RunCMake_test(CompilerTest ${CMake_TEST_LANG_VARS})
 set_property(TEST RunCMake.CompilerTest APPEND PROPERTY LABELS "CUDA" "HIP" "ISPC" "Fortran")
 add_RunCMake_test(Configure -DMSVC_IDE=${MSVC_IDE})
-add_RunCMake_test(CpsExportImport)
+add_RunCMake_test(CpsExportImportBuild)
+add_RunCMake_test(CpsExportImportInstall)
 add_RunCMake_test(DisallowedCommands)
 if("${CMAKE_GENERATOR}" MATCHES "Unix Makefiles|Ninja")
   add_RunCMake_test(ExportCompileCommands)
@@ -420,6 +425,71 @@ if(CMAKE_GENERATOR MATCHES "Make|Ninja")
   add_RunCMake_test(Instrumentation)
 endif()
 add_RunCMake_test(ConfigDir)
+if(CMake_TEST_FindPython2)
+  add_RunCMake_test(FindPython2.CPython TEST_DIR FindPython
+                                        -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
+                                        "-DRunCMake_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+                                        -DCMake_TEST_FindPython2_CPython=TRUE
+                                        -DCMake_TEST_FindPython2=TRUE)
+  set_property(TEST RunCMake.FindPython2.CPython PROPERTY LABELS Python2)
+endif()
+if(CMake_TEST_FindPython3)
+  add_RunCMake_test(FindPython3.CPython TEST_DIR FindPython
+                                        -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
+                                        "-DRunCMake_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+                                        -DCMAKE_C_COMPILER_ID=${CMAKE_C_COMPILER_ID}
+                                        -DCMAKE_C_COMPILER_VERSION=${CMAKE_C_COMPILER_VERSION}
+                                        -DCMake_TEST_FindPython3_CPython=TRUE
+                                        -DCMake_TEST_FindPython3=TRUE)
+  set_property(TEST RunCMake.FindPython3.CPython PROPERTY LABELS Python3)
+endif()
+if(CMake_TEST_FindPython2_IronPython)
+  add_RunCMake_test(FindPython2.IronPython TEST_DIR FindPython
+                                           -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
+                                           "-DRunCMake_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+                                           -DCMake_TEST_FindPython2=${CMake_TEST_FindPython2}
+                                           -DCMake_TEST_FindPython2_IronPython=${CMake_TEST_FindPython2_IronPython})
+  set_property(TEST RunCMake.FindPython2.IronPython PROPERTY LABELS Python2)
+endif()
+if(CMake_TEST_FindPython3_IronPython)
+  add_RunCMake_test(FindPython3.IronPython TEST_DIR FindPython
+                                           -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
+                                           "-DRunCMake_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+                                           -DCMake_TEST_FindPython3=${CMake_TEST_FindPython3}
+                                           -DCMake_TEST_FindPython3_IronPython=${CMake_TEST_FindPython3_IronPython})
+  set_property(TEST RunCMake.FindPython3.IronPython PROPERTY LABELS Python3)
+endif()
+if(CMake_TEST_FindPython2_PyPy)
+  add_RunCMake_test(FindPython2.PyPy TEST_DIR FindPython
+                                     -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
+                                     "-DRunCMake_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+                                     -DCMake_TEST_FindPython2_PyPy=${CMake_TEST_FindPython2_PyPy})
+  set_property(TEST RunCMake.FindPython2.PyPy PROPERTY LABELS Python2)
+endif()
+if(CMake_TEST_FindPython3_PyPy)
+  add_RunCMake_test(FindPython3.PyPy TEST_DIR FindPython
+                                     -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
+                                     "-DRunCMake_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+                                     -DCMake_TEST_FindPython3_PyPy=${CMake_TEST_FindPython3_PyPy})
+  set_property(TEST RunCMake.FindPython3.PyPy PROPERTY LABELS Python3)
+endif()
+if(CMake_TEST_FindPython2 OR CMake_TEST_FindPython2_SABIModule OR CMake_TEST_FindPython2_NumPy
+    OR CMake_TEST_FindPython3 OR CMake_TEST_FindPython3_SABIModule OR CMake_TEST_FindPython3_NumPy
+    OR CMake_TEST_FindPython3_Conda)
+  add_RunCMake_test(FindPython.Various TEST_DIR FindPython
+                                       -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
+                                       "-DRunCMake_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+                                       -DCMake_TEST_FindPython_Various=TRUE
+                                       -DCMake_TEST_FindPython2=${CMake_TEST_FindPython2}
+                                       -DCMake_TEST_FindPython2_SABIModule=${CMake_TEST_FindPython2_SABIModule}
+                                       -DCMake_TEST_FindPython2_NumPy=${CMake_TEST_FindPython2_NumPy}
+                                       -DCMake_TEST_FindPython3=${CMake_TEST_FindPython3}
+
+                                       -DCMake_TEST_FindPython3_SABIModule=${CMake_TEST_FindPython3_SABIModule}
+                                       -DCMake_TEST_FindPython3_NumPy=${CMake_TEST_FindPython3_NumPy}
+                                       -DCMake_TEST_FindPython3_Conda=${CMake_TEST_FindPython3_Conda})
+  set_property(TEST RunCMake.FindPython.Various PROPERTY LABELS Python2 Python3)
+endif()
 add_RunCMake_test(FindBoost)
 add_RunCMake_test(FindLua)
 add_RunCMake_test(FindOpenGL)
@@ -514,7 +584,13 @@ add_RunCMake_test(TargetProperties)
 add_RunCMake_test(ToolchainFile)
 add_RunCMake_test(find_dependency)
 add_RunCMake_test(CompileDefinitions)
-add_RunCMake_test(CompileWarningAsError -DCMake_TEST_CUDA=${CMake_TEST_CUDA})
+add_RunCMake_test(CompileWarningAsError
+  -DCMake_TEST_CUDA=${CMake_TEST_CUDA}
+  -DCMake_TEST_Swift=${CMake_TEST_Swift}
+  -DCMAKE_Swift_COMPILER_VERSION=${CMAKE_Swift_COMPILER_VERSION}
+  )
+set_property(TEST RunCMake.CompileWarningAsError APPEND PROPERTY LABELS
+  "CUDA" "Swift")
 if((CMAKE_C_COMPILER_ID MATCHES "AppleClang|MSVC"
     OR (CMAKE_SYSTEM_NAME MATCHES "Linux|Windows" AND CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     OR (CMAKE_SYSTEM_NAME STREQUAL "SunOS" AND CMAKE_C_COMPILER_ID STREQUAL "SunPro")
@@ -522,7 +598,6 @@ if((CMAKE_C_COMPILER_ID MATCHES "AppleClang|MSVC"
   AND CMAKE_C_COMPILER_LINKER_ID)
   add_RunCMake_test(LinkWarningAsError)
 endif()
-set_property(TEST RunCMake.CompileWarningAsError APPEND PROPERTY LABELS "CUDA")
 add_RunCMake_test(CompileFeatures -DCMake_NO_C_STANDARD=${CMake_NO_C_STANDARD} -DCMake_NO_CXX_STANDARD=${CMake_NO_CXX_STANDARD})
 add_RunCMake_test(Policy)
 add_RunCMake_test(PolicyScope)
@@ -606,6 +681,7 @@ add_RunCMake_test(ctest_update)
 add_RunCMake_test(ctest_upload)
 add_RunCMake_test(ctest_environment)
 add_RunCMake_test(ctest_empty_binary_directory)
+add_RunCMake_test(ctest_exit)
 add_RunCMake_test(ctest_fixtures)
 if(CMAKE_GENERATOR MATCHES "Make|Ninja")
   add_RunCMake_test(ctest_instrumentation)
@@ -642,6 +718,9 @@ add_RunCMake_test(function)
 add_RunCMake_test(block)
 add_RunCMake_test(get_filename_component)
 add_RunCMake_test(get_property)
+if(DEFINED CMake_TEST_NO_WRITE_ONLY_DIR)
+  list(APPEND if_ARGS -DCMake_TEST_NO_WRITE_ONLY_DIR=${CMake_TEST_NO_WRITE_ONLY_DIR})
+endif()
 add_RunCMake_test(if -DMSYS=${MSYS})
 add_RunCMake_test(include)
 add_RunCMake_test(include_directories)
@@ -660,12 +739,16 @@ add_RunCMake_test(return)
 add_RunCMake_test(SarifOutput)
 add_RunCMake_test(separate_arguments)
 add_RunCMake_test(set_property)
-add_RunCMake_test(string)
+add_RunCMake_test(string
+  -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
+  -DCMAKE_SYSTEM_PROCESSOR=${CMAKE_SYSTEM_PROCESSOR}
+  )
 add_RunCMake_test(test_include_dirs)
 add_RunCMake_test(BundleUtilities)
 if(APPLE)
   add_RunCMake_test(INSTALL_NAME_DIR)
   add_RunCMake_test(MacOSVersions)
+  add_RunCMake_test(AppleSDK)
   add_RunCMake_test(AppleTextStubs)
 endif()
 
@@ -897,6 +980,8 @@ add_RunCMake_test(target_link_libraries-LINK_GROUP -DCMAKE_SYSTEM_NAME=${CMAKE_S
                                                    -DCMAKE_IMPORT_LIBRARY_SUFFIX=${CMAKE_IMPORT_LIBRARY_SUFFIX}
                                                    -DCMAKE_LINK_LIBRARY_FLAG=${CMAKE_LINK_LIBRARY_FLAG})
 add_RunCMake_test(target_link_libraries-LINKER-prefix -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
+                                                      -DCMAKE_EXECUTABLE_FORMAT=${CMAKE_EXECUTABLE_FORMAT}
+                                                      -DCMAKE_SHARED_LIBRARY_RPATH_ORIGIN_TOKEN=${CMAKE_SHARED_LIBRARY_RPATH_ORIGIN_TOKEN}
                                                       -DCMAKE_C_COMPILER_ID=${CMAKE_C_COMPILER_ID}
                                                       -DCMAKE_C_COMPILER_FRONTEND_VARIANT=${CMAKE_C_COMPILER_FRONTEND_VARIANT})
 add_RunCMake_test(add_link_options -DCMAKE_C_COMPILER_ID=${CMAKE_C_COMPILER_ID})
@@ -1126,6 +1211,9 @@ set(cpack_tests
   RPM.EXTRA_SLASH_IN_PATH
   RPM.SOURCE_PACKAGE
   RPM.SUGGESTS
+  RPM.ENHANCES
+  RPM.RECOMMENDS
+  RPM.SUPPLEMENTS
   RPM.SYMLINKS
   RPM.USER_FILELIST
   RPM.PROJECT_META
@@ -1205,7 +1293,8 @@ add_RunCMake_test(AutoExportDll
   )
 
 add_RunCMake_test(AndroidMK)
-add_RunCMake_test(PackageInfo)
+add_RunCMake_test(ExportPackageInfo)
+add_RunCMake_test(InstallPackageInfo)
 
 if(CMake_TEST_ANDROID_NDK OR CMake_TEST_ANDROID_STANDALONE_TOOLCHAIN)
   if(NOT "${CMAKE_GENERATOR}" MATCHES "Make|Ninja|Visual Studio 1[456]")
@@ -1284,7 +1373,11 @@ if(WIN32)
 endif()
 
 if(CMake_TEST_IAR_TOOLCHAINS)
-  add_RunCMake_test(IAR -DCMake_TEST_IAR_TOOLCHAINS=${CMake_TEST_IAR_TOOLCHAINS})
+  add_executable(pseudo_icstat pseudo_icstat.c)
+  add_RunCMake_test(IAR
+    -DCMake_TEST_IAR_TOOLCHAINS=${CMake_TEST_IAR_TOOLCHAINS}
+    -DPSEUDO_ICSTAT=$<TARGET_FILE:pseudo_icstat>
+  )
   set_property(TEST RunCMake.IAR APPEND PROPERTY LABELS "IAR")
 endif()
 if(CMake_TEST_TICLANG_TOOLCHAINS)
@@ -1292,4 +1385,8 @@ if(CMake_TEST_TICLANG_TOOLCHAINS)
   string(REPLACE ";" "$<SEMICOLON>" TOOLCHAINS "${CMake_TEST_TICLANG_TOOLCHAINS}")
   add_RunCMake_test(TIClang "-DCMake_TEST_TICLANG_TOOLCHAINS=${TOOLCHAINS}")
   set_property(TEST RunCMake.TIClang APPEND PROPERTY LABELS "TIClang")
+endif()
+if(CMake_TEST_Diab_TOOLCHAINS)
+  add_RunCMake_test(Diab -DCMake_TEST_Diab_TOOLCHAINS=${CMake_TEST_Diab_TOOLCHAINS})
+  set_property(TEST RunCMake.Diab APPEND PROPERTY LABELS "Diab")
 endif()

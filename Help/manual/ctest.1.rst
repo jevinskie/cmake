@@ -445,6 +445,15 @@ Run Tests
  This option will run the tests in a random order.  It is commonly
  used to detect implicit dependencies in a test suite.
 
+.. option:: --schedule-random-seed
+
+ .. versionadded:: 4.1
+
+ Override the random order seed
+
+ This option is used to allow recreating failures owing to
+ random order of execution by ``--schedule-random``.
+
 .. option:: --submit-index
 
  Legacy option for old Dart2 dashboard server feature.
@@ -494,7 +503,7 @@ View Help
 To print version details or selected pages from the CMake documentation,
 use one of the following options:
 
-.. include:: OPTIONS_HELP.txt
+.. include:: include/OPTIONS_HELP.rst
 
 .. _`Label Matching`:
 
@@ -1969,4 +1978,4 @@ On Windows systems, job server integration is not yet implemented.
 See Also
 ========
 
-.. include:: LINKS.txt
+.. include:: include/LINKS.rst

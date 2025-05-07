@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmCurl.h"
 
 #include <cm/string_view>
@@ -48,21 +48,16 @@
 // Do this only for our vendored curl to avoid breaking builds
 // against external future versions of curl.
 #if !defined(CMAKE_USE_SYSTEM_CURL)
+// NOLINTNEXTLINE(misc-redundant-expression)
 static_assert(CURL_SSLVERSION_LAST == 8,
               "A new CURL_SSLVERSION_ may be available!");
 #endif
 
-void cmCurlInitOnce()
+::CURLcode cm_curl_global_init(long flags)
 {
   // curl 7.56.0 introduced curl_global_sslset.
 #if defined(__APPLE__) && defined(CMAKE_USE_SYSTEM_CURL) &&                   \
   defined(LIBCURL_VERSION_NUM) && LIBCURL_VERSION_NUM >= 0x073800
-  static bool initialized = false;
-  if (initialized) {
-    return;
-  }
-  initialized = true;
-
   cm::optional<std::string> curl_ssl_backend =
     cmSystemTools::GetEnvVar("CURL_SSL_BACKEND");
   if (!curl_ssl_backend || curl_ssl_backend->empty()) {
@@ -74,6 +69,7 @@ void cmCurlInitOnce()
     }
   }
 #endif
+  return ::curl_global_init(flags);
 }
 
 cm::optional<int> cmCurlParseTLSVersion(cm::string_view tls_version)
@@ -179,7 +175,7 @@ std::string cmCurlSetNETRCOption(::CURL* curl, std::string const& netrc_level,
                                  std::string const& netrc_file)
 {
   std::string e;
-  CURL_NETRC_OPTION curl_netrc_level = CURL_NETRC_LAST;
+  long curl_netrc_level = CURL_NETRC_LAST;
   ::CURLcode res;
 
   if (!netrc_level.empty()) {

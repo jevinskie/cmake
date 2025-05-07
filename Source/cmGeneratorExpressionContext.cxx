@@ -1,11 +1,11 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmGeneratorExpressionContext.h"
 
 #include <utility>
 
 cmGeneratorExpressionContext::cmGeneratorExpressionContext(
-  cmLocalGenerator* lg, std::string config, bool quiet,
+  cmLocalGenerator const* lg, std::string config, bool quiet,
   cmGeneratorTarget const* headTarget, cmGeneratorTarget const* currentTarget,
   bool evaluateForBuildsystem, cmListFileBacktrace backtrace,
   std::string language)

@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmProcess.h"
 
 #include <csignal>
@@ -57,6 +57,7 @@ bool cmProcess::StartProcess(uv_loop_t& loop, std::vector<size_t>* affinity)
     return false;
   }
   this->StartTime = std::chrono::steady_clock::now();
+  this->SystemStartTime = std::chrono::system_clock::now();
   this->ProcessArgs.clear();
   // put the command as arg0
   this->ProcessArgs.push_back(this->Command.c_str());

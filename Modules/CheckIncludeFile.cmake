@@ -1,5 +1,5 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-# file Copyright.txt or https://cmake.org/licensing for details.
+# file LICENSE.rst or https://cmake.org/licensing for details.
 
 #[=======================================================================[.rst:
 CheckIncludeFile
@@ -21,23 +21,38 @@ Provides a macro to check if a header file can be included in ``C``.
 The following variables may be set before calling this macro to modify
 the way the check is run:
 
-.. include:: /module/CMAKE_REQUIRED_FLAGS.txt
+.. include:: /module/include/CMAKE_REQUIRED_FLAGS.rst
 
-.. include:: /module/CMAKE_REQUIRED_DEFINITIONS.txt
+.. include:: /module/include/CMAKE_REQUIRED_DEFINITIONS.rst
 
-.. include:: /module/CMAKE_REQUIRED_INCLUDES.txt
+.. include:: /module/include/CMAKE_REQUIRED_INCLUDES.rst
 
-.. include:: /module/CMAKE_REQUIRED_LINK_OPTIONS.txt
+.. include:: /module/include/CMAKE_REQUIRED_LINK_OPTIONS.rst
 
-.. include:: /module/CMAKE_REQUIRED_LIBRARIES.txt
+.. include:: /module/include/CMAKE_REQUIRED_LIBRARIES.rst
 
-.. include:: /module/CMAKE_REQUIRED_LINK_DIRECTORIES.txt
+.. include:: /module/include/CMAKE_REQUIRED_LINK_DIRECTORIES.rst
 
-.. include:: /module/CMAKE_REQUIRED_QUIET.txt
+.. include:: /module/include/CMAKE_REQUIRED_QUIET.rst
 
-See the :module:`CheckIncludeFiles` module to check for multiple headers
-at once.  See the :module:`CheckIncludeFileCXX` module to check for headers
-using the ``CXX`` language.
+Examples
+^^^^^^^^
+
+Checking whether the ``C`` header ``<unistd.h>`` exists and storing the check
+result in the ``HAVE_UNISTD_H`` cache variable:
+
+.. code-block:: cmake
+
+  include(CheckIncludeFile)
+
+  check_include_file(unistd.h HAVE_UNISTD_H)
+
+See Also
+^^^^^^^^
+
+* The :module:`CheckIncludeFileCXX` module to check for single ``C++`` header.
+* The :module:`CheckIncludeFiles` module to check for one or more ``C`` or
+  ``C++`` headers at once.
 #]=======================================================================]
 
 include_guard(GLOBAL)

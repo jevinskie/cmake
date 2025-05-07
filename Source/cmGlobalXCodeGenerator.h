@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #pragma once
 
 #include "cmConfigure.h" // IWYU pragma: keep
@@ -131,6 +131,8 @@ public:
   bool SetGeneratorToolset(std::string const& ts, bool build,
                            cmMakefile* mf) override;
   void AppendFlag(std::string& flags, std::string const& flag) const;
+
+  cmValue GetDebuggerWorkingDirectory(cmGeneratorTarget* gt) const override;
 
   enum class BuildSystem
   {
@@ -296,7 +298,8 @@ private:
                                            cmCustomCommand const& cc);
   cmXCodeObject* CreateRunScriptBuildPhase(
     std::string const& name, cmGeneratorTarget const* gt,
-    std::vector<cmCustomCommand> const& commands);
+    std::vector<cmCustomCommand> const& commands,
+    std::vector<std::string> const& depends = {});
   std::string ConstructScript(cmCustomCommandGenerator const& ccg);
   void CreateReRunCMakeFile(cmLocalGenerator* root,
                             std::vector<cmLocalGenerator*> const& gens);

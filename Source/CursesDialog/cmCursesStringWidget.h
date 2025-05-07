@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #pragma once
 
 #include "cmConfigure.h" // IWYU pragma: keep
@@ -40,7 +40,7 @@ public:
    * Set/Get InEdit flag. Can be used to tell the widget to leave
    * edit mode (in case of a resize for example).
    */
-  void SetInEdit(bool inedit) { this->InEdit = inedit; }
+  void SetInEdit(bool inedit);
   bool GetInEdit() { return this->InEdit; }
 
   /**

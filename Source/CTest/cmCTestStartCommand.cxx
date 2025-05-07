@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmCTestStartCommand.h"
 
 #include <cstddef>
@@ -139,7 +139,6 @@ bool cmCTestStartCommand::InitialPass(std::vector<std::string> const& args,
     return false;
   }
 
-  this->CTest->SetSuppressUpdatingCTestConfiguration(true);
   int model;
   if (smodel) {
     model = cmCTest::GetTestModelFromString(smodel);
@@ -183,7 +182,6 @@ bool cmCTestStartCommand::InitialPass(std::vector<std::string> const& args,
     &mf, "BuildName", "CTEST_BUILD_NAME", quiet);
 
   this->CTest->Initialize(bld_dir);
-  this->CTest->UpdateCTestConfiguration();
 
   cmCTestOptionalLog(
     this->CTest, OUTPUT,

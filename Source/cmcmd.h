@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #pragma once
 
 #include "cmConfigure.h" // IWYU pragma: keep
@@ -39,5 +39,6 @@ protected:
   static int RunPreprocessor(std::vector<std::string> const& command,
                              std::string const& intermediate_file);
   static int RunLLVMRC(std::vector<std::string> const& args);
-  static int VisualStudioLink(std::vector<std::string> const& args, int type);
+  static int VisualStudioLink(std::vector<std::string> const& args, int type,
+                              std::unique_ptr<cmConsoleBuf> consoleBuf);
 };

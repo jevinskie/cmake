@@ -328,6 +328,36 @@ if(BUILD_TESTING)
     endif()
   endif()
 
+  if(CMake_TEST_FindPython)
+    set(CMake_TEST_FindPython2 TRUE)
+    set(CMake_TEST_FindPython3 TRUE)
+  endif()
+  if(CMake_TEST_FindPython_SABIModule)
+    set(CMake_TEST_FindPython2_SABIModule TRUE)
+    set(CMake_TEST_FindPython3_SABIModule TRUE)
+  endif()
+  if(CMake_TEST_FindPython_NumPy)
+    set(CMake_TEST_FindPython2_NumPy TRUE)
+    set(CMake_TEST_FindPython3_NumPy TRUE)
+  endif()
+  if(CMake_TEST_FindPython_Conda)
+    set(CMake_TEST_FindPython3_Conda TRUE)
+  endif()
+  if(CMake_TEST_FindPython_IronPython)
+    set(CMake_TEST_FindPython2_IronPython TRUE)
+    set(CMake_TEST_FindPython3_IronPython TRUE)
+  endif()
+  if(CMake_TEST_FindPython_PyPy)
+    set(CMake_TEST_FindPython2_PyPy TRUE)
+    set(CMake_TEST_FindPython3_PyPy TRUE)
+  endif()
+  if (CMake_TEST_FindPython2 AND CMAKE_SYSTEM_NAME MATCHES "Linux|Darwin")
+    set(CMake_TEST_FindPython2_SABIModule TRUE)
+  endif()
+  if (CMake_TEST_FindPython3 AND CMAKE_SYSTEM_NAME MATCHES "Linux|Darwin")
+    set(CMake_TEST_FindPython3_SABIModule TRUE)
+  endif()
+
   # Use 1500 or CTEST_TEST_TIMEOUT for long test timeout value,
   # whichever is greater.
   set(CMAKE_LONG_TEST_TIMEOUT 1500)
@@ -580,11 +610,11 @@ if(BUILD_TESTING)
   endif()
 
   # run test for BundleUtilities on supported platforms/compilers
-  if(MSVC OR
-     MINGW OR
-     CMAKE_SYSTEM_NAME MATCHES "Linux" OR
-     CMAKE_SYSTEM_NAME MATCHES "Darwin")
-  if(NOT "${CMAKE_GENERATOR}" STREQUAL "Watcom WMake")
+  if((MSVC OR
+      MINGW OR
+      CMAKE_SYSTEM_NAME MATCHES "Linux" OR
+      CMAKE_SYSTEM_NAME MATCHES "Darwin")
+    AND NOT CMAKE_GENERATOR STREQUAL "Watcom WMake")
 
     add_test(BundleUtilities ${CMAKE_CTEST_COMMAND}
       --build-and-test
@@ -611,7 +641,6 @@ if(BUILD_TESTING)
       list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/Qt4Deploy")
     endif()
 
-  endif()
   endif()
 
   set(CMAKE_BUILD_TEST_SOURCE_DIR "${CMake_SOURCE_DIR}/Tests/COnly")
@@ -1439,6 +1468,7 @@ if(BUILD_TESTING)
   _mod
   IN ITEMS
       ALSA
+      ASPELL
       Backtrace
       BLAS
       Boost
@@ -1520,44 +1550,6 @@ if(BUILD_TESTING)
   if(CMake_TEST_FindGTest)
     add_subdirectory(FindGTest)
     add_subdirectory(GoogleTest)
-  endif()
-
-  if(CMake_TEST_FindPython)
-    set(CMake_TEST_FindPython2 TRUE)
-    set(CMake_TEST_FindPython3 TRUE)
-  endif()
-  if(CMake_TEST_FindPython_SABIModule)
-    set(CMake_TEST_FindPython2_SABIModule TRUE)
-    set(CMake_TEST_FindPython3_SABIModule TRUE)
-  endif()
-  if(CMake_TEST_FindPython_NumPy)
-    set(CMake_TEST_FindPython2_NumPyy TRUE)
-    set(CMake_TEST_FindPython3_NumPy TRUE)
-  endif()
-  if(CMake_TEST_FindPython_Conda)
-    set(CMake_TEST_FindPython3_Conda TRUE)
-  endif()
-  if(CMake_TEST_FindPython_IronPython)
-    set(CMake_TEST_FindPython2_IronPython TRUE)
-    set(CMake_TEST_FindPython3_IronPython TRUE)
-  endif()
-  if(CMake_TEST_FindPython_PyPy)
-    set(CMake_TEST_FindPython2_PyPy TRUE)
-    set(CMake_TEST_FindPython3_PyPy TRUE)
-  endif()
-  if(CMake_TEST_FindPython2 OR CMake_TEST_FindPython3
-      OR CMake_TEST_FindPython2_SABIModule OR CMake_TEST_FindPython3_SABIModule
-      OR CMake_TEST_FindPython2_NumPy OR CMake_TEST_FindPython3_NumPy
-      OR CMake_TEST_FindPython3_Conda
-      OR CMake_TEST_FindPython2_IronPython OR CMake_TEST_FindPython3_IronPython
-      OR CMake_TEST_FindPython2_PyPy OR CMake_TEST_FindPython3_PyPy)
-    if (CMake_TEST_FindPython2 AND CMAKE_SYSTEM_NAME MATCHES "Linux|Darwin")
-      set(CMake_TEST_FindPython2_SABIModule TRUE)
-    endif()
-    if (CMake_TEST_FindPython3 AND CMAKE_SYSTEM_NAME MATCHES "Linux|Darwin")
-      set(CMake_TEST_FindPython3_SABIModule TRUE)
-    endif()
-    add_subdirectory(FindPython)
   endif()
 
   if(CMake_TEST_UseSWIG)
@@ -2456,7 +2448,7 @@ if(BUILD_TESTING)
   endif()
 
   if(APPLE)
-    if(CMAKE_COMPILER_IS_GNUCXX OR "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
       set(BundleTestInstallDir
         "${CMake_BINARY_DIR}/Tests/BundleTest/InstallDirectory")
       add_test(BundleTest ${CMAKE_CTEST_COMMAND}
@@ -3269,6 +3261,9 @@ if(BUILD_TESTING)
         # FIXME(lfortran): The compiler fails on the test's modules.
         AND NOT CMAKE_Fortran_COMPILER_ID STREQUAL "LFortran"
         )
+      if(DEFINED CMake_TEST_Fortran_SUBMODULES)
+        list(PREPEND CMake_TEST_FortranModules_BUILD_OPTIONS -DCMake_TEST_Fortran_SUBMODULES:BOOL=${CMake_TEST_Fortran_SUBMODULES})
+      endif()
       add_test(FortranModules ${CMAKE_CTEST_COMMAND}
         --build-and-test
         "${CMake_SOURCE_DIR}/Tests/FortranModules"
@@ -3277,7 +3272,6 @@ if(BUILD_TESTING)
         --build-project FortranModules
         --build-options
           -DCMake_TEST_NESTED_MAKE_PROGRAM:FILEPATH=${CMake_TEST_EXPLICIT_MAKE_PROGRAM}
-          -DCMake_TEST_Fortran_SUBMODULES:BOOL=${CMake_TEST_Fortran_SUBMODULES}
           ${CMake_TEST_FortranModules_BUILD_OPTIONS}
         )
       list(APPEND TEST_BUILD_DIRS "${CMake_BINARY_DIR}/Tests/FortranModules")

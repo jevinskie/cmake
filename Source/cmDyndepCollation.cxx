@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 
 #include "cmDyndepCollation.h"
 
@@ -643,6 +643,9 @@ bool cmDyndepCollation::WriteDyndepMetadata(
               cmStrCat("Failed to find BMI location for ", prov.LogicalName));
             result = false;
           }
+        }
+        for (auto const& req : object.Requires) {
+          bdb_entry->second->Requires.push_back(req.LogicalName);
         }
       } else if (export_info.DatabaseInfo) {
         cmSystemTools::Error(cmStrCat(

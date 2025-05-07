@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmQtAutoGenInitializer.h"
 
 #include <array>
@@ -1920,9 +1920,10 @@ bool cmQtAutoGenInitializer::SetupWriteAutogenInfo()
     if (this->MultiConfig) {
       for (auto const& cfg : this->ConfigsList) {
         if (!cfg.empty()) {
-          cmGeneratorExpressionDAGChecker dagChecker(
-            this->GenTarget, "AUTOMOC_MACRO_NAMES", nullptr, nullptr,
-            this->LocalGen, cfg);
+          cmGeneratorExpressionDAGChecker dagChecker{
+            this->GenTarget, "AUTOMOC_MACRO_NAMES", nullptr,
+            nullptr,         this->LocalGen,        cfg,
+          };
           AddInterfaceEntries(this->GenTarget, cfg,
                               "INTERFACE_AUTOMOC_MACRO_NAMES", "CXX",
                               &dagChecker, InterfaceAutoMocMacroNamesEntries,
@@ -1930,9 +1931,10 @@ bool cmQtAutoGenInitializer::SetupWriteAutogenInfo()
         }
       }
     } else {
-      cmGeneratorExpressionDAGChecker dagChecker(
-        this->GenTarget, "AUTOMOC_MACRO_NAMES", nullptr, nullptr,
-        this->LocalGen, this->ConfigDefault);
+      cmGeneratorExpressionDAGChecker dagChecker{
+        this->GenTarget, "AUTOMOC_MACRO_NAMES", nullptr,
+        nullptr,         this->LocalGen,        this->ConfigDefault,
+      };
       AddInterfaceEntries(this->GenTarget, this->ConfigDefault,
                           "INTERFACE_AUTOMOC_MACRO_NAMES", "CXX", &dagChecker,
                           InterfaceAutoMocMacroNamesEntries,

@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmCTestMultiProcessHandler.h"
 
 #include <algorithm>
@@ -1668,7 +1668,7 @@ bool cmCTestMultiProcessHandler::InitResourceAllocator(std::string& error)
 {
   if (!this->ResourceSpec.ReadFromJSONFile(this->ResourceSpecFile)) {
     error = cmStrCat("Could not read/parse resource spec file ",
-                     this->ResourceSpecFile, ": ",
+                     this->ResourceSpecFile, ":\n",
                      this->ResourceSpec.parseState.GetErrorMessage());
     return false;
   }

@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #pragma once
 
 #include "cmConfigure.h" // IWYU pragma: keep
@@ -127,6 +127,16 @@ public:
      * via --find-package.
      */
     FIND_PACKAGE_MODE
+  };
+
+  enum class CommandFailureAction
+  {
+    // When a command fails to execute, treat it as a fatal error.
+    FATAL_ERROR,
+
+    // When a command fails to execute, continue execution, but set the exit
+    // code accordingly.
+    EXIT_CODE,
   };
 
   using TraceFormat = cmTraceEnums::TraceOutputFormat;
@@ -441,8 +451,18 @@ public:
   //! Do all the checks before running configure
   int DoPreConfigureChecks();
 
-  void SetWorkingMode(WorkingMode mode) { this->CurrentWorkingMode = mode; }
-  WorkingMode GetWorkingMode() { return this->CurrentWorkingMode; }
+  void SetWorkingMode(WorkingMode mode, CommandFailureAction policy)
+  {
+    this->CurrentWorkingMode = mode;
+    this->CurrentCommandFailureAction = policy;
+  }
+
+  WorkingMode GetWorkingMode() const { return this->CurrentWorkingMode; }
+
+  CommandFailureAction GetCommandFailureAction() const
+  {
+    return this->CurrentCommandFailureAction;
+  }
 
   //! Debug the try compile stuff by not deleting the files
   bool GetDebugTryCompile() const { return this->DebugTryCompile; }
@@ -643,8 +663,14 @@ public:
             std::string const& presetName, bool listPresets,
             std::vector<std::string> const& args);
 
+  enum class DryRun
+  {
+    No,
+    Yes,
+  };
+
   //! run the --open option
-  bool Open(std::string const& dir, bool dryRun);
+  bool Open(std::string const& dir, DryRun dryRun);
 
   //! run the --workflow option
   enum class WorkflowListPresets
@@ -774,6 +800,8 @@ private:
   std::string CMakeWorkingDirectory;
   ProgressCallbackType ProgressCallback;
   WorkingMode CurrentWorkingMode = NORMAL_MODE;
+  CommandFailureAction CurrentCommandFailureAction =
+    CommandFailureAction::FATAL_ERROR;
   bool DebugOutput = false;
   bool DebugFindOutput = false;
   bool Trace = false;

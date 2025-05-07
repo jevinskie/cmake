@@ -1,5 +1,5 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-# file Copyright.txt or https://cmake.org/licensing for details.
+# file LICENSE.rst or https://cmake.org/licensing for details.
 
 # See supported GPUs on Wikipedia
 # https://en.wikipedia.org/wiki/CUDA#GPUs_supported
@@ -71,7 +71,14 @@ function(cmake_cuda_architectures_all lang lang_var_)
     endif()
   endif()
 
-  if(${lang_var_}TOOLKIT_VERSION VERSION_GREATER_EQUAL 12.8)
+  if(${lang_var_}TOOLKIT_VERSION VERSION_GREATER_EQUAL 12.9)
+    if(CMAKE_${lang}_COMPILER_ID STREQUAL "NVIDIA"
+        OR (CMAKE_${lang}_COMPILER_ID STREQUAL "Clang" AND CMAKE_${lang}_COMPILER_VERSION VERSION_GREATER_EQUAL 16.0)
+        )
+      list(APPEND CMAKE_CUDA_ARCHITECTURES_ALL 100 101 103 120 121)
+      list(APPEND CMAKE_CUDA_ARCHITECTURES_ALL_MAJOR 100 120)
+    endif()
+  elseif(${lang_var_}TOOLKIT_VERSION VERSION_GREATER_EQUAL 12.8)
     if(CMAKE_${lang}_COMPILER_ID STREQUAL "NVIDIA"
         OR (CMAKE_${lang}_COMPILER_ID STREQUAL "Clang" AND CMAKE_${lang}_COMPILER_VERSION VERSION_GREATER_EQUAL 16.0)
         )

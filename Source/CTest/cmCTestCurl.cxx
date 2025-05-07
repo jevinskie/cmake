@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmCTestCurl.h"
 
 #include <cstdio>
@@ -24,9 +24,8 @@ cmCTestCurl::cmCTestCurl(cmCTest* ctest)
   , CurlOpts(ctest)
 {
   this->SetProxyType();
-  cmCurlInitOnce();
   // In windows, this will init the winsock stuff
-  ::curl_global_init(CURL_GLOBAL_ALL);
+  cm_curl_global_init(CURL_GLOBAL_ALL);
   this->Curl = cm_curl_easy_init();
 }
 

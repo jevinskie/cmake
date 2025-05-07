@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmFileCommand.h"
 
 #include <algorithm>
@@ -234,7 +234,7 @@ bool HandleReadCommand(std::vector<std::string> const& args,
     char c;
     while ((sizeLimit > 0) && (file.get(c))) {
       char hex[4];
-      snprintf(hex, sizeof(hex), "%.2x", c & 0xff);
+      snprintf(hex, sizeof(hex), "%.2x", c & 0xFFu);
       output += hex;
       sizeLimit--;
     }
@@ -864,7 +864,7 @@ bool HandleMakeDirectoryCommand(std::vector<std::string> const& args,
         cmMakeRange(cm::begin(unparsedArguments), cm::end(unparsedArguments)),
         "\n");
       status.SetError("MAKE_DIRECTORY called with unexpected\n"
-                      "arguments:\n" +
+                      "arguments:\n  " +
                       unexpectedArgsStr);
       return false;
     }
@@ -875,9 +875,7 @@ bool HandleMakeDirectoryCommand(std::vector<std::string> const& args,
   }
 
   std::string expr;
-  for (std::string const& arg :
-       cmMakeRange(args).advance(1)) // Get rid of subcommand
-  {
+  for (std::string const& arg : argsRange) {
     std::string const* cdir = &arg;
     if (!cmsys::SystemTools::FileIsFullPath(arg)) {
       expr =
@@ -1705,7 +1703,9 @@ size_t cmWriteToFileCallback(void* ptr, size_t size, size_t nmemb, void* data)
   cmsys::ofstream* fout = static_cast<cmsys::ofstream*>(data);
   if (fout) {
     char const* chPtr = static_cast<char*>(ptr);
-    fout->write(chPtr, realsize);
+    if (!fout->write(chPtr, realsize)) {
+      return CURL_WRITEFUNC_ERROR;
+    }
   }
   return realsize;
 }
@@ -2131,7 +2131,8 @@ bool HandleDownloadCommand(std::vector<std::string> const& args,
   if (!file.empty()) {
     fout.open(file.c_str(), std::ios::binary);
     if (!fout) {
-      status.SetError("DOWNLOAD cannot open file for write.");
+      status.SetError(cmStrCat("DOWNLOAD cannot open file for write\n",
+                               "  file: \"", file, '"'));
       return false;
     }
   }
@@ -2139,8 +2140,7 @@ bool HandleDownloadCommand(std::vector<std::string> const& args,
   url = cmCurlFixFileURL(url);
 
   ::CURL* curl;
-  cmCurlInitOnce();
-  ::curl_global_init(CURL_GLOBAL_DEFAULT);
+  cm_curl_global_init(CURL_GLOBAL_DEFAULT);
   curl = cm_curl_easy_init();
   if (!curl) {
     status.SetError("DOWNLOAD error initializing curl.");
@@ -2285,6 +2285,14 @@ bool HandleDownloadCommand(std::vector<std::string> const& args,
   g_curl.release();
   ::curl_easy_cleanup(curl);
 
+  // Explicitly close the file so we can check for write errors.
+  if (!file.empty()) {
+    fout.close();
+    if (!fout) {
+      res = CURLE_WRITE_ERROR;
+    }
+  }
+
   if (!statusVar.empty()) {
     std::string m = curl_easy_strerror(res);
     if ((res == CURLE_SSL_CONNECT_ERROR ||
@@ -2308,27 +2316,22 @@ bool HandleDownloadCommand(std::vector<std::string> const& args,
     status.GetMakefile().AddDefinition(logVar, chunkDebug.data());
   }
 
-  // Explicitly flush/close so we can measure the md5 accurately.
-  //
-  if (!file.empty()) {
-    fout.flush();
-    fout.close();
-  }
-
   // Verify MD5 sum if requested:
   //
   if (hash) {
     if (res != CURLE_OK) {
-      status.SetError(cmStrCat(
-        "DOWNLOAD cannot compute hash on failed download\n"
-        "  status: [",
-        static_cast<int>(res), ";\"", ::curl_easy_strerror(res), "\"]"));
+      status.SetError(
+        cmStrCat("DOWNLOAD cannot compute hash on failed download\n"
+                 "  from url: \"",
+                 url, "\"\n  status: [", static_cast<int>(res), ";\"",
+                 ::curl_easy_strerror(res), "\"]"));
       return false;
     }
 
     std::string actualHash = hash->HashFile(file);
     if (actualHash.empty()) {
-      status.SetError("DOWNLOAD cannot compute hash on downloaded file");
+      status.SetError(cmStrCat("DOWNLOAD cannot compute hash on download\n",
+                               "  for file: \"", file, '"'));
       return false;
     }
 
@@ -2342,14 +2345,14 @@ bool HandleDownloadCommand(std::vector<std::string> const& args,
       }
 
       status.SetError(cmStrCat("DOWNLOAD HASH mismatch\n"
-                               "  for file: [",
+                               "  for file: \"",
                                file,
-                               "]\n"
-                               "    expected hash: [",
+                               "\"\n"
+                               "    expected hash: \"",
                                expectedHash,
-                               "]\n"
-                               "      actual hash: [",
-                               actualHash, "]\n"));
+                               "\"\n"
+                               "      actual hash: \"",
+                               actualHash, "\"\n"));
       return false;
     }
   }
@@ -2537,8 +2540,7 @@ bool HandleUploadCommand(std::vector<std::string> const& args,
   url = cmCurlFixFileURL(url);
 
   ::CURL* curl;
-  cmCurlInitOnce();
-  ::curl_global_init(CURL_GLOBAL_DEFAULT);
+  cm_curl_global_init(CURL_GLOBAL_DEFAULT);
   curl = cm_curl_easy_init();
   if (!curl) {
     status.SetError("UPLOAD error initializing curl.");

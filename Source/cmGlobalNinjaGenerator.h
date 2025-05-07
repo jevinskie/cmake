@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #pragma once
 
 #include "cmConfigure.h" // IWYU pragma: keep
@@ -77,7 +77,6 @@ public:
 
   static std::string EncodeRuleName(std::string const& name);
   std::string& EncodeLiteral(std::string& lit) override;
-  std::string GetEncodedLiteral(std::string const& lit);
   std::string EncodePath(std::string const& path);
 
   std::unique_ptr<cmLinkLineComputer> CreateLinkLineComputer(

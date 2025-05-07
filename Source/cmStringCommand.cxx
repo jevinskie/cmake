@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 // NOLINTNEXTLINE(bugprone-reserved-identifier)
 #define _SCL_SECURE_NO_WARNINGS
 
@@ -142,8 +142,7 @@ bool HandleHexCommand(std::vector<std::string> const& args,
 
   std::string::size_type hexIndex = 0;
   for (auto const& c : instr) {
-    snprintf(&output[hexIndex], 3, "%.2x",
-             static_cast<unsigned char>(c) & 0xFF);
+    snprintf(&output[hexIndex], 3, "%.2x", c & 0xFFu);
     hexIndex += 2;
   }
 

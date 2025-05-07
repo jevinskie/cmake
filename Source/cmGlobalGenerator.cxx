@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmGlobalGenerator.h"
 
 #include <algorithm>
@@ -941,9 +941,9 @@ void cmGlobalGenerator::EnableLanguage(
       } // end if in try compile
     } // end need test language
 
-    // load linker configuration,  if required
-    if (mf->GetDefinition(cmStrCat("CMAKE_", lang, "_USE_LINKER_INFORMATION"))
-          .IsOn()) {
+    // load linker configuration, if required
+    if (mf->IsOn(cmStrCat("CMAKE_", lang, "_COMPILER_WORKS")) &&
+        mf->IsOn(cmStrCat("CMAKE_", lang, "_USE_LINKER_INFORMATION"))) {
       std::string langLinkerLoadedVar =
         cmStrCat("CMAKE_", lang, "_LINKER_INFORMATION_LOADED");
       if (!mf->GetDefinition(langLinkerLoadedVar)) {
@@ -958,6 +958,18 @@ void cmGlobalGenerator::EnableLanguage(
         } else if (!mf->ReadListFile(informationFile)) {
           cmSystemTools::Error(cmStrCat(
             "Could not process cmake module file: ", informationFile));
+        }
+      }
+
+      if (needTestLanguage[lang]) {
+        if (!this->CMakeInstance->GetIsInTryCompile()) {
+          std::string testLang =
+            cmStrCat("Internal/CMakeInspect", lang, "Linker.cmake");
+          std::string ifpath = mf->GetModulesFile(testLang);
+          if (!mf->ReadListFile(ifpath)) {
+            cmSystemTools::Error(
+              cmStrCat("Could not find cmake module file: ", testLang));
+          }
         }
       }
     }
@@ -2395,8 +2407,8 @@ bool cmGlobalGenerator::IsExcluded(cmStateSnapshot const& rootSnp,
   return false;
 }
 
-bool cmGlobalGenerator::IsExcluded(cmLocalGenerator* root,
-                                   cmLocalGenerator* gen) const
+bool cmGlobalGenerator::IsExcluded(cmLocalGenerator const* root,
+                                   cmLocalGenerator const* gen) const
 {
   assert(gen);
 
@@ -2406,7 +2418,7 @@ bool cmGlobalGenerator::IsExcluded(cmLocalGenerator* root,
   return this->IsExcluded(rootSnp, snp);
 }
 
-bool cmGlobalGenerator::IsExcluded(cmLocalGenerator* root,
+bool cmGlobalGenerator::IsExcluded(cmLocalGenerator const* root,
                                    cmGeneratorTarget const* target) const
 {
   if (!target->IsInBuildSystem()) {
@@ -3877,6 +3889,12 @@ cmGlobalGenerator::StripCommandStyle cmGlobalGenerator::GetStripCommandStyle(
   static_cast<void>(strip);
   return StripCommandStyle::Default;
 #endif
+}
+
+std::string cmGlobalGenerator::GetEncodedLiteral(std::string const& lit)
+{
+  std::string result = lit;
+  return this->EncodeLiteral(result);
 }
 
 void cmGlobalGenerator::AddInstallScript(std::string const& file)

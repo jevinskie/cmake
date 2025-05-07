@@ -1,5 +1,5 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-# file Copyright.txt or https://cmake.org/licensing for details.
+# file LICENSE.rst or https://cmake.org/licensing for details.
 
 #[=======================================================================[.rst:
 CheckOBJCXXSourceCompiles
@@ -37,19 +37,19 @@ Check once if Objective-C++ source can be built.
   The compile and link commands can be influenced by setting any of the
   following variables prior to calling ``check_objcxx_source_compiles()``
 
-.. include:: /module/CMAKE_REQUIRED_FLAGS.txt
+.. include:: /module/include/CMAKE_REQUIRED_FLAGS.rst
 
-.. include:: /module/CMAKE_REQUIRED_DEFINITIONS.txt
+.. include:: /module/include/CMAKE_REQUIRED_DEFINITIONS.rst
 
-.. include:: /module/CMAKE_REQUIRED_INCLUDES.txt
+.. include:: /module/include/CMAKE_REQUIRED_INCLUDES.rst
 
-.. include:: /module/CMAKE_REQUIRED_LINK_OPTIONS.txt
+.. include:: /module/include/CMAKE_REQUIRED_LINK_OPTIONS.rst
 
-.. include:: /module/CMAKE_REQUIRED_LIBRARIES.txt
+.. include:: /module/include/CMAKE_REQUIRED_LIBRARIES.rst
 
-.. include:: /module/CMAKE_REQUIRED_LINK_DIRECTORIES.txt
+.. include:: /module/include/CMAKE_REQUIRED_LINK_DIRECTORIES.rst
 
-.. include:: /module/CMAKE_REQUIRED_QUIET.txt
+.. include:: /module/include/CMAKE_REQUIRED_QUIET.rst
 
 #]=======================================================================]
 

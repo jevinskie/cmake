@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmIncludeCommand.h"
 
 #include <map>
@@ -23,6 +23,7 @@ bool cmIncludeCommand(std::vector<std::string> const& args,
     DeprecatedModules["Dart"] = cmPolicies::CMP0145;
     DeprecatedModules["Documentation"] = cmPolicies::CMP0106;
     DeprecatedModules["FindBoost"] = cmPolicies::CMP0167;
+    DeprecatedModules["FindCABLE"] = cmPolicies::CMP0191;
     DeprecatedModules["FindCUDA"] = cmPolicies::CMP0146;
     DeprecatedModules["FindDart"] = cmPolicies::CMP0145;
     DeprecatedModules["FindGCCXML"] = cmPolicies::CMP0188;

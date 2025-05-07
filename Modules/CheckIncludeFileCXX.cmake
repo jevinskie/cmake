@@ -1,5 +1,5 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-# file Copyright.txt or https://cmake.org/licensing for details.
+# file LICENSE.rst or https://cmake.org/licensing for details.
 
 #[=======================================================================[.rst:
 CheckIncludeFileCXX
@@ -21,22 +21,38 @@ Provides a macro to check if a header file can be included in ``CXX``.
 The following variables may be set before calling this macro to modify
 the way the check is run:
 
-.. include:: /module/CMAKE_REQUIRED_FLAGS.txt
+.. include:: /module/include/CMAKE_REQUIRED_FLAGS.rst
 
-.. include:: /module/CMAKE_REQUIRED_DEFINITIONS.txt
+.. include:: /module/include/CMAKE_REQUIRED_DEFINITIONS.rst
 
-.. include:: /module/CMAKE_REQUIRED_INCLUDES.txt
+.. include:: /module/include/CMAKE_REQUIRED_INCLUDES.rst
 
-.. include:: /module/CMAKE_REQUIRED_LINK_OPTIONS.txt
+.. include:: /module/include/CMAKE_REQUIRED_LINK_OPTIONS.rst
 
-.. include:: /module/CMAKE_REQUIRED_LIBRARIES.txt
+.. include:: /module/include/CMAKE_REQUIRED_LIBRARIES.rst
 
-.. include:: /module/CMAKE_REQUIRED_LINK_DIRECTORIES.txt
+.. include:: /module/include/CMAKE_REQUIRED_LINK_DIRECTORIES.rst
 
-.. include:: /module/CMAKE_REQUIRED_QUIET.txt
+.. include:: /module/include/CMAKE_REQUIRED_QUIET.rst
 
-See modules :module:`CheckIncludeFile` and :module:`CheckIncludeFiles`
-to check for one or more ``C`` headers.
+Examples
+^^^^^^^^
+
+Checking whether the ``C++23`` header ``<stdfloat>`` exists and storing the
+check result in the ``HAVE_STDFLOAT_HEADER`` cache variable:
+
+.. code-block:: cmake
+
+  include(CheckIncludeFileCXX)
+
+  check_include_file_cxx(stdfloat HAVE_STDFLOAT_HEADER)
+
+See Also
+^^^^^^^^
+
+* The :module:`CheckIncludeFile` module to check for single ``C`` header.
+* The :module:`CheckIncludeFiles` module to check for one or more ``C`` or
+  ``C++`` headers at once.
 #]=======================================================================]
 
 include_guard(GLOBAL)

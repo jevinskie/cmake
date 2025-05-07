@@ -1,5 +1,5 @@
 /* Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
-   file Copyright.txt or https://cmake.org/licensing for details.  */
+   file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmCPackGenerator.h"
 
 #include <algorithm>
@@ -196,8 +196,8 @@ int cmCPackGenerator::InstallProject()
   std::string bareTempInstallDirectory =
     this->GetOption("CPACK_TEMPORARY_DIRECTORY");
   std::string tempInstallDirectory = bareTempInstallDirectory;
-  bool setDestDir = this->GetOption("CPACK_SET_DESTDIR").IsOn() ||
-    cmIsInternallyOn(this->GetOption("CPACK_SET_DESTDIR"));
+  cmValue v = this->GetOption("CPACK_SET_DESTDIR");
+  bool setDestDir = v.IsOn() || cmIsInternallyOn(v);
   if (!setDestDir) {
     tempInstallDirectory += this->GetPackagingInstallPrefix();
   }
@@ -962,9 +962,8 @@ int cmCPackGenerator::InstallCMakeProject(
       std::string absoluteDestFileComponent =
         std::string("CPACK_ABSOLUTE_DESTINATION_FILES") + "_" +
         this->GetComponentInstallSuffix(component);
-      if (this->GetOption(absoluteDestFileComponent)) {
-        std::string absoluteDestFilesListComponent =
-          cmStrCat(this->GetOption(absoluteDestFileComponent), ';', *d);
+      if (cmValue v = this->GetOption(absoluteDestFileComponent)) {
+        std::string absoluteDestFilesListComponent = cmStrCat(*v, ';', *d);
         this->SetOption(absoluteDestFileComponent,
                         absoluteDestFilesListComponent);
       } else {
@@ -1239,7 +1238,11 @@ int cmCPackGenerator::Initialize(std::string const& name, cmMakefile* mf)
   // Load the project specific config file
   cmValue config = this->GetOption("CPACK_PROJECT_CONFIG_FILE");
   if (config) {
-    mf->ReadListFile(*config);
+    if (!mf->ReadListFile(*config)) {
+      cmCPackLogger(cmCPackLog::LOG_WARNING,
+                    "CPACK_PROJECT_CONFIG_FILE not found: " << *config
+                                                            << std::endl);
+    }
   }
   int result = this->InitializeInternal();
   if (cmSystemTools::GetErrorOccurredFlag()) {
