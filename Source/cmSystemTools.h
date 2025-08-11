@@ -167,11 +167,6 @@ public:
   static bool SimpleGlob(std::string const& glob,
                          std::vector<std::string>& files, int type = 0);
 
-  enum class CopyWhen
-  {
-    Always,
-    OnlyIfDifferent,
-  };
   enum class CopyInputRecent
   {
     No,
@@ -209,6 +204,15 @@ public:
                                    std::string const& newname, CopyWhen when,
                                    CopyInputRecent inputRecent,
                                    std::string* err = nullptr);
+
+  /** Copy a file if it is newer than the destination. */
+  static bool CopyFileIfNewer(std::string const& source,
+                              std::string const& destination);
+
+  /** Copy directory contents with specified copy behavior. */
+  static bool CopyADirectory(std::string const& source,
+                             std::string const& destination,
+                             CopyWhen when = CopyWhen::Always);
 
   enum class Replace
   {
@@ -588,10 +592,6 @@ public:
   /** The logical working directory may contain symlinks but must not
       contain any '../' path components.  */
   static cmsys::Status SetLogicalWorkingDirectory(std::string const& lwd);
-
-  /** Echo a message in color using KWSys's Terminal cprintf.  */
-  static void MakefileColorEcho(int color, char const* message, bool newLine,
-                                bool enabled);
 
   /** Try to guess the soname of a shared library.  */
   static bool GuessLibrarySOName(std::string const& fullPath,

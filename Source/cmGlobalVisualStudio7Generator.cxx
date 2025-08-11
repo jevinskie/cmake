@@ -217,7 +217,7 @@ cmGlobalVisualStudio7Generator::GenerateBuildCommand(
   std::string const& makeProgram, std::string const& projectName,
   std::string const& /*projectDir*/,
   std::vector<std::string> const& targetNames, std::string const& config,
-  int /*jobs*/, bool /*verbose*/, cmBuildOptions const& /*buildOptions*/,
+  int /*jobs*/, bool /*verbose*/, cmBuildOptions /*buildOptions*/,
   std::vector<std::string> const& makeOptions)
 {
   // Select the caller- or user-preferred make program, else devenv.
@@ -307,6 +307,26 @@ void cmGlobalVisualStudio7Generator::Generate()
       !this->LocalGenerators.empty()) {
     this->CallVisualStudioMacro(MacroReload,
                                 GetSLNFile(this->LocalGenerators[0].get()));
+  }
+
+  if (this->Version == VSVersion::VS14 &&
+      !this->CMakeInstance->GetIsInTryCompile()) {
+    std::string cmakeWarnVS14;
+    if (cmValue cached = this->CMakeInstance->GetState()->GetCacheEntryValue(
+          "CMAKE_WARN_VS14")) {
+      this->CMakeInstance->MarkCliAsUsed("CMAKE_WARN_VS14");
+      cmakeWarnVS14 = *cached;
+    } else {
+      cmSystemTools::GetEnv("CMAKE_WARN_VS14", cmakeWarnVS14);
+    }
+    if (cmakeWarnVS14.empty() || !cmIsOff(cmakeWarnVS14)) {
+      this->CMakeInstance->IssueMessage(
+        MessageType::WARNING,
+        "The \"Visual Studio 14 2015\" generator is deprecated "
+        "and will be removed in a future version of CMake."
+        "\n"
+        "Add CMAKE_WARN_VS14=OFF to the cache to disable this warning.");
+    }
   }
 }
 
@@ -619,13 +639,18 @@ std::string cmGlobalVisualStudio7Generator::WriteUtilityDepend(
     "\t<Configurations>\n"
     ;
   /* clang-format on */
+  std::string intDirPrefix =
+    target->GetLocalGenerator()->MaybeRelativeToCurBinDir(
+      cmStrCat(target->GetSupportDirectory(), '\\'));
   for (std::string const& i : configs) {
+    std::string intDir = cmStrCat(intDir, i);
+
     /* clang-format off */
     fout <<
       "\t\t<Configuration\n"
       "\t\t\tName=\"" << i << "|Win32\"\n"
       "\t\t\tOutputDirectory=\"" << i << "\"\n"
-      "\t\t\tIntermediateDirectory=\"" << pname << ".dir\\" << i << "\"\n"
+      "\t\t\tIntermediateDirectory=\"" << intDir << "\"\n"
       "\t\t\tConfigurationType=\"10\"\n"
       "\t\t\tUseOfMFC=\"0\"\n"
       "\t\t\tATLMinimizesCRunTimeLibraryUsage=\"FALSE\"\n"

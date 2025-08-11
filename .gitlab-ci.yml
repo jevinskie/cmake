@@ -140,6 +140,13 @@ l:clang-analyzer-fedora42:
     variables:
         CMAKE_CI_JOB_NIGHTLY: "true"
 
+l:clazy-fedora42:
+    extends:
+        - .fedora42_clazy
+        - .cmake_build_linux
+        - .linux_x86_64_tags
+        - .run_automatically
+
 # Linux builds
 
 b:centos7-x86_64:
@@ -792,6 +799,27 @@ t:oneapi2024.2.0-makefiles:
         CMAKE_CI_BUILD_NAME: oneapi2024.2.0_makefiles
         CMAKE_CI_INTELCOMPILER_IMAGE_TAG: 2024.2.0-rocky9
 
+t:oneapi2025.0.0-makefiles:
+    extends:
+        - .cmake_test_linux_inteloneapi_makefiles
+    variables:
+        CMAKE_CI_BUILD_NAME: oneapi2025.0.0_makefiles
+        CMAKE_CI_INTELCOMPILER_IMAGE_TAG: 2025.0.0-rocky9
+
+t:oneapi2025.1.0-makefiles:
+    extends:
+        - .cmake_test_linux_inteloneapi_makefiles
+    variables:
+        CMAKE_CI_BUILD_NAME: oneapi2025.1.0_makefiles
+        CMAKE_CI_INTELCOMPILER_IMAGE_TAG: 2025.1.0-rocky9
+
+t:oneapi2025.2.0-makefiles:
+    extends:
+        - .cmake_test_linux_inteloneapi_makefiles
+    variables:
+        CMAKE_CI_BUILD_NAME: oneapi2025.2.0_makefiles
+        CMAKE_CI_INTELCOMPILER_IMAGE_TAG: 2025.2.0-rocky9
+
 b:linux-x86_64-package:
     extends:
         - .linux_package
@@ -927,16 +955,6 @@ b:macos-arm64-ninja-symlinked:
     variables:
         CMAKE_CI_JOB_NIGHTLY: "true"
 
-b:macos-arm64-curl:
-    extends:
-        - .macos_arm64_curl
-        - .cmake_build_macos
-        - .cmake_build_artifacts
-        - .macos_arm64_tags
-        - .run_manually
-    variables:
-        CMAKE_CI_JOB_NIGHTLY: "true"
-
 b:macos-arm64-pch:
     extends:
         - .macos_arm64_pch
@@ -983,17 +1001,6 @@ t:macos-arm64-ninja-symlinked:
     variables:
         CMAKE_CI_JOB_NIGHTLY: "true"
         CMAKE_CI_JOB_NIGHTLY_NINJA: "true"
-
-t:macos-arm64-curl:
-    extends:
-        - .macos_arm64_curl
-        - .cmake_test_macos
-        - .macos_arm64_tags
-        - .run_dependent
-    needs:
-        - b:macos-arm64-curl
-    variables:
-        CMAKE_CI_JOB_NIGHTLY: "true"
 
 b:macos-x86_64-makefiles:
     extends:
@@ -1310,20 +1317,20 @@ t:windows-clang19.1-gnu-nmake:
         CMAKE_CI_BUILD_NAME: windows_clang19.1_gnu_nmake
         CMAKE_CI_JOB_NIGHTLY: "true"
 
-t:windows-intel2021.9.0-ninja:
+t:windows-intel2021.9-ninja:
     extends:
         - .windows_intelclassic_ninja
         - .cmake_test_windows_external
-        - .windows_x86_64_tags_concurrent_vs2022
+        - .windows_x86_64_tags_concurrent_vs2022_msvc14.43
         - .cmake_junit_artifacts
         - .run_dependent
     needs:
         - t:windows-vs2022-x64-ninja
     variables:
-        CMAKE_CI_BUILD_NAME: windows_intel2021.9.0_ninja
+        CMAKE_CI_BUILD_NAME: windows_intel2021.9_ninja
         CMAKE_CI_JOB_NIGHTLY: "true"
 
-t:windows-oneapi2024.1.0-ninja:
+t:windows-oneapi2025.1-ninja:
     extends:
         - .windows_inteloneapi_ninja
         - .cmake_test_windows_external
@@ -1333,7 +1340,7 @@ t:windows-oneapi2024.1.0-ninja:
     needs:
         - t:windows-vs2022-x64-ninja
     variables:
-        CMAKE_CI_BUILD_NAME: windows_oneapi2024.1.0_ninja
+        CMAKE_CI_BUILD_NAME: windows_oneapi2025.1_ninja
         CMAKE_CI_JOB_NIGHTLY: "true"
 
 t:mingw_osdn_io-mingw_makefiles:

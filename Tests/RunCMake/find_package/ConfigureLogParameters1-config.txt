@@ -1,13 +1,17 @@
 ^
 ---
-events:
+events:(
   -
+    kind: "find-v1"(
+    [^
+]*)+|
++  -
     kind: "message-v1"
     backtrace:(
       - "[^"]+")+
     message: \|(
 +      [^
-]*)*
+]*)*)*
   -
     kind: "find_package-v1"
     backtrace:(
@@ -37,11 +41,14 @@ events:
         CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
     candidates:
       -
-        path: ".*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
+        path: "[^"]*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
         mode: "module"
         reason: "not_found"
         message: "Not an EXACT version match"
     found: null
+    search_context:(
+      [^
+]*)+
   -
     kind: "find_package-v1"
     backtrace:(
@@ -72,9 +79,12 @@ events:
         CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
         CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
     found:
-      path: ".*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
+      path: "[^"]*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
       mode: "module"
       version: "1.2"
+    search_context:(
+      [^
+]*)+
   -
     kind: "find_package-v1"
     backtrace:(
@@ -103,9 +113,12 @@ events:
         CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
         CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
     found:
-      path: ".*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
+      path: "[^"]*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
       mode: "module"
       version: "1.2"
+    search_context:(
+      [^
+]*)+
   -
     kind: "find_package-v1"
     backtrace:(
@@ -132,9 +145,12 @@ events:
         CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
         CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
     found:
-      path: ".*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
+      path: "[^"]*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
       mode: "module"
       version: "1.2"
+    search_context:(
+      [^
+]*)+
   -
     kind: "find_package-v1"
     backtrace:(
@@ -161,9 +177,12 @@ events:
         CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
         CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
     found:
-      path: ".*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
+      path: "[^"]*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
       mode: "module"
       version: "1.2"
+    search_context:(
+      [^
+]*)+
   -
     kind: "find_package-v1"
     backtrace:(
@@ -199,9 +218,12 @@ events:
         CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
         CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
     found:
-      path: ".*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
+      path: "[^"]*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
       mode: "module"
       version: "1.2"
+    search_context:(
+      [^
+]*)+
   -
     kind: "find_package-v1"
     backtrace:(
@@ -229,9 +251,12 @@ events:
         CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
         CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
     found:
-      path: ".*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
+      path: "[^"]*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
       mode: "module"
       version: "1.2"
+    search_context:(
+      [^
+]*)+
   -
     kind: "find_package-v1"
     backtrace:(
@@ -258,9 +283,12 @@ events:
         CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
         CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
     found:
-      path: ".*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
+      path: "[^"]*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
       mode: "module"
       version: "1.2"
+    search_context:(
+      [^
+]*)+
   -
     kind: "find_package-v1"
     backtrace:(
@@ -287,9 +315,12 @@ events:
         CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
         CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
     found:
-      path: ".*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
+      path: "[^"]*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
       mode: "module"
       version: "1.2"
+    search_context:(
+      [^
+]*)+
   -
     kind: "find_package-v1"
     backtrace:(
@@ -316,7 +347,10 @@ events:
         CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
         CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
     found:
-      path: ".*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
+      path: "[^"]*/Tests/RunCMake/find_package/ConfigureLog/cmake/FindParameterCheck.cmake"
       mode: "module"
       version: "1.2"
+    search_context:(
+      [^
+]*)+
 \.\.\.$

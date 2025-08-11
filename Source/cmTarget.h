@@ -51,6 +51,12 @@ public:
     Foreign,
   };
 
+  enum class Origin
+  {
+    Cps,
+    Unknown,
+  };
+
   enum class PerConfig
   {
     Yes,
@@ -69,6 +75,12 @@ public:
 
   //! Return the type of target.
   cmStateEnums::TargetType GetType() const;
+
+  //! Set the origin of the target.
+  void SetOrigin(Origin origin);
+
+  //! Return the origin of the target.
+  Origin GetOrigin() const;
 
   //! Get the cmMakefile that owns this target.
   cmMakefile* GetMakefile() const;
@@ -260,7 +272,7 @@ public:
   void InsertPrecompileHeader(BT<std::string> const& entry);
 
   void AppendBuildInterfaceIncludes();
-  void FinalizeTargetConfiguration(cmBTStringRange const& compileDefinitions);
+  void FinalizeTargetConfiguration(cmBTStringRange compileDefinitions);
 
   std::string GetDebugGeneratorExpressions(std::string const& value,
                                            cmTargetLinkLibraryType llt) const;
@@ -269,7 +281,7 @@ public:
   std::set<std::string> const& GetSystemIncludeDirectories() const;
 
   void AddInstallIncludeDirectories(cmTargetExport const& te,
-                                    cmStringRange const& incs);
+                                    cmStringRange incs);
   cmStringRange GetInstallIncludeDirectoriesEntries(
     cmTargetExport const& te) const;
 

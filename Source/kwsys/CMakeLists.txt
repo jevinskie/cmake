@@ -148,7 +148,6 @@ if(KWSYS_STANDALONE OR CMake_SOURCE_DIR)
   set(KWSYS_USE_System 1)
   set(KWSYS_USE_SystemTools 1)
   set(KWSYS_USE_CommandLineArguments 1)
-  set(KWSYS_USE_Terminal 1)
   set(KWSYS_USE_FStream 1)
   set(KWSYS_USE_String 1)
   set(KWSYS_USE_SystemInformation 1)
@@ -351,12 +350,6 @@ endif()
 # Configure the standard library header wrappers based on compiler's
 # capabilities and parent project's request.  Enforce 0/1 as only
 # possible values for configuration into Configure.hxx.
-
-if(KWSYS_USE_Encoding)
-  # Look for type size helper macros.
-  KWSYS_PLATFORM_CXX_TEST(KWSYS_STL_HAS_WSTRING
-    "Checking whether wstring is available" DIRECT)
-endif()
 
 if(KWSYS_NAMESPACE MATCHES "^kwsys$")
   set(KWSYS_NAME_IS_KWSYS 1)
@@ -631,7 +624,7 @@ endforeach()
 
 # Add selected C components.
 foreach(c IN ITEMS
-    Process Base64 Encoding MD5 Terminal System String
+    Process Base64 Encoding MD5 System String
     )
   if(KWSYS_USE_${c})
     # Use the corresponding header file.
@@ -662,7 +655,7 @@ if(KWSYS_USE_Process)
 endif()
 
 # Add selected C sources.
-foreach(c IN ITEMS Base64 Encoding MD5 Terminal System String)
+foreach(c IN ITEMS Base64 Encoding MD5 System String)
   if(KWSYS_USE_${c})
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${c}C.c)
       list(APPEND KWSYS_C_SRCS ${c}C.c)
@@ -775,7 +768,7 @@ if(KWSYS_C_SRCS OR KWSYS_CXX_SRCS)
 
   if(KWSYS_USE_SystemInformation)
     if(WIN32)
-      target_link_libraries(${KWSYS_TARGET_INTERFACE} ${KWSYS_LINK_DEPENDENCY} ws2_32)
+      target_link_libraries(${KWSYS_TARGET_INTERFACE} ${KWSYS_LINK_DEPENDENCY} ws2_32 powrprof)
       # link in dbghelp.dll for symbol lookup if MSVC 1800 or later
       # Note that the dbghelp runtime is part of MS Windows OS
       if(MSVC_VERSION AND NOT MSVC_VERSION VERSION_LESS 1800)
@@ -918,16 +911,9 @@ endif()
 # Setup testing if not being built as part of another project.
 if(KWSYS_STANDALONE OR CMake_SOURCE_DIR)
   if(BUILD_TESTING)
-    # Compute the location of executables.
-    set(EXEC_DIR "${CMAKE_CURRENT_BINARY_DIR}")
-    if(CMAKE_RUNTIME_OUTPUT_DIRECTORY)
-      set(EXEC_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
-    endif()
-
     # C tests
     set(KWSYS_C_TESTS
       testEncode.c
-      testTerminal.c
       )
     if(KWSYS_STANDALONE)
       set(KWSYS_C_TESTS ${KWSYS_C_TESTS} testFail.c)
@@ -942,7 +928,7 @@ if(KWSYS_STANDALONE OR CMake_SOURCE_DIR)
     foreach(testfile IN LISTS KWSYS_C_TESTS)
       get_filename_component(test "${testfile}" NAME_WE)
       add_test(NAME kwsys.${test}
-        COMMAND ${EXEC_DIR}/${KWSYS_NAMESPACE}TestsC ${test} ${KWSYS_TEST_ARGS_${test}}
+        COMMAND ${KWSYS_NAMESPACE}TestsC ${test} ${KWSYS_TEST_ARGS_${test}}
         )
       set_property(TEST kwsys.${test} PROPERTY LABELS ${KWSYS_LABELS_TEST})
     endforeach()
@@ -955,12 +941,8 @@ if(KWSYS_STANDALONE OR CMake_SOURCE_DIR)
       testCommandLineArguments.cxx
       testCommandLineArguments1.cxx
       testDirectory.cxx
+      testEncoding.cxx
       )
-    if(KWSYS_STL_HAS_WSTRING)
-      set(KWSYS_CXX_TESTS ${KWSYS_CXX_TESTS}
-        testEncoding.cxx
-        )
-    endif()
     if(KWSYS_USE_FStream)
       set(KWSYS_CXX_TESTS ${KWSYS_CXX_TESTS}
         testFStream.cxx
@@ -994,7 +976,10 @@ if(KWSYS_STANDALONE OR CMake_SOURCE_DIR)
       KWSYS_CXX_TEST_SRCS ${KWSYS_NAMESPACE}TestsCxx.cxx
       ${KWSYS_CXX_TESTS}
       )
-    add_executable(${KWSYS_NAMESPACE}TestsCxx ${KWSYS_CXX_TEST_SRCS})
+    add_executable(${KWSYS_NAMESPACE}TestsCxx
+      ${KWSYS_CXX_TEST_SRCS}
+      test.manifest
+    )
     set_property(TARGET ${KWSYS_NAMESPACE}TestsCxx PROPERTY C_CLANG_TIDY "")
     set_property(TARGET ${KWSYS_NAMESPACE}TestsCxx PROPERTY CXX_CLANG_TIDY "")
     set_property(TARGET ${KWSYS_NAMESPACE}TestsCxx PROPERTY C_INCLUDE_WHAT_YOU_USE "")
@@ -1050,7 +1035,7 @@ if(KWSYS_STANDALONE OR CMake_SOURCE_DIR)
     foreach(testfile IN LISTS KWSYS_CXX_TESTS)
       get_filename_component(test "${testfile}" NAME_WE)
       add_test(NAME kwsys.${test}
-        COMMAND ${EXEC_DIR}/${KWSYS_NAMESPACE}TestsCxx ${test} ${KWSYS_TEST_ARGS_${test}}
+        COMMAND ${KWSYS_NAMESPACE}TestsCxx ${test} ${KWSYS_TEST_ARGS_${test}}
         )
       set_property(TEST kwsys.${test} PROPERTY LABELS ${KWSYS_LABELS_TEST})
     endforeach()
@@ -1062,7 +1047,7 @@ if(KWSYS_STANDALONE OR CMake_SOURCE_DIR)
     #set(KWSYS_TEST_PROCESS_7 7) # uncomment to run timing-sensitive test locally
     foreach(n IN ITEMS 1 2 3 4 5 6 ${KWSYS_TEST_PROCESS_7} 9 10)
       add_test(NAME kwsys.testProcess-${n}
-        COMMAND ${EXEC_DIR}/${KWSYS_NAMESPACE}TestProcess ${n}
+        COMMAND ${KWSYS_NAMESPACE}TestProcess ${n}
         )
       set_property(TEST kwsys.testProcess-${n} PROPERTY LABELS ${KWSYS_LABELS_TEST})
       set_property(TEST kwsys.testProcess-${n} PROPERTY TIMEOUT 120)

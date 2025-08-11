@@ -566,6 +566,7 @@ public:
     std::string TargetPDB;
     std::string TargetCompilePDB;
     std::string ObjectDir;
+    std::string TargetSupportDir;
     std::string ObjectFileDir;
     std::string DependencyFile;
     std::string DependencyTarget;
@@ -692,6 +693,9 @@ public:
   std::vector<BT<std::string>> GetPrecompileHeaders(
     std::string const& config, std::string const& language) const;
 
+  void MarkAsPchReused() { this->PchReused = true; }
+  cmGeneratorTarget const* GetPchReuseTarget() const;
+  cmGeneratorTarget* GetPchReuseTarget();
   std::vector<std::string> GetPchArchs(std::string const& config,
                                        std::string const& lang) const;
   std::string GetPchHeader(std::string const& config,
@@ -933,8 +937,17 @@ public:
   /** Return whether or not the target has a DLL import library.  */
   bool HasImportLibrary(std::string const& config) const;
 
+  bool GetUseShortObjectNames(
+    cmStateEnums::IntermediateDirKind kind =
+      cmStateEnums::IntermediateDirKind::ObjectFiles) const;
+
   /** Get a build-tree directory in which to place target support files.  */
-  std::string GetSupportDirectory() const;
+  std::string GetSupportDirectory(
+    cmStateEnums::IntermediateDirKind kind =
+      cmStateEnums::IntermediateDirKind::ObjectFiles) const;
+  std::string GetCMFSupportDirectory(
+    cmStateEnums::IntermediateDirKind kind =
+      cmStateEnums::IntermediateDirKind::ObjectFiles) const;
 
   /** Return whether this target may be used to link another target.  */
   bool IsLinkable() const;
@@ -1517,6 +1530,9 @@ private:
     std::map<cmSourceFile const*, ClassifiedFlags> SourceFlags;
   };
   mutable std::map<std::string, InfoByConfig> Configs;
+  bool PchReused = false;
+  mutable bool ComputingPchReuse = false;
+  mutable bool PchReuseCycleDetected = false;
 };
 
 class cmGeneratorTarget::TargetPropertyEntry

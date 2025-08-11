@@ -254,8 +254,8 @@ public:
             std::string const& projectName,
             std::vector<std::string> const& targetNames, std::ostream& ostr,
             std::string const& makeProgram, std::string const& config,
-            cmBuildOptions const& buildOptions, bool verbose,
-            cmDuration timeout, cmSystemTools::OutputOption outputMode,
+            cmBuildOptions buildOptions, bool verbose, cmDuration timeout,
+            cmSystemTools::OutputOption outputMode,
             std::vector<std::string> const& nativeOptions =
               std::vector<std::string>());
 
@@ -273,7 +273,7 @@ public:
     std::string const& makeProgram, std::string const& projectName,
     std::string const& projectDir, std::vector<std::string> const& targetNames,
     std::string const& config, int jobs, bool verbose,
-    cmBuildOptions const& buildOptions = cmBuildOptions(),
+    cmBuildOptions buildOptions = cmBuildOptions(),
     std::vector<std::string> const& makeOptions = std::vector<std::string>());
 
   virtual void PrintBuildCommandAdvice(std::ostream& os, int jobs) const;
@@ -629,6 +629,14 @@ public:
     std::string const& filename) const;
   void AddCMP0068WarnTarget(std::string const& target);
 
+  virtual bool SupportsShortObjectNames() const;
+  bool UseShortObjectNames(
+    cmStateEnums::IntermediateDirKind kind =
+      cmStateEnums::IntermediateDirKind::ObjectFiles) const;
+  virtual std::string GetShortBinaryOutputDir() const;
+  std::string ComputeTargetShortName(std::string const& bindir,
+                                     std::string const& targetName) const;
+
   virtual void ComputeTargetObjectDirectory(cmGeneratorTarget* gt) const;
 
   bool GenerateCPackPropertiesFile();
@@ -858,7 +866,7 @@ private:
   void CheckTargetLinkLibraries() const;
   bool CheckTargetsForMissingSources() const;
   bool CheckTargetsForType() const;
-  bool CheckTargetsForPchCompilePdb() const;
+  void MarkTargetsForPchReuse() const;
 
   void CreateLocalGenerators();
 
@@ -940,6 +948,15 @@ private:
     std::map<std::string, PerLanguageModuleDatabases>;
   PerConfigModuleDatabases PerConfigModuleDbs;
   PerLanguageModuleDatabases PerLanguageModuleDbs;
+
+  enum class IntermediateDirStrategy
+  {
+    Full,
+    Short,
+  };
+  IntermediateDirStrategy IntDirStrategy = IntermediateDirStrategy::Full;
+  IntermediateDirStrategy QtAutogenIntDirStrategy =
+    IntermediateDirStrategy::Full;
 
 protected:
   float FirstTimeProgress;

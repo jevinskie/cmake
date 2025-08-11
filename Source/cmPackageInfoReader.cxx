@@ -180,7 +180,7 @@ std::string DeterminePrefix(std::string const& filepath,
 }
 
 // Extract key name from value iterator as string_view.
-cm::string_view IterKey(Json::Value::const_iterator const& iter)
+cm::string_view IterKey(Json::Value::const_iterator iter)
 {
   char const* end;
   char const* const start = iter.memberName(&end);
@@ -479,6 +479,14 @@ std::unique_ptr<cmPackageInfoReader> cmPackageInfoReader::Read(
     }
   }
 
+  // Check for a default license.
+  Json::Value const& defaultLicense = reader->Data["default_license"];
+  if (!defaultLicense.isNull()) {
+    reader->DefaultLicense = defaultLicense.asString();
+  } else if (parent) {
+    reader->DefaultLicense = parent->DefaultLicense;
+  }
+
   return reader;
 }
 
@@ -564,10 +572,10 @@ std::string cmPackageInfoReader::ResolvePath(std::string path) const
   return path;
 }
 
-void cmPackageInfoReader::SetOptionalProperty(cmTarget* target,
-                                              cm::string_view property,
-                                              cm::string_view configuration,
-                                              Json::Value const& value) const
+void cmPackageInfoReader::SetImportProperty(cmTarget* target,
+                                            cm::string_view property,
+                                            cm::string_view configuration,
+                                            Json::Value const& value) const
 {
   if (!value.isNull()) {
     std::string fullprop;
@@ -579,6 +587,17 @@ void cmPackageInfoReader::SetOptionalProperty(cmTarget* target,
     }
 
     target->SetProperty(fullprop, this->ResolvePath(value.asString()));
+  }
+}
+
+void cmPackageInfoReader::SetMetaProperty(
+  cmTarget* target, cm::string_view property, Json::Value const& value,
+  std::string const& defaultValue) const
+{
+  if (!value.isNull()) {
+    target->SetProperty(property.data(), value.asString());
+  } else if (!defaultValue.empty()) {
+    target->SetProperty(property.data(), defaultValue);
   }
 }
 
@@ -630,14 +649,14 @@ void cmPackageInfoReader::SetTargetProperties(
                            });
 
   // Add link name/location(s).
-  this->SetOptionalProperty(target, "LOCATION"_s, configuration,
-                            data["location"]);
+  this->SetImportProperty(target, "LOCATION"_s, configuration,
+                          data["location"]);
 
-  this->SetOptionalProperty(target, "IMPLIB"_s, configuration,
-                            data["link_location"]);
+  this->SetImportProperty(target, "IMPLIB"_s, configuration,
+                          data["link_location"]);
 
-  this->SetOptionalProperty(target, "SONAME"_s, configuration,
-                            data["link_name"]);
+  this->SetImportProperty(target, "SONAME"_s, configuration,
+                          data["link_name"]);
 
   // Add link languages.
   for (std::string const& originalLang : ReadList(data, "link_languages")) {
@@ -659,6 +678,12 @@ void cmPackageInfoReader::SetTargetProperties(
       cmStrCat("$<LINK_ONLY:"_s, NormalizeTargetName(dep, package), '>');
     AppendProperty(makefile, target, "LINK_LIBRARIES"_s, configuration, lib);
   }
+
+  // Add other information.
+  if (configuration.empty()) {
+    this->SetMetaProperty(target, "SPDX_LICENSE"_s, data["license"],
+                          this->DefaultLicense);
+  }
 }
 
 cmTarget* cmPackageInfoReader::AddLibraryComponent(
@@ -667,6 +692,7 @@ cmTarget* cmPackageInfoReader::AddLibraryComponent(
 {
   // Create the imported target.
   cmTarget* const target = makefile->AddImportedTarget(name, type, false);
+  target->SetOrigin(cmTarget::Origin::Cps);
 
   // Set default configurations.
   if (!this->DefaultConfigurations.empty()) {
@@ -693,7 +719,7 @@ bool cmPackageInfoReader::ImportTargets(cmMakefile* makefile,
   Json::Value const& components = this->Data["components"];
 
   for (auto ci = components.begin(), ce = components.end(); ci != ce; ++ci) {
-    cm::string_view const& name = IterKey(ci);
+    cm::string_view const name = IterKey(ci);
     std::string const& type =
       cmSystemTools::LowerCase((*ci)["type"].asString());
 
@@ -772,7 +798,7 @@ bool cmPackageInfoReader::ImportTargetConfigurations(
 
   for (auto ci = components.begin(), ce = components.end(); ci != ce; ++ci) {
     // Get component name and look up target.
-    cm::string_view const& name = IterKey(ci);
+    cm::string_view const name = IterKey(ci);
     auto const& ti = this->ComponentTargets.find(std::string{ name });
     if (ti == this->ComponentTargets.end()) {
       status.SetError(cmStrCat("component "_s, name, " was not found"_s));

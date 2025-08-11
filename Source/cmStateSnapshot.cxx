@@ -5,10 +5,12 @@
 
 #include <algorithm>
 #include <cassert>
+#include <set>
 #include <string>
 #include <unordered_map>
 
 #include <cm/iterator>
+#include <cmext/algorithm>
 
 #include "cmDefinitions.h"
 #include "cmLinkedTree.h"
@@ -46,6 +48,26 @@ cmStateSnapshot::cmStateSnapshot(cmState* state,
 cmStateEnums::SnapshotType cmStateSnapshot::GetType() const
 {
   return this->Position->SnapshotType;
+}
+
+cmStateEnums::SnapshotUnwindType cmStateSnapshot::GetUnwindType() const
+{
+  return this->Position->UnwindType;
+}
+
+void cmStateSnapshot::SetUnwindType(cmStateEnums::SnapshotUnwindType type)
+{
+  this->Position->UnwindType = type;
+}
+
+cmStateEnums::SnapshotUnwindState cmStateSnapshot::GetUnwindState() const
+{
+  return this->Position->UnwindState;
+}
+
+void cmStateSnapshot::SetUnwindState(cmStateEnums::SnapshotUnwindState state)
+{
+  this->Position->UnwindState = state;
 }
 
 void cmStateSnapshot::SetListFile(std::string const& listfile)
@@ -413,11 +435,17 @@ cmStateDirectory cmStateSnapshot::GetDirectory() const
 void cmStateSnapshot::SetProjectName(std::string const& name)
 {
   this->Position->BuildSystemDirectory->ProjectName = name;
+  this->Position->BuildSystemDirectory->Projects.insert(name);
 }
 
 std::string cmStateSnapshot::GetProjectName() const
 {
   return this->Position->BuildSystemDirectory->ProjectName;
+}
+
+bool cmStateSnapshot::CheckProjectName(std::string const& name) const
+{
+  return cm::contains(this->Position->BuildSystemDirectory->Projects, name);
 }
 
 cmPackageState& cmStateSnapshot::GetPackageState(

@@ -388,8 +388,8 @@ public:
 
 #ifndef CMAKE_BOOTSTRAP
   void SetWarningFromPreset(std::string const& name,
-                            cm::optional<bool> const& warning,
-                            cm::optional<bool> const& error);
+                            cm::optional<bool> warning,
+                            cm::optional<bool> error);
   void ProcessPresetVariables();
   void PrintPresetVariables();
   void ProcessPresetEnvironment();
@@ -768,6 +768,8 @@ protected:
   std::string GeneratorInstance;
   std::string GeneratorPlatform;
   std::string GeneratorToolset;
+  cm::optional<std::string> IntermediateDirStrategy;
+  cm::optional<std::string> AutogenIntermediateDirStrategy;
   bool GeneratorInstanceSet = false;
   bool GeneratorPlatformSet = false;
   bool GeneratorToolsetSet = false;

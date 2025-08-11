@@ -702,7 +702,7 @@ bool CheckPathParametersEx(cmGeneratorExpressionContext* ctx,
 }
 bool CheckPathParameters(cmGeneratorExpressionContext* ctx,
                          GeneratorExpressionContent const* cnt,
-                         cm::string_view option, Arguments const& args,
+                         cm::string_view option, Arguments args,
                          int required = 1)
 {
   return CheckPathParametersEx(ctx, cnt, option, args.size(), required);
@@ -1190,7 +1190,7 @@ inline bool CheckListParametersEx(cmGeneratorExpressionContext* ctx,
 }
 inline bool CheckListParameters(cmGeneratorExpressionContext* ctx,
                                 GeneratorExpressionContent const* cnt,
-                                cm::string_view option, Arguments const& args,
+                                cm::string_view option, Arguments args,
                                 int required = 1)
 {
   return CheckListParametersEx(ctx, cnt, option, args.size(), required);
@@ -1225,7 +1225,7 @@ bool GetNumericArgument(std::string const& arg, cmList::index_type& value)
 
 bool GetNumericArguments(
   cmGeneratorExpressionContext* ctx, GeneratorExpressionContent const* cnt,
-  Arguments const& args, std::vector<cmList::index_type>& indexes,
+  Arguments args, std::vector<cmList::index_type>& indexes,
   cmList::ExpandElements expandElements = cmList::ExpandElements::No)
 {
   using IndexRange = cmRange<Arguments::const_iterator>;
@@ -2226,11 +2226,11 @@ static const struct ConfigurationTestNode : public cmGeneratorExpressionNode
     if (parameters.empty()) {
       return configurationNode.Evaluate(parameters, context, content, nullptr);
     }
-    static cmsys::RegularExpression configValidator("^[A-Za-z0-9_]*$");
-    if (!configValidator.find(parameters.front())) {
-    }
 
     context->HadContextSensitiveCondition = true;
+
+    // First, validate our arguments.
+    static cmsys::RegularExpression configValidator("^[A-Za-z0-9_]*$");
     bool firstParam = true;
     for (auto const& param : parameters) {
       if (!configValidator.find(param)) {
@@ -2250,41 +2250,109 @@ static const struct ConfigurationTestNode : public cmGeneratorExpressionNode
         context->LG->GetCMakeInstance()->IssueMessage(
           MessageType::WARNING, e.str(), context->Backtrace);
       }
-
       firstParam = false;
-      if (context->Config.empty()) {
-        if (param.empty()) {
+    }
+
+    // Determine the context(s) in which the expression should be evaluated. If
+    // CMPxxxx is NEW, the context is exactly one of the imported target's
+    // selected configuration, if applicable, or the consuming target's
+    // configuration, otherwise.
+    //
+    // If CMPxxxx is OLD, we evaluate first in the context of the consuming
+    // target, then, if the consumed target is imported, we evaluate based on
+    // the mapped configurations (this logic is... problematic; see comment
+    // below), then finally based on the selected configuration of the imported
+    // target.
+    bool const targetIsImported =
+      (context->CurrentTarget && context->CurrentTarget->IsImported());
+    bool const oldPolicy = [&] {
+      if (!targetIsImported) {
+        // For non-imported targets, there is no behavior difference between
+        // the OLD and NEW policy.
+        return false;
+      }
+      cmTarget const* const t = context->CurrentTarget->Target;
+      if (t->GetOrigin() == cmTarget::Origin::Cps) {
+        // Generator expressions appearing on targets imported from CPS should
+        // always be evaluated according to the selected configuration of the
+        // imported target, i.e. the NEW policy.
+        return false;
+      }
+      switch (context->HeadTarget->GetPolicyStatusCMP0199()) {
+        case cmPolicies::WARN:
+          if (context->LG->GetMakefile()->PolicyOptionalWarningEnabled(
+                "CMAKE_POLICY_WARNING_CMP0199")) {
+            std::string const err =
+              cmStrCat(cmPolicies::GetPolicyWarning(cmPolicies::CMP0199),
+                       "\nEvaluation of $<CONFIG> for imported target  \"",
+                       context->CurrentTarget->GetName(), "\", used by \"",
+                       context->HeadTarget->GetName(),
+                       "\", may match multiple configurations.\n");
+            context->LG->GetCMakeInstance()->IssueMessage(
+              MessageType ::AUTHOR_WARNING, err, context->Backtrace);
+          }
+          CM_FALLTHROUGH;
+        case cmPolicies::OLD:
+          return true;
+        case cmPolicies::NEW:
+          return false;
+      }
+
+      // Should be unreachable
+      assert(false);
+      return false;
+    }();
+
+    if (!targetIsImported || oldPolicy) {
+      // Does the consuming target's configuration match any of the arguments?
+      for (auto const& param : parameters) {
+        if (context->Config.empty()) {
+          if (param.empty()) {
+            return "1";
+          }
+        } else if (cmsysString_strcasecmp(param.c_str(),
+                                          context->Config.c_str()) == 0) {
           return "1";
         }
-      } else if (cmsysString_strcasecmp(param.c_str(),
-                                        context->Config.c_str()) == 0) {
-        return "1";
       }
     }
 
-    if (context->CurrentTarget && context->CurrentTarget->IsImported()) {
+    if (targetIsImported) {
       cmValue loc = nullptr;
       cmValue imp = nullptr;
       std::string suffix;
       if (context->CurrentTarget->Target->GetMappedConfig(context->Config, loc,
                                                           imp, suffix)) {
-        // This imported target has an appropriate location
-        // for this (possibly mapped) config.
-        // Check if there is a proper config mapping for the tested config.
-        cmList mappedConfigs;
-        std::string mapProp = cmStrCat(
-          "MAP_IMPORTED_CONFIG_", cmSystemTools::UpperCase(context->Config));
-        if (cmValue mapValue = context->CurrentTarget->GetProperty(mapProp)) {
-          mappedConfigs.assign(cmSystemTools::UpperCase(*mapValue));
+        if (oldPolicy) {
+          // If the target has a MAP_IMPORTED_CONFIG_<CONFIG> property for the
+          // consumer's <CONFIG>, match *any* config in that list, regardless
+          // of whether it's valid or of what GetMappedConfig actually picked.
+          // This will result in $<CONFIG> producing '1' for multiple configs,
+          // and is almost certainly wrong, but it's what CMake did for a very
+          // long time, and... Hyrum's Law.
+          cmList mappedConfigs;
+          std::string mapProp = cmStrCat(
+            "MAP_IMPORTED_CONFIG_", cmSystemTools::UpperCase(context->Config));
+          if (cmValue mapValue =
+                context->CurrentTarget->GetProperty(mapProp)) {
+            mappedConfigs.assign(cmSystemTools::UpperCase(*mapValue));
 
-          for (auto const& param : parameters) {
-            if (cm::contains(mappedConfigs, cmSystemTools::UpperCase(param))) {
-              return "1";
+            for (auto const& param : parameters) {
+              if (cm::contains(mappedConfigs,
+                               cmSystemTools::UpperCase(param))) {
+                return "1";
+              }
             }
+
+            return "0";
           }
-        } else if (!suffix.empty()) {
-          // There is no explicit mapping for the tested config, so use
-          // the configuration of the imported location that was selected.
+        }
+
+        // This imported target has an appropriate location for this (possibly
+        // mapped) config.
+        if (!suffix.empty()) {
+          // Use the (possibly mapped) configuration of the imported location
+          // that was selected.
           for (auto const& param : parameters) {
             if (cmStrCat('_', cmSystemTools::UpperCase(param)) == suffix) {
               return "1";
@@ -2293,6 +2361,7 @@ static const struct ConfigurationTestNode : public cmGeneratorExpressionNode
         }
       }
     }
+
     return "0";
   }
 } configurationTestNode;
@@ -2560,6 +2629,146 @@ static const struct LinkLanguageAndIdNode : public cmGeneratorExpressionNode
     return "0";
   }
 } linkLanguageAndIdNode;
+
+struct CompilerLinkerIdNode : public cmGeneratorExpressionNode
+{
+  CompilerLinkerIdNode(char const* lang)
+    : Language(lang)
+  {
+  }
+
+  int NumExpectedParameters() const override { return ZeroOrMoreParameters; }
+
+  std::string Evaluate(
+    std::vector<std::string> const& parameters,
+    cmGeneratorExpressionContext* context,
+    GeneratorExpressionContent const* content,
+    cmGeneratorExpressionDAGChecker* dagChecker) const override
+  {
+    if (!context->HeadTarget) {
+      reportError(
+        context, content->GetOriginalExpression(),
+        cmStrCat(
+          "$<", this->Language,
+          "_COMPILER_LINKER_ID> may only be used with binary targets. It may "
+          "not be used with add_custom_command or add_custom_target."));
+      return {};
+    }
+    return this->EvaluateWithLanguage(parameters, context, content, dagChecker,
+                                      this->Language);
+  }
+
+  std::string EvaluateWithLanguage(std::vector<std::string> const& parameters,
+                                   cmGeneratorExpressionContext* context,
+                                   GeneratorExpressionContent const* content,
+                                   cmGeneratorExpressionDAGChecker* /*unused*/,
+                                   std::string const& lang) const
+  {
+    std::string const& compilerLinkerId =
+      context->LG->GetMakefile()->GetSafeDefinition(
+        cmStrCat("CMAKE_", lang, "_COMPILER_LINKER_ID"));
+    if (parameters.empty()) {
+      return compilerLinkerId;
+    }
+    if (compilerLinkerId.empty()) {
+      return parameters.front().empty() ? "1" : "0";
+    }
+    static cmsys::RegularExpression compilerLinkerIdValidator(
+      "^[A-Za-z0-9_]*$");
+
+    for (auto const& param : parameters) {
+      if (!compilerLinkerIdValidator.find(param)) {
+        reportError(context, content->GetOriginalExpression(),
+                    "Expression syntax not recognized.");
+        return std::string();
+      }
+
+      if (param == compilerLinkerId) {
+        return "1";
+      }
+    }
+    return "0";
+  }
+
+  char const* const Language;
+};
+
+static CompilerLinkerIdNode const cCompilerLinkerIdNode("C"),
+  cxxCompilerLinkerIdNode("CXX"), cudaCompilerLinkerIdNode("CUDA"),
+  objcCompilerLinkerIdNode("OBJC"), objcxxCompilerLinkerIdNode("OBJCXX"),
+  fortranCompilerLinkerIdNode("Fortran"), hipCompilerLinkerIdNode("HIP");
+
+struct CompilerLinkerFrontendVariantNode : public cmGeneratorExpressionNode
+{
+  CompilerLinkerFrontendVariantNode(char const* lang)
+    : Language(lang)
+  {
+  }
+
+  int NumExpectedParameters() const override { return ZeroOrMoreParameters; }
+
+  std::string Evaluate(
+    std::vector<std::string> const& parameters,
+    cmGeneratorExpressionContext* context,
+    GeneratorExpressionContent const* content,
+    cmGeneratorExpressionDAGChecker* dagChecker) const override
+  {
+    if (!context->HeadTarget) {
+      reportError(
+        context, content->GetOriginalExpression(),
+        cmStrCat(
+          "$<", this->Language,
+          "_COMPILER_LINKER_FRONTEND_VARIANT> may only be used with binary "
+          "targets. It may not be used with add_custom_command or "
+          "add_custom_target."));
+      return {};
+    }
+    return this->EvaluateWithLanguage(parameters, context, content, dagChecker,
+                                      this->Language);
+  }
+
+  std::string EvaluateWithLanguage(std::vector<std::string> const& parameters,
+                                   cmGeneratorExpressionContext* context,
+                                   GeneratorExpressionContent const* content,
+                                   cmGeneratorExpressionDAGChecker* /*unused*/,
+                                   std::string const& lang) const
+  {
+    std::string const& compilerLinkerFrontendVariant =
+      context->LG->GetMakefile()->GetSafeDefinition(
+        cmStrCat("CMAKE_", lang, "_COMPILER_LINKER_FRONTEND_VARIANT"));
+    if (parameters.empty()) {
+      return compilerLinkerFrontendVariant;
+    }
+    if (compilerLinkerFrontendVariant.empty()) {
+      return parameters.front().empty() ? "1" : "0";
+    }
+    static cmsys::RegularExpression compilerLinkerFrontendVariantValidator(
+      "^[A-Za-z0-9_]*$");
+
+    for (auto const& param : parameters) {
+      if (!compilerLinkerFrontendVariantValidator.find(param)) {
+        reportError(context, content->GetOriginalExpression(),
+                    "Expression syntax not recognized.");
+        return {};
+      }
+      if (param == compilerLinkerFrontendVariant) {
+        return "1";
+      }
+    }
+    return "0";
+  }
+
+  char const* const Language;
+};
+
+static CompilerLinkerFrontendVariantNode const
+  cCompilerLinkerFrontendVariantNode("C"),
+  cxxCompilerLinkerFrontendVariantNode("CXX"),
+  cudaCompilerLinkerFrontendVariantNode("CUDA"),
+  objcCompilerLinkerFrontendVariantNode("OBJC"),
+  objcxxCompilerLinkerFrontendVariantNode("OBJCXX"),
+  fortranCompilerLinkerFrontendVariantNode("Fortran"),
+  hipCompilerLinkerFrontendVariantNode("HIP");
 
 static const struct LinkLibraryNode : public cmGeneratorExpressionNode
 {
@@ -4641,6 +4850,27 @@ cmGeneratorExpressionNode const* cmGeneratorExpressionNode::GetNode(
     { "COMPILE_LANGUAGE", &languageNode },
     { "LINK_LANG_AND_ID", &linkLanguageAndIdNode },
     { "LINK_LANGUAGE", &linkLanguageNode },
+    { "C_COMPILER_LINKER_ID", &cCompilerLinkerIdNode },
+    { "CXX_COMPILER_LINKER_ID", &cxxCompilerLinkerIdNode },
+    { "OBJC_COMPILER_LINKER_ID", &objcCompilerLinkerIdNode },
+    { "OBJCXX_COMPILER_LINKER_ID", &objcxxCompilerLinkerIdNode },
+    { "CUDA_COMPILER_LINKER_ID", &cudaCompilerLinkerIdNode },
+    { "Fortran_COMPILER_LINKER_ID", &fortranCompilerLinkerIdNode },
+    { "HIP_COMPILER_LINKER_ID", &hipCompilerLinkerIdNode },
+    { "C_COMPILER_LINKER_FRONTEND_VARIANT",
+      &cCompilerLinkerFrontendVariantNode },
+    { "CXX_COMPILER_LINKER_FRONTEND_VARIANT",
+      &cxxCompilerLinkerFrontendVariantNode },
+    { "CUDA_COMPILER_LINKER_FRONTEND_VARIANT",
+      &cudaCompilerLinkerFrontendVariantNode },
+    { "OBJC_COMPILER_LINKER_FRONTEND_VARIANT",
+      &objcCompilerLinkerFrontendVariantNode },
+    { "OBJCXX_COMPILER_LINKER_FRONTEND_VARIANT",
+      &objcxxCompilerLinkerFrontendVariantNode },
+    { "Fortran_COMPILER_LINKER_FRONTEND_VARIANT",
+      &fortranCompilerLinkerFrontendVariantNode },
+    { "HIP_COMPILER_LINKER_FRONTEND_VARIANT",
+      &hipCompilerLinkerFrontendVariantNode },
     { "LINK_LIBRARY", &linkLibraryNode },
     { "LINK_GROUP", &linkGroupNode },
     { "HOST_LINK", &hostLinkNode },

@@ -103,7 +103,6 @@
 #include "cmsys/FStream.hxx"
 #include "cmsys/RegularExpression.hxx"
 #include "cmsys/System.h"
-#include "cmsys/Terminal.h"
 
 #if defined(_WIN32)
 #  include <windows.h>
@@ -379,22 +378,14 @@ extern char** environ; // NOLINT(readability-redundant-declaration)
 #if !defined(CMAKE_BOOTSTRAP)
 static std::string cm_archive_entry_pathname(struct archive_entry* entry)
 {
-#  if cmsys_STL_HAS_WSTRING
   return cmsys::Encoding::ToNarrow(archive_entry_pathname_w(entry));
-#  else
-  return archive_entry_pathname(entry);
-#  endif
 }
 
 static int cm_archive_read_open_file(struct archive* a, char const* file,
                                      int block_size)
 {
-#  if cmsys_STL_HAS_WSTRING
   std::wstring wfile = cmsys::Encoding::ToWide(file);
   return archive_read_open_filename_w(a, wfile.c_str(), block_size);
-#  else
-  return archive_read_open_filename(a, file, block_size);
-#  endif
 }
 #endif
 
@@ -1076,7 +1067,7 @@ std::string cmSystemTools::FileExistsInParentDirectories(
   cmSystemTools::ConvertToUnixSlashes(dir);
   std::string prevDir;
   while (dir != prevDir) {
-    std::string path = cmStrCat(dir, "/", file);
+    std::string path = cmStrCat(dir, '/', file);
     if (cmSystemTools::FileExists(path)) {
       return path;
     }
@@ -1580,6 +1571,18 @@ cmSystemTools::CopyResult cmSystemTools::CopySingleFile(
         return CopyResult::Success;
       }
       break;
+    case CopyWhen::OnlyIfNewer: {
+      if (!SystemTools::FileExists(newname)) {
+        break;
+      }
+      int timeResult = 0;
+      cmsys::Status timeStatus =
+        cmsys::SystemTools::FileTimeCompare(oldname, newname, &timeResult);
+      if (timeStatus.IsSuccess() && timeResult <= 0) {
+        return CopyResult::Success;
+      }
+      break;
+    }
   }
 
   mode_t perm = 0;
@@ -1639,6 +1642,20 @@ cmSystemTools::CopyResult cmSystemTools::CopySingleFile(
     }
   }
   return CopyResult::Success;
+}
+
+bool cmSystemTools::CopyFileIfNewer(std::string const& source,
+                                    std::string const& destination)
+{
+  return cmsys::SystemTools::CopyFileIfNewer(source, destination).IsSuccess();
+}
+
+bool cmSystemTools::CopyADirectory(std::string const& source,
+                                   std::string const& destination,
+                                   CopyWhen when)
+{
+  return cmsys::SystemTools::CopyADirectory(source, destination, when)
+    .IsSuccess();
 }
 
 bool cmSystemTools::RenameFile(std::string const& oldname,
@@ -3259,37 +3276,6 @@ cmsys::Status cmSystemTools::SetLogicalWorkingDirectory(std::string const& lwd)
   return status;
 }
 
-void cmSystemTools::MakefileColorEcho(int color, char const* message,
-                                      bool newline, bool enabled)
-{
-  // On some platforms (an MSYS prompt) cmsysTerminal may not be able
-  // to determine whether the stream is displayed on a tty.  In this
-  // case it assumes no unless we tell it otherwise.  Since we want
-  // color messages to be displayed for users we will assume yes.
-  // However, we can test for some situations when the answer is most
-  // likely no.
-  int assumeTTY = cmsysTerminal_Color_AssumeTTY;
-  if (cmSystemTools::HasEnv("DART_TEST_FROM_DART") ||
-      cmSystemTools::HasEnv("DASHBOARD_TEST_FROM_CTEST") ||
-      cmSystemTools::HasEnv("CTEST_INTERACTIVE_DEBUG_MODE")) {
-    // Avoid printing color escapes during dashboard builds.
-    assumeTTY = 0;
-  }
-
-  if (enabled && color != cmsysTerminal_Color_Normal) {
-    // Print with color.  Delay the newline until later so that
-    // all color restore sequences appear before it.
-    cmsysTerminal_cfprintf(color | assumeTTY, stdout, "%s", message);
-  } else {
-    // Color is disabled.  Print without color.
-    fprintf(stdout, "%s", message);
-  }
-
-  if (newline) {
-    fprintf(stdout, "\n");
-  }
-}
-
 bool cmSystemTools::GuessLibrarySOName(std::string const& fullPath,
                                        std::string& soname)
 {
@@ -3336,8 +3322,8 @@ bool cmSystemTools::GuessLibraryInstallName(std::string const& fullPath,
   return false;
 }
 
-static std::string::size_type cmSystemToolsFindRPath(
-  cm::string_view const& have, cm::string_view const& want)
+static std::string::size_type cmSystemToolsFindRPath(cm::string_view have,
+                                                     cm::string_view want)
 {
   std::string::size_type pos = 0;
   while (pos < have.size()) {
@@ -4205,7 +4191,7 @@ std::string cmSystemTools::EncodeURL(std::string const& in, bool escapeSlashes)
       case ' ':
       case '=':
       case '%':
-        snprintf(hexCh, sizeof(hexCh), "%%%02X", static_cast<int>(c));
+        snprintf(hexCh, sizeof(hexCh), "%%%02X", static_cast<unsigned int>(c));
         break;
       case '/':
         if (escapeSlashes) {

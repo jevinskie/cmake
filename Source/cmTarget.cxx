@@ -381,6 +381,7 @@ TargetProperty const StaticTargetProperties[] = {
   // ---- moc
   { "AUTOMOC"_s, IC::CanCompileSources },
   { "AUTOMOC_COMPILER_PREDEFINES"_s, IC::CanCompileSources },
+  { "AUTOMOC_INCLUDE_DIRECTORIES"_s, IC::CanCompileSources },
   { "AUTOMOC_MACRO_NAMES"_s, IC::CanCompileSources },
   { "AUTOMOC_MOC_OPTIONS"_s, IC::CanCompileSources },
   { "AUTOMOC_PATH_PREFIX"_s, IC::CanCompileSources },
@@ -448,14 +449,18 @@ TargetProperty const StaticTargetProperties[] = {
   // ---- C++
   { "CXX_LINKER_LAUNCHER"_s, IC::CanCompileSources },
   // ---- CUDA
+  { "CUDA_LINKER_LAUNCHER"_s, IC::CanCompileSources },
   { "CUDA_RESOLVE_DEVICE_SYMBOLS"_s, IC::CanCompileSources },
   { "CUDA_RUNTIME_LIBRARY"_s, IC::CanCompileSources },
   // ---- HIP
+  { "HIP_LINKER_LAUNCHER"_s, IC::CanCompileSources },
   { "HIP_RUNTIME_LIBRARY"_s, IC::CanCompileSources },
   // ---- Objective C
   { "OBJC_LINKER_LAUNCHER"_s, IC::CanCompileSources },
   // ---- Objective C++
   { "OBJCXX_LINKER_LAUNCHER"_s, IC::CanCompileSources },
+  // ---- Fortran
+  { "Fortran_LINKER_LAUNCHER"_s, IC::CanCompileSources },
 
   // Static analysis
   // -- C
@@ -584,6 +589,7 @@ class cmTargetInternals
 {
 public:
   cmStateEnums::TargetType TargetType;
+  cmTarget::Origin Origin = cmTarget::Origin::Unknown;
   cmMakefile* Makefile;
   cmPolicies::PolicyMap PolicyMap;
   cmTarget const* TemplateTarget;
@@ -729,8 +735,7 @@ bool FileSetType::WriteProperties(cmTarget* tgt, cmTargetInternals* impl,
     } else {
       impl->AddDirectoryToFileSet(
         tgt, fileSetName, value, this->TypeName,
-        cmStrCat(this->ArbitraryDescription, " \"", fileSetName, "\""),
-        action);
+        cmStrCat(this->ArbitraryDescription, " \"", fileSetName, '"'), action);
     }
     return true;
   }
@@ -743,8 +748,7 @@ bool FileSetType::WriteProperties(cmTarget* tgt, cmTargetInternals* impl,
     } else {
       impl->AddPathToFileSet(
         tgt, fileSetName, value, this->TypeName,
-        cmStrCat(this->ArbitraryDescription, " \"", fileSetName, "\""),
-        action);
+        cmStrCat(this->ArbitraryDescription, " \"", fileSetName, '"'), action);
     }
     return true;
   }
@@ -1107,6 +1111,18 @@ cmTarget& cmTarget::operator=(cmTarget&&) noexcept = default;
 cmStateEnums::TargetType cmTarget::GetType() const
 {
   return this->impl->TargetType;
+}
+
+void cmTarget::SetOrigin(Origin origin)
+{
+  assert(origin != cmTarget::Origin::Unknown);
+  assert(this->impl->Origin == cmTarget::Origin::Unknown);
+  this->impl->Origin = origin;
+}
+
+cmTarget::Origin cmTarget::GetOrigin() const
+{
+  return this->impl->Origin;
 }
 
 cmMakefile* cmTarget::GetMakefile() const
@@ -1610,7 +1626,7 @@ std::set<std::string> const& cmTarget::GetSystemIncludeDirectories() const
 }
 
 void cmTarget::AddInstallIncludeDirectories(cmTargetExport const& te,
-                                            cmStringRange const& incs)
+                                            cmStringRange incs)
 {
   std::copy(
     incs.begin(), incs.end(),
@@ -1908,7 +1924,6 @@ MAKE_PROP(COMPILE_DEFINITIONS);
 MAKE_PROP(COMPILE_FEATURES);
 MAKE_PROP(COMPILE_OPTIONS);
 MAKE_PROP(PRECOMPILE_HEADERS);
-MAKE_PROP(PRECOMPILE_HEADERS_REUSE_FROM);
 MAKE_PROP(CUDA_CUBIN_COMPILATION);
 MAKE_PROP(CUDA_FATBIN_COMPILATION);
 MAKE_PROP(CUDA_OPTIX_COMPILATION);
@@ -2140,42 +2155,10 @@ void cmTarget::SetProperty(std::string const& prop, cmValue value)
       this->impl->Properties.SetProperty(prop, value);
     } else {
       auto e = cmStrCat(prop, " property is not supported by ", compiler,
-                        "  compiler version ", compilerVersion, ".");
+                        "  compiler version ", compilerVersion, '.');
       this->impl->Makefile->IssueMessage(MessageType::FATAL_ERROR, e);
       return;
     }
-  } else if (prop == propPRECOMPILE_HEADERS_REUSE_FROM) {
-    if (this->GetProperty("PRECOMPILE_HEADERS")) {
-      std::ostringstream e;
-      e << "PRECOMPILE_HEADERS property is already set on target (\""
-        << this->impl->Name << "\")\n";
-      this->impl->Makefile->IssueMessage(MessageType::FATAL_ERROR, e.str());
-      return;
-    }
-    auto* reusedTarget = this->impl->Makefile->GetCMakeInstance()
-                           ->GetGlobalGenerator()
-                           ->FindTarget(value);
-    if (!reusedTarget) {
-      std::string const e(
-        "PRECOMPILE_HEADERS_REUSE_FROM set with non existing target");
-      this->impl->Makefile->IssueMessage(MessageType::FATAL_ERROR, e);
-      return;
-    }
-
-    std::string reusedFrom = reusedTarget->GetSafeProperty(prop);
-    if (reusedFrom.empty()) {
-      reusedFrom = *value;
-    }
-
-    this->impl->Properties.SetProperty(prop, reusedFrom);
-
-    reusedTarget->SetProperty("COMPILE_PDB_NAME", reusedFrom);
-    reusedTarget->SetProperty("COMPILE_PDB_OUTPUT_DIRECTORY",
-                              cmStrCat(reusedFrom, ".dir/"));
-
-    cmValue tmp = reusedTarget->GetProperty("COMPILE_PDB_NAME");
-    this->SetProperty("COMPILE_PDB_NAME", tmp);
-    this->AddUtility(reusedFrom, false, this->impl->Makefile);
   } else if (prop == propC_STANDARD || prop == propCXX_STANDARD ||
              prop == propCUDA_STANDARD || prop == propHIP_STANDARD ||
              prop == propOBJC_STANDARD || prop == propOBJCXX_STANDARD) {
@@ -2204,15 +2187,6 @@ void cmTarget::AppendProperty(std::string const& prop,
       cmStrCat("IMPORTED_GLOBAL property can't be appended, only set on "
                "imported targets (\"",
                this->impl->Name, "\")\n"));
-  }
-  if (prop == propPRECOMPILE_HEADERS &&
-      this->GetProperty("PRECOMPILE_HEADERS_REUSE_FROM")) {
-    this->impl->Makefile->IssueMessage(
-      MessageType::FATAL_ERROR,
-      cmStrCat(
-        "PRECOMPILE_HEADERS_REUSE_FROM property is already set on target (\"",
-        this->impl->Name, "\")\n"));
-    return;
   }
 
   UsageRequirementProperty* usageRequirements[] = {
@@ -2429,8 +2403,7 @@ bool CheckLinkLibraryPattern(UsageRequirementProperty const& usage,
 }
 }
 
-void cmTarget::FinalizeTargetConfiguration(
-  cmBTStringRange const& compileDefinitions)
+void cmTarget::FinalizeTargetConfiguration(cmBTStringRange compileDefinitions)
 {
   if (this->GetType() == cmStateEnums::GLOBAL_TARGET) {
     return;
@@ -3094,11 +3067,11 @@ std::string cmTarget::ImportedGetFullPath(
         }
 
         if (!config.empty()) {
-          configuration = cmStrCat(" configuration \"", config, "\"");
+          configuration = cmStrCat(" configuration \"", config, '"');
         }
 
         return cmStrCat(unset, " not set for imported target \"",
-                        this->GetName(), "\"", configuration, ".");
+                        this->GetName(), '"', configuration, '.');
       };
 
       switch (this->GetPolicyStatus(cmPolicies::CMP0111)) {

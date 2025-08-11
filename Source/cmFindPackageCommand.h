@@ -184,6 +184,7 @@ private:
   {
     None,
     Module,
+    // Do not implicitly log for prior package types.
     Config,
     Cps,
     Provider,
@@ -275,6 +276,7 @@ private:
   bool PolicyScope = true;
   bool GlobalScope = false;
   bool RegistryViewDefined = false;
+  bool ScopeUnwind = false;
   std::string LibraryArchitecture;
   std::vector<std::string> Names;
   std::set<std::string> IgnoredPaths;
@@ -333,10 +335,10 @@ private:
 
   class FlushDebugBufferOnExit;
 
-  /*! the selected sortOrder (None by default)*/
-  SortOrderType SortOrder = None;
-  /*! the selected sortDirection (Asc by default)*/
-  SortDirectionType SortDirection = Asc;
+  /*! the selected sortOrder (Natural by default)*/
+  SortOrderType SortOrder = Natural;
+  /*! the selected sortDirection (Dec by default)*/
+  SortDirectionType SortDirection = Dec;
 
   struct ConfigFileInfo
   {
@@ -365,6 +367,15 @@ private:
 
   friend struct std::hash<ConfigFileInfo>;
   friend class cmFindPackageDebugState;
+
+  enum class FindState
+  {
+    Undefined,
+    Irrelevant,
+    Found,
+    NotFound,
+  };
+  FindState InitialState = FindState::Undefined;
 };
 
 namespace std {
@@ -395,10 +406,13 @@ public:
 private:
   void FoundAtImpl(std::string const& path, std::string regexName) override;
   void FailedAtImpl(std::string const& path, std::string regexName) override;
+  bool ShouldImplicitlyLogEvents() const override;
 
   void WriteDebug() const override;
 #ifndef CMAKE_BOOTSTRAP
   void WriteEvent(cmConfigureLog& log, cmMakefile const& mf) const override;
+  std::vector<std::pair<VariableSource, std::string>> ExtraSearchVariables()
+    const override;
 #endif
 
   cmFindPackageCommand const* const FindPackageCommand;

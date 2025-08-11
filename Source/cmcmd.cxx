@@ -3,6 +3,7 @@
 #include "cmcmd.h"
 
 #include <functional>
+#include <iomanip>
 #include <iterator>
 
 #include <cm/optional>
@@ -26,6 +27,8 @@
 #include "cmStateDirectory.h"
 #include "cmStateSnapshot.h"
 #include "cmStdIoConsole.h"
+#include "cmStdIoStream.h"
+#include "cmStdIoTerminal.h"
 #include "cmStringAlgorithms.h"
 #include "cmSystemTools.h"
 #include "cmTransformDepfile.h"
@@ -73,7 +76,6 @@
 #include "cmsys/Directory.hxx"
 #include "cmsys/FStream.hxx"
 #include "cmsys/RegularExpression.hxx"
-#include "cmsys/Terminal.h"
 
 int cmcmd_cmake_ninja_depends(std::vector<std::string>::const_iterator argBeg,
                               std::vector<std::string>::const_iterator argEnd);
@@ -95,7 +97,9 @@ char const* const HELP_AVAILABLE_COMMANDS = R"(Available commands:
   copy <file>... destination  - copy files to destination (either file or directory)
   copy_directory <dir>... destination   - copy content of <dir>... directories to 'destination' directory
   copy_directory_if_different <dir>... destination   - copy changed content of <dir>... directories to 'destination' directory
+  copy_directory_if_newer <dir>... destination   - copy newer content of <dir>... directories to 'destination' directory
   copy_if_different <file>... destination  - copy files if it has changed
+  copy_if_newer <file>... destination  - copy files if source is newer than destination
   echo [<string>...]        - displays arguments as text
   echo_append [<string>...] - displays arguments as text but no new line
   env [--unset=NAME ...] [NAME=VALUE ...] [--] <command> [<arg>...]
@@ -776,15 +780,45 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string> const& args,
       return return_value;
     }
 
+    // Copy file if newer.
+    if (args[1] == "copy_if_newer" && args.size() > 3) {
+      // If multiple source files specified,
+      // then destination must be directory
+      if ((args.size() > 4) &&
+          (!cmSystemTools::FileIsDirectory(args.back()))) {
+        std::cerr << "Error: Target (for copy_if_newer command) \""
+                  << args.back() << "\" is not a directory.\n";
+        return 1;
+      }
+      // If error occurs we want to continue copying next files.
+      bool return_value = false;
+      for (auto const& arg : cmMakeRange(args).advance(2).retreat(1)) {
+        if (!cmSystemTools::CopyFileIfNewer(arg, args.back())) {
+          std::cerr << "Error copying file (if newer) from \"" << arg
+                    << "\" to \"" << args.back() << "\".\n";
+          return_value = true;
+        }
+      }
+      return return_value;
+    }
+
     // Copy directory contents
     if ((args[1] == "copy_directory" ||
-         args[1] == "copy_directory_if_different") &&
+         args[1] == "copy_directory_if_different" ||
+         args[1] == "copy_directory_if_newer") &&
         args.size() > 3) {
       // If error occurs we want to continue copying next files.
       bool return_value = false;
-      bool const copy_always = (args[1] == "copy_directory");
+
+      cmsys::SystemTools::CopyWhen when = cmsys::SystemTools::CopyWhen::Always;
+      if (args[1] == "copy_directory_if_different") {
+        when = cmsys::SystemTools::CopyWhen::OnlyIfDifferent;
+      } else if (args[1] == "copy_directory_if_newer") {
+        when = cmsys::SystemTools::CopyWhen::OnlyIfNewer;
+      }
+
       for (auto const& arg : cmMakeRange(args).advance(2).retreat(1)) {
-        if (!cmSystemTools::CopyADirectory(arg, args.back(), copy_always)) {
+        if (!cmSystemTools::CopyADirectory(arg, args.back(), when)) {
           std::cerr << "Error copying directory from \"" << arg << "\" to \""
                     << args.back() << "\".\n";
           return_value = true;
@@ -1359,6 +1393,7 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string> const& args,
       std::string homeOutDir;
       std::string startOutDir;
       std::string depInfo;
+      std::string targetName;
       bool color = false;
       if (args.size() >= 8) {
         // Full signature:
@@ -1367,6 +1402,7 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string> const& args,
         //                    <home-src-dir> <start-src-dir>
         //                    <home-out-dir> <start-out-dir>
         //                    <dep-info> [--color=$(COLOR)]
+        //                    <target-name>
         //
         // All paths are provided.
         gen = args[2];
@@ -1375,9 +1411,18 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string> const& args,
         homeOutDir = args[5];
         startOutDir = args[6];
         depInfo = args[7];
+        size_t targetNameIdx = 8;
         if (args.size() >= 9 && cmHasLiteralPrefix(args[8], "--color=")) {
           // Enable or disable color based on the switch value.
+          targetNameIdx = 9;
           color = (args[8].size() == 8 || cmIsOn(args[8].substr(8)));
+        }
+        if (args.size() > targetNameIdx) {
+          targetName = args[targetNameIdx];
+        } else {
+          std::string targetDir = cmSystemTools::GetFilenamePath(depInfo);
+          targetDir = cmSystemTools::GetFilenameName(targetDir);
+          targetName = targetDir.substr(0, targetDir.size() - 4);
         }
       } else {
         // Support older signature for existing makefiles:
@@ -1394,6 +1439,10 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string> const& args,
         homeOutDir = args[3];
         startOutDir = args[3];
         depInfo = args[5];
+        // Strip the `.dir` suffix. Old CMake always uses this pattern.
+        std::string targetDir = cmSystemTools::GetFilenamePath(depInfo);
+        targetDir = cmSystemTools::GetFilenameName(targetDir);
+        targetName = targetDir.substr(0, targetDir.size() - 4);
       }
 
       // Create a local generator configured for the directory in
@@ -1419,7 +1468,9 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string> const& args,
         lgd->SetRelativePathTop(homeDir, homeOutDir);
 
         // Actually scan dependencies.
-        return lgd->UpdateDependencies(depInfo, verbose, color) ? 0 : 2;
+        return lgd->UpdateDependencies(depInfo, targetName, verbose, color)
+          ? 0
+          : 2;
       }
       return 1;
     }
@@ -1859,8 +1910,8 @@ static void cmcmdProgressReport(std::string const& dir, std::string const& num)
   int fileNum =
     static_cast<int>(cmsys::Directory::GetNumberOfFilesInDirectory(dirName));
   if (count > 0) {
-    // print the progress
-    fprintf(stdout, "[%3i%%] ", ((fileNum - 3) * 100) / count);
+    int const percent = ((fileNum - 3) * 100) / count;
+    std::cout << '[' << std::setw(3) << percent << "%] ";
   }
 }
 
@@ -1871,7 +1922,8 @@ int cmcmd::ExecuteEchoColor(std::vector<std::string> const& args)
   //   args[1] == cmake_echo_color
 
   bool enabled = true;
-  int color = cmsysTerminal_Color_Normal;
+  static cm::StdIo::TermAttrSet const noAttrs;
+  cm::StdIo::TermAttrSet attrs = cm::StdIo::TermAttr::Normal;
   bool newline = true;
   std::string progressDir;
   for (auto const& arg : cmMakeRange(args).advance(2)) {
@@ -1889,32 +1941,34 @@ int cmcmd::ExecuteEchoColor(std::vector<std::string> const& args)
         cmcmdProgressReport(progressDir, progressNum);
       }
     } else if (arg == "--normal") {
-      color = cmsysTerminal_Color_Normal;
+      attrs = cm::StdIo::TermAttr::Normal;
     } else if (arg == "--black") {
-      color = cmsysTerminal_Color_ForegroundBlack;
+      attrs = cm::StdIo::TermAttr::ForegroundBlack;
     } else if (arg == "--red") {
-      color = cmsysTerminal_Color_ForegroundRed;
+      attrs = cm::StdIo::TermAttr::ForegroundRed;
     } else if (arg == "--green") {
-      color = cmsysTerminal_Color_ForegroundGreen;
+      attrs = cm::StdIo::TermAttr::ForegroundGreen;
     } else if (arg == "--yellow") {
-      color = cmsysTerminal_Color_ForegroundYellow;
+      attrs = cm::StdIo::TermAttr::ForegroundYellow;
     } else if (arg == "--blue") {
-      color = cmsysTerminal_Color_ForegroundBlue;
+      attrs = cm::StdIo::TermAttr::ForegroundBlue;
     } else if (arg == "--magenta") {
-      color = cmsysTerminal_Color_ForegroundMagenta;
+      attrs = cm::StdIo::TermAttr::ForegroundMagenta;
     } else if (arg == "--cyan") {
-      color = cmsysTerminal_Color_ForegroundCyan;
+      attrs = cm::StdIo::TermAttr::ForegroundCyan;
     } else if (arg == "--white") {
-      color = cmsysTerminal_Color_ForegroundWhite;
+      attrs = cm::StdIo::TermAttr::ForegroundWhite;
     } else if (arg == "--bold") {
-      color |= cmsysTerminal_Color_ForegroundBold;
+      attrs |= cm::StdIo::TermAttr::ForegroundBold;
     } else if (arg == "--no-newline") {
       newline = false;
     } else if (arg == "--newline") {
       newline = true;
     } else {
-      // Color is enabled.  Print with the current color.
-      cmSystemTools::MakefileColorEcho(color, arg.c_str(), newline, enabled);
+      Print(cm::StdIo::Out(), enabled ? attrs : noAttrs, arg);
+      if (newline) {
+        std::cout << std::endl;
+      }
     }
   }
 
@@ -2238,7 +2292,9 @@ int cmcmd::VisualStudioLink(std::vector<std::string> const& args, int type,
   std::vector<std::string> expandedArgs;
   for (std::string const& i : args) {
     // check for nmake temporary files
-    if (i[0] == '@' && !cmHasLiteralPrefix(i, "@CMakeFiles")) {
+    if (i[0] == '@' &&
+        !(cmHasLiteralPrefix(i, "@CMakeFiles") ||
+          cmHasLiteralPrefix(i, "@.o/") || cmHasLiteralPrefix(i, "@.o\\"))) {
       cmsys::ifstream fin(i.substr(1).c_str());
       std::string line;
       while (cmSystemTools::GetLineFromStream(fin, line)) {

@@ -148,8 +148,6 @@ add_library(
   cmComputeTargetDepends.cxx
   cmConfigureLog.h
   cmConfigureLog.cxx
-  cmConstStack.h
-  cmConstStack.tcc
   cmCPackPropertiesGenerator.h
   cmCPackPropertiesGenerator.cxx
   cmCryptoHash.cxx
@@ -409,6 +407,8 @@ add_library(
   cmNewLineStyle.cxx
   cmOrderDirectories.cxx
   cmOrderDirectories.h
+  cmPackageInfoArguments.cxx
+  cmPackageInfoArguments.h
   cmPackageInfoReader.cxx
   cmPackageInfoReader.h
   cmPackageState.h
@@ -456,6 +456,8 @@ add_library(
   cmSourceFileLocationKind.h
   cmSourceGroup.cxx
   cmSourceGroup.h
+  cmStack.h
+  cmStack.tcc
   cmStandardLevel.h
   cmStandardLevelResolver.cxx
   cmStandardLevelResolver.h
@@ -472,6 +474,8 @@ add_library(
   cmStdIoInit.cxx
   cmStdIoStream.h
   cmStdIoStream.cxx
+  cmStdIoTerminal.h
+  cmStdIoTerminal.cxx
   cmStringAlgorithms.cxx
   cmStringAlgorithms.h
   cmSyntheticTargetCache.h
@@ -713,6 +717,9 @@ add_library(
   cmSiteNameCommand.h
   cmSourceGroupCommand.cxx
   cmSourceGroupCommand.h
+  cmSPDXSerializer.cxx
+  cmSPDXSerializer.h
+  cmSPDXTypes.def
   cmString.cxx
   cmString.hxx
   cmStringReplaceHelper.cxx

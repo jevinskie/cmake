@@ -24,6 +24,7 @@
 #include "cmOutputConverter.h"
 #include "cmPolicies.h"
 #include "cmStateSnapshot.h"
+#include "cmStateTypes.h"
 #include "cmValue.h"
 
 class cmCompiledGeneratorExpression;
@@ -115,10 +116,6 @@ public:
   virtual std::unique_ptr<cmRulePlaceholderExpander>
   CreateRulePlaceholderExpander(
     cmBuildStep buildStep = cmBuildStep::Compile) const;
-  virtual std::unique_ptr<cmRulePlaceholderExpander>
-  CreateRulePlaceholderExpander(cmBuildStep buildStep,
-                                cmGeneratorTarget const* target,
-                                std::string const& language);
 
   std::string GetExeExportFlags(std::string const& linkLanguage,
                                 cmGeneratorTarget& tgt) const;
@@ -170,6 +167,9 @@ public:
   void AddPchDependencies(cmGeneratorTarget* target);
   void AddUnityBuild(cmGeneratorTarget* target);
   virtual void AddXCConfigSources(cmGeneratorTarget* /* target */) {}
+  void AppendTargetCreationLinkFlags(std::string& flags,
+                                     cmGeneratorTarget const* target,
+                                     std::string const& linkLanguage);
   void AppendLinkerTypeFlags(std::string& flags, cmGeneratorTarget* target,
                              std::string const& config,
                              std::string const& linkLanguage);
@@ -192,7 +192,8 @@ public:
   void AppendModuleDefinitionFlag(std::string& flags,
                                   cmGeneratorTarget const* target,
                                   cmLinkLineComputer* linkLineComputer,
-                                  std::string const& config);
+                                  std::string const& config,
+                                  std::string const& lang);
   bool AppendLWYUFlags(std::string& flags, cmGeneratorTarget const* target,
                        std::string const& lang);
 
@@ -290,6 +291,7 @@ public:
 
   /** Called from command-line hook to update dependencies.  */
   virtual bool UpdateDependencies(std::string const& /* tgtInfo */,
+                                  std::string const& /* targetName */,
                                   bool /*verbose*/, bool /*color*/)
   {
     return true;
@@ -438,6 +440,17 @@ public:
   std::string const& GetCurrentBinaryDirectory() const;
   std::string const& GetCurrentSourceDirectory() const;
 
+  bool UseShortObjectNames(
+    cmStateEnums::IntermediateDirKind kind =
+      cmStateEnums::IntermediateDirKind::ObjectFiles) const;
+  virtual std::string GetObjectOutputRoot(
+    cmStateEnums::IntermediateDirKind kind =
+      cmStateEnums::IntermediateDirKind::ObjectFiles) const;
+  virtual bool AlwaysUsesCMFPaths() const;
+  virtual std::string GetShortObjectFileName(cmSourceFile const& source) const;
+  virtual std::string ComputeShortTargetDirectory(
+    cmGeneratorTarget const* gt) const;
+
   /**
    * Generate a macOS application bundle Info.plist file.
    */
@@ -454,6 +467,8 @@ public:
   /** Construct a comment for a custom command.  */
   std::string ConstructComment(cmCustomCommandGenerator const& ccg,
                                char const* default_comment = "") const;
+  // Computes relative path to source respective to source or binary dir.
+  std::string GetRelativeSourceFileName(cmSourceFile const& source) const;
   // Compute object file names.
   std::string GetObjectFileNameWithoutTarget(
     cmSourceFile const& source, std::string const& dir_max,
@@ -535,6 +550,8 @@ public:
   // Can we build Swift with a separate object build and link step
   // (If CMP0157 is NEW, we can do a split build)
   bool IsSplitSwiftBuild() const;
+
+  std::string CreateSafeObjectFileName(std::string const& sin) const;
 
 protected:
   // The default implementation converts to a Windows shortpath to
@@ -635,7 +652,6 @@ private:
   void CopyPchCompilePdb(std::string const& config,
                          std::string const& language,
                          cmGeneratorTarget* target,
-                         std::string const& ReuseFrom,
                          cmGeneratorTarget* reuseTarget,
                          std::vector<std::string> const& extensions);
 

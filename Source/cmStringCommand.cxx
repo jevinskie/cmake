@@ -171,7 +171,7 @@ bool HandleConfigureCommand(std::vector<std::string> const& args,
     } else if (args[i] == "ESCAPE_QUOTES") {
       escapeQuotes = true;
     } else {
-      status.SetError(cmStrCat("Unrecognized argument \"", args[i], "\""));
+      status.SetError(cmStrCat("Unrecognized argument \"", args[i], '"'));
       return false;
     }
   }
@@ -1059,7 +1059,8 @@ Json::Value ReadJson(std::string const& jsonstr)
   std::string error;
   if (!jsonReader->parse(jsonstr.data(), jsonstr.data() + jsonstr.size(),
                          &json, &error)) {
-    throw json_error(cmStrCat("failed parsing json string: "_s, error));
+    throw json_error(
+      cmStrCat("failed parsing json string:\n"_s, jsonstr, '\n', error));
   }
   return json;
 }

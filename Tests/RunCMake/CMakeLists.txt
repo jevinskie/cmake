@@ -291,7 +291,7 @@ if(CMake_TEST_APPLE_SILICON)
   add_RunCMake_test(AppleSilicon)
 endif()
 set(want_NoQt_test TRUE)
-set(autogen_test_number 1 2 3 4 5 6)
+set(autogen_test_number 1 2 3 4 5 6 7)
 if(CMake_TEST_Qt6 AND Qt6Widgets_FOUND)
   # Work around Qt6 not finding sibling dependencies without CMAKE_PREFIX_PATH
   cmake_path(GET Qt6_DIR  PARENT_PATH base_dir)  # <base>/lib/cmake
@@ -420,7 +420,8 @@ if(CMAKE_USE_SYSTEM_JSONCPP)
   list(APPEND FileAPI_ARGS -DJsonCpp_VERSION_STRING=${JsonCpp_VERSION_STRING})
 endif()
 add_RunCMake_test(FileAPI -DPython_EXECUTABLE=${Python_EXECUTABLE}
-                          -DCMAKE_CXX_COMPILER_ID=${CMAKE_CXX_COMPILER_ID})
+                          -DCMAKE_CXX_COMPILER_ID=${CMAKE_CXX_COMPILER_ID}
+                          -DCMake_TEST_JSON_SCHEMA=${CMake_TEST_JSON_SCHEMA})
 if(CMAKE_GENERATOR MATCHES "Make|Ninja")
   add_RunCMake_test(Instrumentation)
 endif()
@@ -521,7 +522,8 @@ add_RunCMake_test(GenEx-TARGET_RUNTIME_DLLS)
 add_RunCMake_test(GenEx-PATH)
 add_RunCMake_test(GenEx-PATH_EQUAL)
 add_RunCMake_test(GenEx-LIST)
-add_RunCMake_test(GeneratorExpression)
+add_RunCMake_test(GeneratorExpression -DCMake_TEST_OBJC=${CMake_TEST_OBJC} -DCMake_TEST_Fortran=${CMake_TEST_Fortran}
+                                      -DCMake_TEST_CUDA=${CMake_TEST_CUDA} -DCMake_TEST_HIP=${CMake_TEST_HIP})
 add_RunCMake_test(GeneratorExpressionShortCircuit)
 add_RunCMake_test(GeneratorInstance)
 add_RunCMake_test(GeneratorPlatform)
@@ -555,10 +557,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "^(Cray|PGI|NVHPC|XL|XLClang|IBMClang|Fujitsu|F
   add_RunCMake_test(MetaCompileFeatures)
 endif()
 if(MSVC)
+  add_RunCMake_test(MSVCDefaultFlags)
   add_RunCMake_test(MSVCRuntimeChecks)
   add_RunCMake_test(MSVCRuntimeLibrary)
   add_RunCMake_test(MSVCRuntimeTypeInfo)
-  add_RunCMake_test(MSVCWarningFlags)
   add_RunCMake_test(MSVCDebugInformationFormat)
 endif()
 if(XCODE_VERSION)
@@ -582,6 +584,11 @@ add_RunCMake_test(TargetArtifacts -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME})
 add_RunCMake_test(TargetObjects)
 add_RunCMake_test(TargetProperties)
 add_RunCMake_test(ToolchainFile)
+if(NOT CMake_TEST_EXTERNAL_CMAKE)
+  set(Tutorial_ARGS TEST_DIR Tutorial -DTutorial_SOURCE_DIR=${CMake_SOURCE_DIR}/Help/guide/tutorial)
+  add_RunCMake_test(Tutorial-NoMath ${Tutorial_ARGS} -DTutorial_USE_MYMATH=OFF)
+  add_RunCMake_test(Tutorial-MyMath ${Tutorial_ARGS} -DTutorial_USE_MYMATH=ON)
+endif()
 add_RunCMake_test(find_dependency)
 add_RunCMake_test(CompileDefinitions)
 add_RunCMake_test(CompileWarningAsError
@@ -742,6 +749,7 @@ add_RunCMake_test(set_property)
 add_RunCMake_test(string
   -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
   -DCMAKE_SYSTEM_PROCESSOR=${CMAKE_SYSTEM_PROCESSOR}
+  -DCMake_TEST_NO_64BIT_TIME=${CMake_TEST_NO_64BIT_TIME}
   )
 add_RunCMake_test(test_include_dirs)
 add_RunCMake_test(BundleUtilities)
@@ -786,6 +794,7 @@ add_RunCMake_test(CMP0004)
 add_RunCMake_test(TargetPolicies)
 add_RunCMake_test(alias_targets)
 add_RunCMake_test(InterfaceLibrary)
+add_RunCMake_test(IntermediateDirStrategy)
 add_RunCMake_test(no_install_prefix)
 add_RunCMake_test(configure_file)
 if(CTestTestTimeout_TIME)
@@ -933,7 +942,7 @@ if((CMAKE_C_COMPILER_ID STREQUAL "AppleClang"
   endif()
 endif()
 
-if (CMAKE_SYSTEM_NAME MATCHES "(Linux|Darwin|Windows)"
+if (CMAKE_SYSTEM_NAME MATCHES "(Linux|Darwin|Windows|OpenBSD|FreeBSD|NetBSD|MirBSD)"
     AND CMAKE_C_COMPILER_ID MATCHES "^(AppleClang|Clang|GNU|MSVC|NVIDIA)$"
     AND NOT CMAKE_GENERATOR STREQUAL "Green Hills MULTI")
   add_RunCMake_test(LinkerSelection -DCMake_TEST_CUDA=${CMake_TEST_CUDA}
@@ -1079,7 +1088,10 @@ if(CMake_TEST_RunCMake_ExternalProject_RUN_SERIAL)
 endif()
 add_RunCMake_test(FetchContent)
 add_RunCMake_test(FetchContent_find_package)
-set(CTestCommandLine_ARGS -DPython_EXECUTABLE=${Python_EXECUTABLE})
+set(CTestCommandLine_ARGS
+  -DPython_EXECUTABLE=${Python_EXECUTABLE}
+  -DCMake_TEST_JSON_SCHEMA=${CMake_TEST_JSON_SCHEMA}
+)
 if(NOT CMake_TEST_EXTERNAL_CMAKE)
   list(APPEND CTestCommandLine_ARGS -DTEST_AFFINITY=$<TARGET_FILE:testAffinity>)
 endif()
@@ -1330,6 +1342,12 @@ add_RunCMake_test(PrecompileHeaders -DCMAKE_C_COMPILER_ID=${CMAKE_C_COMPILER_ID}
   -DCMAKE_C_SIMULATE_ID=${CMAKE_C_SIMULATE_ID}
   -DCMAKE_C_COMPILER_VERSION=${CMAKE_C_COMPILER_VERSION})
 
+# This test can take a long time due to the number of test cases.
+# Provide an option to customize it.
+if(DEFINED CMake_TEST_PrecompileHeaders_TIMEOUT)
+  set_property(TEST RunCMake.PrecompileHeaders PROPERTY TIMEOUT ${CMake_TEST_PrecompileHeaders_TIMEOUT})
+endif()
+
 add_RunCMake_test(UnityBuild -DCMake_TEST_OBJC=${CMake_TEST_OBJC} -DCMake_TEST_CUDA=${CMake_TEST_CUDA})
 set_property(TEST RunCMake.UnityBuild APPEND
   PROPERTY LABELS "CUDA")
@@ -1389,4 +1407,12 @@ endif()
 if(CMake_TEST_Diab_TOOLCHAINS)
   add_RunCMake_test(Diab -DCMake_TEST_Diab_TOOLCHAINS=${CMake_TEST_Diab_TOOLCHAINS})
   set_property(TEST RunCMake.Diab APPEND PROPERTY LABELS "Diab")
+endif()
+if (CMake_TEST_Renesas_TOOLCHAINS)
+  add_RunCMake_test(Renesas -DCMake_TEST_Renesas_TOOLCHAINS=${CMake_TEST_Renesas_TOOLCHAINS})
+  set_property(TEST RunCMake.Renesas APPEND PROPERTY LABELS "Renesas")
+endif()
+if(CMake_TEST_Emscripten_TOOLCHAINS)
+  add_RunCMake_test(Emscripten -DCMake_TEST_Emscripten_TOOLCHAINS=${CMake_TEST_Emscripten_TOOLCHAINS})
+  set_property(TEST RunCMake.Emscripten APPEND PROPERTY LABELS "Emscripten")
 endif()

@@ -10,6 +10,7 @@
 
 #include "cmGlobalVisualStudioGenerator.h"
 #include "cmLocalGenerator.h"
+#include "cmStateTypes.h"
 #include "cmVsProjectType.h"
 
 class cmCustomCommand;
@@ -50,6 +51,11 @@ public:
   void ComputeObjectFilenames(
     std::map<cmSourceFile const*, std::string>& mapping,
     cmGeneratorTarget const* = nullptr) override;
+
+  std::string GetObjectOutputRoot(
+    cmStateEnums::IntermediateDirKind kind =
+      cmStateEnums::IntermediateDirKind::ObjectFiles) const override;
+  bool AlwaysUsesCMFPaths() const override;
 
 protected:
   virtual char const* ReportErrorLabel() const;

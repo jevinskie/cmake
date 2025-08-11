@@ -264,6 +264,10 @@ function(run_Toolchain)
   run_cmake_with_options(toolchain-no-arg -S ${source_dir} --toolchain=)
   run_cmake_with_options(toolchain-valid-abs-path -S ${source_dir} --toolchain "${source_dir}/toolchain.cmake")
   run_cmake_with_options(toolchain-valid-rel-src-path -S ${source_dir} --toolchain=toolchain.cmake)
+  run_cmake_with_options(toolchain-D-abs-path -S ${source_dir} -DCMAKE_TOOLCHAIN_FILE=${source_dir}/toolchain.cmake)
+  if(CMAKE_HOST_UNIX AND NOT CMAKE_SYSTEM_NAME STREQUAL "CYGWIN" AND NOT CMAKE_SYSTEM_NAME STREQUAL "MSYS")
+    run_cmake_with_options(toolchain-D-slash-abs-path -S ${source_dir} -DCMAKE_TOOLCHAIN_FILE=/${source_dir}/toolchain.cmake)
+  endif()
 
   set(RunCMake_TEST_NO_CLEAN 1)
   set(binary_dir ${RunCMake_BINARY_DIR}/Toolchain-build)
@@ -274,7 +278,6 @@ function(run_Toolchain)
   # precedence over source dir
   file(WRITE ${binary_dir}/toolchain.cmake [=[
 set(CMAKE_SYSTEM_NAME Linux)
-set(toolchain_file binary_dir)
 ]=])
   run_cmake_with_options(toolchain-valid-rel-build-path -S ${source_dir} -B ${binary_dir} --toolchain toolchain.cmake)
 endfunction()
@@ -613,6 +616,16 @@ run_cmake_command(E_copy_if_different-three-source-files-target-is-directory
   ${CMAKE_COMMAND} -E copy_if_different ${in}/f1.txt ${in}/f2.txt ${in}/f3.txt ${out})
 run_cmake_command(E_copy_if_different-three-source-files-target-is-file
   ${CMAKE_COMMAND} -E copy_if_different ${in}/f1.txt ${in}/f2.txt ${in}/f3.txt ${out}/f1.txt)
+run_cmake_command(E_copy_if_different-nonexistent-source
+  ${CMAKE_COMMAND} -E copy_if_different ${in}/nonexistent.txt ${out})
+run_cmake_command(E_copy_if_newer-one-source-directory-target-is-directory
+  ${CMAKE_COMMAND} -E copy_if_newer ${in}/f1.txt ${out})
+run_cmake_command(E_copy_if_newer-three-source-files-target-is-directory
+  ${CMAKE_COMMAND} -E copy_if_newer ${in}/f1.txt ${in}/f2.txt ${in}/f3.txt ${out})
+run_cmake_command(E_copy_if_newer-three-source-files-target-is-file
+  ${CMAKE_COMMAND} -E copy_if_newer ${in}/f1.txt ${in}/f2.txt ${in}/f3.txt ${out}/f1.txt)
+run_cmake_command(E_copy_if_newer-nonexistent-source
+  ${CMAKE_COMMAND} -E copy_if_newer ${in}/nonexistent.txt ${out})
 unset(in)
 unset(out)
 
@@ -622,6 +635,10 @@ file(REMOVE_RECURSE "${out}")
 file(MAKE_DIRECTORY ${out})
 run_cmake_command(E_copy_directory_if_different
   ${CMAKE_COMMAND} -E copy_directory_if_different ${in} ${out})
+run_cmake_command(E_copy_directory_if_newer
+  ${CMAKE_COMMAND} -E copy_directory_if_newer ${in} ${out})
+run_cmake_command(E_copy_directory_if_newer-nonexistent-source
+  ${CMAKE_COMMAND} -E copy_directory_if_newer ${in}/nonexistent ${out}/target)
 unset(in)
 unset(out)
 
@@ -1164,3 +1181,10 @@ if (WIN32 OR DEFINED ENV{HOME})
 endif()
 set(ENV{CMAKE_CONFIG_DIR} cmake_config_dir)
 run_cmake_command(print-config-dir-env ${CMAKE_COMMAND} "--print-config-dir")
+
+if(RunCMake_GENERATOR MATCHES "^Visual Studio 14 2015")
+  run_cmake_with_options(DeprecateVS14-WARN-ON -DCMAKE_WARN_VS14=ON)
+  unset(ENV{CMAKE_WARN_VS14})
+  run_cmake(DeprecateVS14-WARN-ON)
+  run_cmake_with_options(DeprecateVS14-WARN-OFF -DCMAKE_WARN_VS14=OFF)
+endif()

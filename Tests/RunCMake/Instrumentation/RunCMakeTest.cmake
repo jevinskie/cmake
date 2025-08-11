@@ -6,10 +6,10 @@ function(instrument test)
   set(config "${CMAKE_CURRENT_LIST_DIR}/config")
   set(ENV{CMAKE_CONFIG_DIR} ${config})
   cmake_parse_arguments(ARGS
-    "BUILD;BUILD_MAKE_PROGRAM;INSTALL;TEST;COPY_QUERIES;NO_WARN;STATIC_QUERY;DYNAMIC_QUERY;INSTALL_PARALLEL;MANUAL_HOOK"
+    "BUILD;BUILD_MAKE_PROGRAM;INSTALL;TEST;COPY_QUERIES;COPY_QUERIES_GENERATED;NO_WARN;STATIC_QUERY;DYNAMIC_QUERY;INSTALL_PARALLEL;MANUAL_HOOK"
     "CHECK_SCRIPT;CONFIGURE_ARG" "" ${ARGN})
   set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/${test})
-  set(uuid "a37d1069-1972-4901-b9c9-f194aaf2b6e0")
+  set(uuid "d16a3082-c4e1-489b-b90c-55750a334f27")
   set(v1 ${RunCMake_TEST_BINARY_DIR}/.cmake/instrumentation-${uuid}/v1)
   set(query_dir ${CMAKE_CURRENT_LIST_DIR}/query)
 
@@ -34,14 +34,18 @@ function(instrument test)
     list(APPEND ARGS_CONFIGURE_ARG "-DINSTRUMENT_COMMAND_FILE=${cmake_file}")
   endif()
 
-  # Configure generated query files to compare CMake output
+  set(copy_loc ${RunCMake_TEST_BINARY_DIR}/query)
+  if (ARGS_COPY_QUERIES_GENERATED)
+    set(ARGS_COPY_QUERIES TRUE)
+    set(copy_loc ${v1}/query/generated) # Copied files here should be cleared on configure
+  endif()
   if (ARGS_COPY_QUERIES)
-    file(MAKE_DIRECTORY ${RunCMake_TEST_BINARY_DIR}/query)
+    file(MAKE_DIRECTORY ${copy_loc})
     set(generated_queries "0;1;2")
     foreach(n IN LISTS generated_queries)
       configure_file(
         "${query_dir}/generated/query-${n}.json.in"
-        "${RunCMake_TEST_BINARY_DIR}/query/query-${n}.json"
+        "${copy_loc}/query-${n}.json"
       )
     endforeach()
   endif()
@@ -62,7 +66,11 @@ function(instrument test)
     run_cmake_command(${test}-build ${CMAKE_COMMAND} --build . --config Debug)
   endif()
   if (ARGS_BUILD_MAKE_PROGRAM)
+    set(RunCMake_TEST_OUTPUT_MERGE 1)
+    # Force reconfigure to test for double preBuild & postBuild hooks
+    file(TOUCH ${RunCMake_TEST_BINARY_DIR}/CMakeCache.txt)
     run_cmake_command(${test}-make-program ${RunCMake_MAKE_PROGRAM})
+    unset(RunCMake_TEST_OUTPUT_MERGE)
   endif()
   if (ARGS_INSTALL)
     run_cmake_command(${test}-install ${CMAKE_COMMAND} --install . --prefix install --config Debug)
@@ -86,7 +94,7 @@ function(instrument test)
 endfunction()
 
 # Bad Queries
-instrument(bad-query)
+instrument(bad-option)
 instrument(bad-hook)
 instrument(empty)
 instrument(bad-version)
@@ -96,7 +104,7 @@ instrument(hooks-1 BUILD INSTALL TEST STATIC_QUERY)
 instrument(hooks-2 BUILD INSTALL TEST)
 instrument(hooks-no-callbacks MANUAL_HOOK)
 
-# Check data file contents
+# Check data file contents for optional query data
 instrument(no-query BUILD INSTALL TEST
   CHECK_SCRIPT check-data-dir.cmake)
 instrument(dynamic-query BUILD INSTALL TEST DYNAMIC_QUERY
@@ -118,9 +126,36 @@ instrument(cmake-command-bad-arg NO_WARN)
 instrument(cmake-command-parallel-install
   BUILD INSTALL TEST NO_WARN INSTALL_PARALLEL DYNAMIC_QUERY
   CHECK_SCRIPT check-data-dir.cmake)
+instrument(cmake-command-resets-generated NO_WARN
+  COPY_QUERIES_GENERATED
+  CHECK_SCRIPT check-data-dir.cmake
+)
+instrument(cmake-command-cmake-build NO_WARN
+  BUILD
+  CHECK_SCRIPT check-no-make-program-hooks.cmake
+)
 
-# FIXME(#26668) This does not work on Windows
-if (UNIX)
+if(RunCMake_GENERATOR STREQUAL "MSYS Makefiles")
+  # FIXME(#27079): This does not work for MSYS Makefiles.
+  set(Skip_BUILD_MAKE_PROGRAM_Case 1)
+elseif(RunCMake_GENERATOR STREQUAL "NMake Makefiles")
+ execute_process(
+   COMMAND "${RunCMake_MAKE_PROGRAM}" -?
+   OUTPUT_VARIABLE nmake_out
+   ERROR_VARIABLE nmake_out
+   RESULT_VARIABLE nmake_res
+   OUTPUT_STRIP_TRAILING_WHITESPACE
+   )
+   if(nmake_res EQUAL 0 AND nmake_out MATCHES "Program Maintenance Utility[^\n]+Version ([1-9][0-9.]+)")
+     set(nmake_version "${CMAKE_MATCH_1}")
+   else()
+     message(FATAL_ERROR "'nmake -?' reported:\n${nmake_out}")
+   endif()
+   if(nmake_version VERSION_LESS 9)
+     set(Skip_BUILD_MAKE_PROGRAM_Case 1)
+   endif()
+endif()
+if(NOT Skip_BUILD_MAKE_PROGRAM_Case)
   instrument(cmake-command-make-program NO_WARN
     BUILD_MAKE_PROGRAM
     CHECK_SCRIPT check-make-program-hooks.cmake)
