@@ -401,6 +401,8 @@ add_library(
   cmMSVC60LinkLineComputer.h
   cmOSXBundleGenerator.cxx
   cmOSXBundleGenerator.h
+  cmObjectLocation.cxx
+  cmObjectLocation.h
   cmOutputConverter.cxx
   cmOutputConverter.h
   cmNewLineStyle.h
@@ -780,6 +782,18 @@ add_library(
   cmNinjaLinkLineComputer.h
   cmNinjaLinkLineDeviceComputer.cxx
   cmNinjaLinkLineDeviceComputer.h
+  # FASTBuild support
+  cmGlobalFastbuildGenerator.cxx
+  cmGlobalFastbuildGenerator.h
+  cmLocalFastbuildGenerator.cxx
+  cmLocalFastbuildGenerator.h
+  cmFastbuildTargetGenerator.cxx
+  cmFastbuildTargetGenerator.h
+  cmFastbuildLinkLineComputer.cxx
+  cmFastbuildNormalTargetGenerator.cxx
+  cmFastbuildNormalTargetGenerator.h
+  cmFastbuildUtilityTargetGenerator.cxx
+  cmFastbuildUtilityTargetGenerator.h
 
   cm_get_date.h
   cm_get_date.c
@@ -965,7 +979,11 @@ if(WIN32)
 
     # Add a manifest file to executables on Windows to allow for
     # GetVersion to work properly on Windows 8 and above.
-    target_sources(ManifestLib INTERFACE cmake.version.manifest)
+    if(MSVC)
+      target_sources(ManifestLib INTERFACE cmake.version.manifest)
+    else()
+      target_sources(ManifestLib INTERFACE cmake.version.manifest.rc)
+    endif()
   endif()
 endif()
 

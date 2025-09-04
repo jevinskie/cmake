@@ -7,8 +7,12 @@ FindPython
 
 .. versionadded:: 3.12
 
-Find Python interpreter, compiler and development environment (include
-directories and libraries).
+Finds Python interpreter, compiler and development environment (include
+directories and libraries):
+
+.. code-block:: cmake
+
+  find_package(Python [<version>] [COMPONENTS <components>...] [...])
 
 .. versionadded:: 3.19
   When a version is requested, it can be specified as a simple value or as a
@@ -38,10 +42,14 @@ The following components are supported:
       `Stable Application Binary Interface <https://docs.python.org/3/c-api/stable.html>`_.
       This component is available only for version ``3.2`` and upper.
 
-* ``NumPy``: search for NumPy include directories.
-
 .. versionadded:: 3.14
-  Added the ``NumPy`` component.
+
+  * ``NumPy``: search for NumPy include directories. Specifying this component
+    imply also the components ``Interpreter`` and ``Development.Module``.
+
+  .. versionchanged:: 4.2
+    The component ``Development.Module`` is no longer implied when the policy
+    :policy:`CMP0201` is set to ``NEW``.
 
 If no ``COMPONENTS`` are specified, ``Interpreter`` is assumed.
 
@@ -134,6 +142,11 @@ This module provides the following :ref:`Imported Targets`:
   .. versionadded:: 3.14
 
   NumPy Python library. Target defined if component ``NumPy`` is found.
+  Moreover, this target has the ``Python::Module`` target as dependency.
+
+  .. versionchanged:: 4.2
+    This target does not have anymore the ``Python::Module`` target as
+    dependency when the policy :policy:`CMP0201` is set to ``NEW``.
 
 Result Variables
 ^^^^^^^^^^^^^^^^

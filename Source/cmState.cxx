@@ -27,6 +27,10 @@
 #include "cmSystemTools.h"
 #include "cmake.h"
 
+namespace cmStateDetail {
+std::string const PropertySentinel = std::string{};
+} // namespace cmStateDetail
+
 cmState::cmState(Mode mode, ProjectKind projectKind)
   : StateMode(mode)
   , StateProjectKind(projectKind)
@@ -788,6 +792,16 @@ void cmState::SetNinjaMulti(bool ninjaMulti)
 bool cmState::UseNinjaMulti() const
 {
   return this->NinjaMulti;
+}
+
+void cmState::SetFastbuildMake(bool fastbuildMake)
+{
+  this->FastbuildMake = fastbuildMake;
+}
+
+bool cmState::UseFastbuildMake() const
+{
+  return this->FastbuildMake;
 }
 
 unsigned int cmState::GetCacheMajorVersion() const

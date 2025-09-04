@@ -127,17 +127,18 @@ Result Variables
 This module defines the following variables:
 
 ``Qt4_FOUND``
-  Boolean whether Qt4 has been found.  If false, don't try to use Qt4.
+  Boolean indicating whether (the requested version of) Qt4 is found.
+
 ``QT_FOUND``
-  Boolean whether Qt4 has been found.  If false, don't try to use Qt4.  This
-  variable is for compatibility with other Qt find modules.
-``QT4_FOUND``
-  Boolean whether Qt4 has been found.  If false, don't try to use Qt4.  This
-  variable is for backward compatibility only.
+  Boolean indicating whether (the requested version of) Qt4 has been found.
+  This variable is available for compatibility with other Qt find modules.
+
 ``QT_VERSION_MAJOR``
   The major version of Qt found.
+
 ``QT_VERSION_MINOR``
   The minor version of Qt found.
+
 ``QT_VERSION_PATCH``
   The patch version of Qt found.
 
@@ -437,6 +438,15 @@ such uses:
   For example, calling ``qt4_use_modules(myexe Core Gui Declarative)`` will use
   the ``QtCore``, ``QtGui`` and ``QtDeclarative`` components on the project
   target ``myexe``.
+
+Deprecated Variables
+^^^^^^^^^^^^^^^^^^^^
+
+The following variables are provided for backward compatibility:
+
+``QT4_FOUND``
+  .. deprecated:: 2.8.11
+    Use ``Qt4_FOUND``, which has the same value.
 
 Examples
 ^^^^^^^^
@@ -1316,19 +1326,13 @@ if (QT_QMAKE_EXECUTABLE AND
     QT_LUPDATE_EXECUTABLE QT_LRELEASE_EXECUTABLE QT_QCOLLECTIONGENERATOR_EXECUTABLE
     QT_DESIGNER_EXECUTABLE QT_LINGUIST_EXECUTABLE)
 
-
-  # get the directory of the current file, used later on in the file
-  get_filename_component( _qt4_current_dir  "${CMAKE_CURRENT_LIST_FILE}" PATH)
-
-
   ###############################################
   #
   #       configuration/system dependent settings
   #
   ###############################################
 
-  include("${_qt4_current_dir}/Qt4ConfigDependentSettings.cmake")
-
+  include(${CMAKE_CURRENT_LIST_DIR}/Qt4ConfigDependentSettings.cmake)
 
   #######################################
   #
@@ -1415,14 +1419,13 @@ if (QT_QMAKE_EXECUTABLE AND
     endforeach()
   endforeach()
 
-
   ######################################
   #
   #       Macros for building Qt files
   #
   ######################################
 
-  include("${_qt4_current_dir}/Qt4Macros.cmake")
+  include(${CMAKE_CURRENT_LIST_DIR}/Qt4Macros.cmake)
 
 endif()
 

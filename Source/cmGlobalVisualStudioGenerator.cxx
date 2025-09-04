@@ -119,7 +119,7 @@ char const* cmGlobalVisualStudioGenerator::GetIDEVersion() const
   return "";
 }
 
-void cmGlobalVisualStudioGenerator::WriteSLNHeader(std::ostream& fout)
+void cmGlobalVisualStudioGenerator::WriteSLNHeader(std::ostream& fout) const
 {
   char utf8bom[] = { char(0xEF), char(0xBB), char(0xBF) };
   fout.write(utf8bom, 3);
@@ -780,7 +780,7 @@ void RegisterVisualStudioMacros(std::string const& macrosFile,
   }
 }
 bool cmGlobalVisualStudioGenerator::TargetIsFortranOnly(
-  cmGeneratorTarget const* gt)
+  cmGeneratorTarget const* gt) const
 {
   // If there's only one source language, Fortran has to be used
   // in order for the sources to compile.
@@ -873,7 +873,7 @@ void cmGlobalVisualStudioGenerator::AddSymbolExportCommand(
   std::vector<std::string> empty;
   std::vector<cmSourceFile const*> objectSources;
   gt->GetObjectSources(objectSources, configName);
-  std::map<cmSourceFile const*, std::string> mapping;
+  std::map<cmSourceFile const*, cmObjectLocations> mapping;
   for (cmSourceFile const* it : objectSources) {
     mapping[it];
   }
@@ -891,12 +891,17 @@ void cmGlobalVisualStudioGenerator::AddSymbolExportCommand(
     return;
   }
 
+  auto const useShortPaths = this->UseShortObjectNames()
+    ? cmObjectLocations::UseShortPath::Yes
+    : cmObjectLocations::UseShortPath::No;
+
   if (mdi->WindowsExportAllSymbols) {
     std::vector<std::string> objs;
     for (cmSourceFile const* it : objectSources) {
       // Find the object file name corresponding to this source file.
       // It must exist because we populated the mapping just above.
-      auto const& v = mapping[it];
+      auto const& locs = mapping[it];
+      std::string const& v = locs.GetPath(useShortPaths);
       assert(!v.empty());
       std::string objFile = cmStrCat(obj_dir, v);
       objs.push_back(objFile);

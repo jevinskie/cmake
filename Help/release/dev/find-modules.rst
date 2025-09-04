@@ -31,6 +31,18 @@ Find Modules
 * The :module:`FindGnuplot` module now provides a ``Gnuplot_VERSION`` result
   variable.  The ``GNUPLOT_VERSION_STRING`` result variable is deprecated.
 
+* The :module:`FindGnuTLS` module now provides a ``GnuTLS_VERSION`` result
+  variable.  The ``GNUTLS_VERSION`` result variable is deprecated.
+
+* The :module:`FindHg` module now provides a ``Hg_VERSION`` result
+  variable.  The ``HG_VERSION_STRING`` result variable is deprecated.
+
+* The :module:`FindHSPELL` module now provides a ``HSPELL_VERSION`` result
+  variable.  The ``HSPELL_VERSION_STRING`` result variable is deprecated.
+
+* The :module:`FindIcotool` module now provides a ``Icotool_VERSION`` result
+  variable.  The ``ICOTOOL_VERSION_STRING`` result variable is deprecated.
+
 * The :module:`FindJasper` module now provides a ``Jasper_VERSION`` result
   variable.  The ``JASPER_VERSION_STRING`` result variable is deprecated.
 
@@ -46,6 +58,17 @@ Find Modules
 * The :module:`FindLTTngUST` module now provides a ``LTTngUST_VERSION`` result
   variable.  The ``LTTNGUST_VERSION_STRING`` result variable is deprecated.
 
+* The :module:`FindLua` module now provides ``Lua_VERSION``,
+  ``Lua_VERSION_MAJOR``, ``Lua_VERSION_MINOR``, and ``Lua_VERSION_PATCH``
+  result variables.  The ``LUA_VERSION_STRING``, ``LUA_VERSION_MAJOR``,
+  ``LUA_VERSION_MINOR``, and ``LUA_VERSION_PATCH`` result variables are
+  deprecated.  The :module:`FindLua51` module now similarly provides a
+  ``Lua_VERSION`` instead of the now deprecated ``LUA_VERSION_STRING`` result
+  variable.
+
+* The :module:`FindOpenCL` module now provides an ``OpenCL_VERSION`` result
+  variable.  The ``OpenCL_VERSION_STRING`` result variable is deprecated.
+
 * The :module:`FindOpenSceneGraph` module now provides an
   ``OpenSceneGraph_VERSION`` result variable.  The ``OPENSCENEGRAPH_VERSION``
   result variable is deprecated.
@@ -53,12 +76,29 @@ Find Modules
 * The :module:`FindOpenSSL` module now provides an ``OpenSSL_VERSION`` result
   variable.  The ``OPENSSL_VERSION`` result variable is deprecated.
 
+* The :module:`FindPerl` module now provides a ``Perl_VERSION`` result
+  variable.  The ``PERL_VERSION_STRING`` result variable is deprecated.
+
+* The :module:`FindPerlLibs` module now provides a ``PerlLibs_VERSION``
+  result variable.
+
+* The :module:`FindPkgConfig` module now provides a ``PkgConfig_VERSION``
+  result variable.  The ``PKG_CONFIG_VERSION_STRING`` result variable is
+  deprecated.
+
+* The :module:`FindPkgConfig` module's result variable ``PKG_CONFIG_FOUND``
+  is deprecated in favor of ``PkgConfig_FOUND``, which is available since
+  CMake 3.3 and has the same value.
+
 * The :module:`FindPNG` module now provides a ``PNG_VERSION`` result
   variable.  The ``PNG_VERSION_STRING`` result variable is deprecated.
 
 * The :module:`FindPostgreSQL` module now provides a ``PostgreSQL_VERSION``
   result variable.  The ``PostgreSQL_VERSION_STRING`` result variable is
   deprecated.
+
+* The :module:`FindQt3` module now provides a ``Qt3_VERSION`` result
+  variable.  The ``QT_VERSION_STRING`` result variable is deprecated.
 
 * The :module:`FindSDL_gfx`, :module:`FindSDL_image`, :module:`FindSDL_mixer`,
   :module:`FindSDL_net`, :module:`FindSDL_sound`, and :module:`FindSDL_ttf`
@@ -71,5 +111,20 @@ Find Modules
   ``SQUISH_VERSION_MINOR``, and ``SQUISH_VERSION_PATCH`` result variables
   are deprecated.
 
+* The :module:`FindSubversion` module now provides a ``Subversion_VERSION``
+  result variable.  The ``Subversion_VERSION_SVN`` result variable is
+  deprecated.
+
+* The :module:`FindTclsh` module now provides a ``Tclsh_VERSION`` result
+  variable.  The ``TCLSH_VERSION_STRING`` result variable is deprecated.
+
 * The :module:`FindTIFF` module now provides a ``TIFF_VERSION`` result
   variable.  The ``TIFF_VERSION_STRING`` result variable is deprecated.
+
+* The :module:`FindwxWidgets` module now provides a ``wxWidgets_VERSION``
+  result variable.  The ``wxWidgets_VERSION_STRING`` result variable is
+  deprecated.
+
+* The :module:`FindwxWidgets` module's result variable
+  ``wxWidgets_USE_FILE`` is now deprecated in favor of including the
+  :module:`UsewxWidgets` module directly.

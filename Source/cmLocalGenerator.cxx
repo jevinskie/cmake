@@ -1443,7 +1443,7 @@ void cmLocalGenerator::GetDeviceLinkFlags(
 
   auto linklang = linkLineComputer.GetLinkerLanguage(target, config);
   auto ipoEnabled = target->IsIPOEnabled(linklang, config);
-  if (!ipoEnabled) {
+  if (!ipoEnabled && pcli) {
     ipoEnabled = linkLineComputer.ComputeRequiresDeviceLinkingIPOFlag(*pcli);
   }
   if (ipoEnabled) {
@@ -2837,18 +2837,7 @@ void cmLocalGenerator::AddPchDependencies(cmGeneratorTarget* target)
                     langFlags.find("-Zi") != std::string::npos;
                 }
 
-                // MSVC 2008 is producing both .pdb and .idb files with /Zi.
-                bool msvc2008OrLess =
-                  cmSystemTools::VersionCompare(cmSystemTools::OP_LESS,
-                                                compilerVersion, "16.0") &&
-                  compilerId == "MSVC";
-                // but not when used via toolset -Tv90
-                if (this->Makefile->GetSafeDefinition(
-                      "CMAKE_VS_PLATFORM_TOOLSET") == "v90") {
-                  msvc2008OrLess = false;
-                }
-
-                if (editAndContinueDebugInfo || msvc2008OrLess) {
+                if (editAndContinueDebugInfo) {
                   this->CopyPchCompilePdb(config, lang, target, reuseTarget,
                                           { ".pdb", ".idb" });
                 } else if (programDatabaseDebugInfo) {
@@ -2858,8 +2847,13 @@ void cmLocalGenerator::AddPchDependencies(cmGeneratorTarget* target)
               }
 
               // Link to the pch object file
-              std::string pchSourceObj =
-                reuseTarget->GetPchFileObject(config, lang, arch);
+              std::string pchSourceObj;
+              // Fastbuild will propagate pch.obj for us, no need to link to it
+              // explicitly.
+              if (!this->GetGlobalGenerator()->IsFastbuild()) {
+                pchSourceObj =
+                  reuseTarget->GetPchFileObject(config, lang, arch);
+              }
 
               if (target->GetType() != cmStateEnums::OBJECT_LIBRARY) {
                 std::string linkerProperty = "LINK_FLAGS_";
@@ -2939,10 +2933,9 @@ void cmLocalGenerator::CopyPchCompilePdb(
     std::string const from_file =
       replaceExtension(reuseTarget->GetCompilePDBPath(config), extension);
     std::string const to_dir = target->GetCompilePDBDirectory(config);
-    std::string const to_file = cmStrCat(
-      replaceExtension(reuseTarget->GetCompilePDBName(config), extension),
-      '/');
-    std::string const dest_file = cmStrCat(to_dir, to_file);
+    std::string const to_file =
+      replaceExtension(reuseTarget->GetCompilePDBName(config), extension);
+    std::string const dest_file = cmStrCat(to_dir, '/', to_file);
 
     file << "foreach(retry RANGE 1 30)\n";
     file << "  if (EXISTS \"" << from_file << "\" AND (NOT EXISTS \""
@@ -2982,6 +2975,11 @@ void cmLocalGenerator::CopyPchCompilePdb(
   cc->SetStdPipesUTF8(true);
   cc->AppendDepends(
     { reuseTarget->GetPchFile(config, language), copy_script });
+  // Fastbuild needs to know that this custom command actually depends on a
+  // target that produces PCH, so it can sort by dependencies correctly.
+  if (this->GetGlobalGenerator()->IsFastbuild()) {
+    cc->AppendDepends({ reuseTarget->GetName() });
+  }
 
   if (this->GetGlobalGenerator()->IsVisualStudio()) {
     cc->SetByproducts(outputs);
@@ -2991,9 +2989,8 @@ void cmLocalGenerator::CopyPchCompilePdb(
   } else {
     cc->SetOutputs(outputs);
     cmSourceFile* copy_rule = this->AddCustomCommandToOutput(std::move(cc));
-    copy_rule->SetProperty("CXX_SCAN_FOR_MODULES", "0");
-
     if (copy_rule) {
+      copy_rule->SetProperty("CXX_SCAN_FOR_MODULES", "0");
       target->AddSource(copy_rule->ResolveFullPath());
     }
   }
@@ -4143,7 +4140,7 @@ std::string& cmLocalGenerator::CreateSafeUniqueObjectFileName(
 }
 
 void cmLocalGenerator::ComputeObjectFilenames(
-  std::map<cmSourceFile const*, std::string>& /*unused*/,
+  std::map<cmSourceFile const*, cmObjectLocations>& /*unused*/,
   cmGeneratorTarget const* /*unused*/)
 {
 }
@@ -4227,8 +4224,13 @@ std::string cmLocalGenerator::GetRelativeSourceFileName(
 
 std::string cmLocalGenerator::GetObjectFileNameWithoutTarget(
   cmSourceFile const& source, std::string const& dir_max,
-  bool* hasSourceExtension, char const* customOutputExtension)
+  bool* hasSourceExtension, char const* customOutputExtension,
+  bool const* forceShortObjectName)
 {
+  bool useShortObjectNames = this->UseShortObjectNames();
+  if (forceShortObjectName) {
+    useShortObjectNames = *forceShortObjectName;
+  }
 
   // This can return an absolute path in the case where source is
   // not relative to the current source or binary directoreis
@@ -4246,7 +4248,7 @@ std::string cmLocalGenerator::GetObjectFileNameWithoutTarget(
   // Short object path policy selected, use as little info as necessary to
   // select an object name
   bool keptSourceExtension = true;
-  if (this->UseShortObjectNames()) {
+  if (useShortObjectNames) {
     objectName = this->GetShortObjectFileName(source);
     keptSourceExtension = false;
   }
@@ -4379,7 +4381,8 @@ std::string const& cmLocalGenerator::GetCurrentSourceDirectory() const
 }
 
 std::string cmLocalGenerator::GetTargetDirectory(
-  cmGeneratorTarget const* /*unused*/) const
+  cmGeneratorTarget const* /*unused*/,
+  cmStateEnums::IntermediateDirKind /*kind*/) const
 {
   cmSystemTools::Error("GetTargetDirectory"
                        " called on cmLocalGenerator");

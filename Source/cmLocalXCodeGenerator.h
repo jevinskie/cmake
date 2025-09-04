@@ -9,6 +9,7 @@
 #include <string>
 
 #include "cmLocalGenerator.h"
+#include "cmObjectLocation.h"
 
 class cmGeneratorTarget;
 class cmGlobalGenerator;
@@ -29,13 +30,14 @@ public:
 
   ~cmLocalXCodeGenerator() override;
   std::string GetTargetDirectory(
-    cmGeneratorTarget const* target) const override;
+    cmGeneratorTarget const* target,
+    cmStateEnums::IntermediateDirKind kind) const override;
   void AppendFlagEscape(std::string& flags,
                         std::string const& rawFlag) const override;
   void Generate() override;
   void AddGeneratorSpecificInstallSetup(std::ostream& os) override;
   void ComputeObjectFilenames(
-    std::map<cmSourceFile const*, std::string>& mapping,
+    std::map<cmSourceFile const*, cmObjectLocations>& mapping,
     cmGeneratorTarget const* gt = nullptr) override;
 
   void AddXCConfigSources(cmGeneratorTarget* target) override;

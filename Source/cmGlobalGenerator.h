@@ -32,6 +32,7 @@
 #include "cmTarget.h"
 #include "cmTargetDepend.h"
 #include "cmValue.h"
+#include "cmXcFramework.h"
 
 #if !defined(CMAKE_BOOTSTRAP)
 #  include <cm3p/json/value.h>
@@ -525,7 +526,7 @@ public:
   // what targets does the specified target depend on directly
   // via a target_link_libraries or add_dependencies
   TargetDependSet const& GetTargetDirectDepends(
-    cmGeneratorTarget const* target);
+    cmGeneratorTarget const* target) const;
 
   // Return true if target 'l' occurs before 'r' in a global ordering
   // of targets that respects inter-target dependencies.
@@ -562,6 +563,8 @@ public:
   virtual bool IsVisualStudioAtLeast10() const { return false; }
 
   virtual bool IsNinja() const { return false; }
+
+  virtual bool IsFastbuild() const { return false; }
 
   /** Return true if we know the exact location of object files for the given
      cmTarget. If false, store the reason in the given string. This is
@@ -692,6 +695,11 @@ public:
 
   bool ShouldWarnExperimental(cm::string_view featureName,
                               cm::string_view featureUuid);
+
+  cm::optional<cmXcFrameworkPlist> GetXcFrameworkPListContent(
+    std::string const& path) const;
+  void SetXcFrameworkPListContent(std::string const& path,
+                                  cmXcFrameworkPlist const& content);
 
 protected:
   // for a project collect all its targets by following depend
@@ -913,6 +921,9 @@ private:
     std::set<std::string> Generated;
   };
   std::map<std::string, DirectoryContent> DirectoryContentMap;
+
+  // Cache parsed PList files
+  std::map<std::string, cmXcFrameworkPlist> XcFrameworkPListContentMap;
 
   // Set of binary directories on disk.
   std::set<std::string> BinaryDirectories;

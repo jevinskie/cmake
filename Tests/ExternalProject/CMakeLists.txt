@@ -17,7 +17,7 @@ endif()
 
 if(NOT DEFINED EP_TEST_SVN OR EP_TEST_SVN)
   find_package(Subversion)
-  if(Subversion_FOUND AND Subversion_VERSION_SVN VERSION_LESS 1.2)
+  if(Subversion_FOUND AND Subversion_VERSION VERSION_LESS 1.2)
     message(STATUS "No ExternalProject svn tests with svn client less than version 1.2")
     set(Subversion_FOUND 0)
   endif()
@@ -595,7 +595,7 @@ if(EP_TEST_HG)
   #
   # Mercurial 2.1 does not distinguish an empty pull from a failed pull,
   # so do not run the test with that version.
-  if(NOT "${HG_VERSION_STRING}" STREQUAL "2.1")
+  if(NOT Hg_VERSION STREQUAL "2.1")
     set(proj TutorialStep1-HG-tip)
     ExternalProject_Add(${proj}
       HG_REPOSITORY "${local_hg_repo}"

@@ -419,6 +419,7 @@ TargetProperty const StaticTargetProperties[] = {
   { "BUILD_WITH_INSTALL_NAME_DIR"_s, IC::CanCompileSources },
   // ---- Install
   { "INSTALL_NAME_DIR"_s, IC::CanCompileSources },
+  { "INSTALL_OBJECT_NAME_STRATEGY"_s, IC::CanCompileSources },
   { "INSTALL_REMOVE_ENVIRONMENT_RPATH"_s, IC::CanCompileSources },
   { "INSTALL_RPATH"_s, ""_s, IC::CanCompileSources },
   { "INSTALL_RPATH_USE_LINK_PATH"_s, "OFF"_s, IC::CanCompileSources },
@@ -3209,8 +3210,71 @@ bool cmTargetInternals::CheckImportedLibName(std::string const& prop,
   return true;
 }
 
-bool cmTarget::GetMappedConfig(std::string const& desired_config, cmValue& loc,
+bool cmTarget::GetMappedConfig(std::string const& desiredConfig, cmValue& loc,
                                cmValue& imp, std::string& suffix) const
+{
+  switch (this->GetPolicyStatusCMP0200()) {
+    case cmPolicies::WARN:
+      if (this->GetMakefile()->PolicyOptionalWarningEnabled(
+            "CMAKE_POLICY_WARNING_CMP0200")) {
+        break;
+      }
+      CM_FALLTHROUGH;
+    case cmPolicies::OLD:
+      return this->GetMappedConfigOld(desiredConfig, loc, imp, suffix);
+    case cmPolicies::NEW:
+      return this->GetMappedConfigNew(desiredConfig, loc, imp, suffix);
+  }
+
+  cmValue newLoc;
+  cmValue newImp;
+  std::string newSuffix;
+
+  bool const newResult =
+    this->GetMappedConfigNew(desiredConfig, newLoc, newImp, newSuffix);
+
+  if (!this->GetMappedConfigOld(desiredConfig, loc, imp, suffix)) {
+    if (newResult) {
+      // NEW policy found a configuration, OLD did not.
+      auto newConfig = cm::string_view{ newSuffix }.substr(1);
+      std::string const err = cmStrCat(
+        cmPolicies::GetPolicyWarning(cmPolicies::CMP0200),
+        "\nConfiguration selection for imported target \"", this->GetName(),
+        "\" failed, but would select configuration \"", newConfig,
+        "\" under the NEW policy.\n");
+      this->GetMakefile()->IssueMessage(MessageType::AUTHOR_WARNING, err);
+    }
+
+    return false;
+  }
+
+  auto oldConfig = cm::string_view{ suffix }.substr(1);
+  if (!newResult) {
+    // NEW policy did not find a configuration, OLD did.
+    std::string const err =
+      cmStrCat(cmPolicies::GetPolicyWarning(cmPolicies::CMP0200),
+               "\nConfiguration selection for imported target \"",
+               this->GetName(), "\" selected configuration \"", oldConfig,
+               "\", but would fail under the NEW policy.\n");
+    this->GetMakefile()->IssueMessage(MessageType::AUTHOR_WARNING, err);
+  } else if (suffix != newSuffix) {
+    // OLD and NEW policies found different configurations.
+    auto newConfig = cm::string_view{ newSuffix }.substr(1);
+    std::string const err =
+      cmStrCat(cmPolicies::GetPolicyWarning(cmPolicies::CMP0200),
+               "\nConfiguration selection for imported target \"",
+               this->GetName(), "\" selected configuration \"", oldConfig,
+               "\", but would select configuration \"", newConfig,
+               "\" under the NEW policy.\n");
+    this->GetMakefile()->IssueMessage(MessageType::AUTHOR_WARNING, err);
+  }
+
+  return true;
+}
+
+bool cmTarget::GetMappedConfigOld(std::string const& desired_config,
+                                  cmValue& loc, cmValue& imp,
+                                  std::string& suffix) const
 {
   std::string config_upper;
   if (!desired_config.empty()) {
@@ -3337,4 +3401,112 @@ bool cmTarget::GetMappedConfig(std::string const& desired_config, cmValue& loc,
   }
 
   return true;
+}
+
+cmValue cmTarget::GetLocation(std::string const& base,
+                              std::string const& suffix) const
+{
+  cmValue value = this->GetProperty(cmStrCat(base, suffix));
+  if (value || suffix.empty()) {
+    return value;
+  }
+  return this->GetProperty(base);
+}
+
+bool cmTarget::GetLocation(std::string const& config, cmValue& loc,
+                           cmValue& imp, std::string& suffix) const
+{
+  suffix = (config.empty() ? std::string{} : cmStrCat('_', config));
+
+  // There may be only IMPORTED_IMPLIB for a shared library or an executable
+  // with exports.
+  bool const allowImp = (this->GetType() == cmStateEnums::SHARED_LIBRARY ||
+                         this->IsExecutableWithExports()) ||
+    (this->IsAIX() && this->IsExecutableWithExports()) ||
+    (this->GetMakefile()->PlatformSupportsAppleTextStubs() &&
+     this->IsSharedLibraryWithExports());
+
+  if (allowImp) {
+    imp = this->GetLocation("IMPORTED_IMPLIB", suffix);
+  }
+
+  switch (this->GetType()) {
+    case cmStateEnums::INTERFACE_LIBRARY:
+      loc = this->GetLocation("IMPORTED_LIBNAME", suffix);
+      break;
+    case cmStateEnums::OBJECT_LIBRARY:
+      loc = this->GetLocation("IMPORTED_OBJECTS", suffix);
+      break;
+    default:
+      loc = this->GetLocation("IMPORTED_LOCATION", suffix);
+      break;
+  }
+
+  return loc || imp || (this->GetType() == cmStateEnums::INTERFACE_LIBRARY);
+}
+
+bool cmTarget::GetMappedConfigNew(std::string desiredConfig, cmValue& loc,
+                                  cmValue& imp, std::string& suffix) const
+{
+  desiredConfig = cmSystemTools::UpperCase(desiredConfig);
+
+  // Get configuration mapping, if present.
+  cmList mappedConfigs;
+  if (!desiredConfig.empty()) {
+    std::string mapProp = cmStrCat("MAP_IMPORTED_CONFIG_", desiredConfig);
+    if (cmValue mapValue = this->GetProperty(mapProp)) {
+      mappedConfigs.assign(cmSystemTools::UpperCase(*mapValue),
+                           cmList::EmptyElements::Yes);
+    }
+  }
+
+  // Get imported configurations, if specified.
+  if (cmValue iconfigs = this->GetProperty("IMPORTED_CONFIGURATIONS")) {
+    cmList const availableConfigs{ cmSystemTools::UpperCase(*iconfigs) };
+
+    if (!mappedConfigs.empty()) {
+      for (auto const& c : mappedConfigs) {
+        if (cm::contains(availableConfigs, c)) {
+          this->GetLocation(c, loc, imp, suffix);
+          return true;
+        }
+      }
+
+      // If a configuration mapping was specified, but no matching
+      // configuration was found, we don't want to try anything else.
+      return false;
+    }
+
+    // There is no mapping; try the requested configuration first.
+    if (cm::contains(availableConfigs, desiredConfig)) {
+      this->GetLocation(desiredConfig, loc, imp, suffix);
+      return true;
+    }
+
+    // If there is no mapping and the requested configuration is not one of
+    // the available configurations, just take the first available
+    // configuration.
+    this->GetLocation(availableConfigs[0], loc, imp, suffix);
+    return true;
+  }
+
+  if (!mappedConfigs.empty()) {
+    for (auto const& c : mappedConfigs) {
+      if (this->GetLocation(c, loc, imp, suffix)) {
+        return true;
+      }
+    }
+
+    // If a configuration mapping was specified, but no matching
+    // configuration was found, we don't want to try anything else.
+    return false;
+  }
+
+  // There is no mapping and no explicit list of configurations; the only
+  // configuration left to try is the requested configuration.
+  if (this->GetLocation(desiredConfig, loc, imp, suffix)) {
+    return true;
+  }
+
+  return false;
 }

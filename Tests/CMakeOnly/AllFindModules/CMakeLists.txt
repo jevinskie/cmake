@@ -44,7 +44,7 @@ foreach(FIND_MODULE IN LISTS FIND_MODULES)
 endforeach()
 
 # Qt4 is not present, so we can check Qt3
-if (NOT QT4_FOUND)
+if (NOT Qt4_FOUND)
     set(DESIRED_QT_VERSION 3)
     foreach(FIND_MODULE ${NO_QT4_MODULES} "Qt")
         do_find(${FIND_MODULE})
@@ -97,14 +97,16 @@ foreach(
     CUPS CURL
     EXPAT
     FREETYPE
-    GETTEXT GIT
+    GETTEXT GIT GNUTLS
     HG HSPELL
     ICOTOOL
     JASPER
     LIBLZMA LIBXML2 LIBXSLT LTTNGUST
+    OpenCL
     PERL PKG_CONFIG PNG PostgreSQL
     SDL
-    TIFF
+    TCLSH TIFF
+    wxWidgets
     ZLIB
 )
   check_version_string(${VTEST} ${VTEST}_VERSION_STRING)
@@ -115,22 +117,25 @@ foreach(
     ALSA Armadillo
     BISON Boost BZip2 BZIP2
     CUDA Cups
-    Doxygen DOXYGEN
+    DevIL Doxygen DOXYGEN
     EXPAT
     FLEX Freetype
-    Gettext GIF GTK2
-    HDF5
+    Gettext GIF GnuTLS GNUTLS GTK2
+    HDF5 Hg HSPELL
+    Icotool
     Jasper JPEG
     LibArchive LibLZMA LIBLZMA LibXml2 LibXslt LTTngUST
-    OpenSceneGraph OPENSCENEGRAPH OpenSSL OPENSSL
-    PNG PostgreSQL Protobuf
+    OpenCL OpenSceneGraph OPENSCENEGRAPH OpenSSL OPENSSL
+    Perl PerlLibs PkgConfig PNG PostgreSQL Protobuf
     Ruby RUBY
     SDL SWIG
-    TIFF
+    Tclsh TIFF
+    wxWidgets
     ZLIB
 )
   check_version_string(${VTEST} ${VTEST}_VERSION)
 endforeach()
 
 check_version_string(PYTHONINTERP PYTHON_VERSION_STRING)
+check_version_string(SUBVERSION Subversion_VERSION)
 check_version_string(SUBVERSION Subversion_VERSION_SVN)
