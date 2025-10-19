@@ -38,7 +38,7 @@
 #  include <unistd.h> // IWYU pragma: keep
 #endif
 
-#include "cm_get_date.h"
+#include "cm_parse_date.h"
 
 #include "cmCMakePresetsGraph.h"
 #include "cmCTestBuildAndTest.h"
@@ -214,7 +214,7 @@ struct tm* cmCTest::GetNightlyTime(std::string const& str, bool tomorrowtag)
   char buf[1024];
   std::snprintf(buf, sizeof(buf), "%d%02d%02d %s", lctime->tm_year + 1900,
                 lctime->tm_mon + 1, lctime->tm_mday, str.c_str());
-  time_t ntime = cm_get_date(tctime, buf);
+  time_t ntime = cm_parse_date(tctime, buf);
   cmCTestLog(this, DEBUG,
              "   Get the nightly start time: " << ntime << std::endl);
   tctime = time(nullptr);
@@ -724,8 +724,8 @@ int cmCTest::ProcessSteps()
   this->SetTimeLimit(mf.GetDefinition("CTEST_TIME_LIMIT"));
   this->SetCMakeVariables(mf);
   std::vector<cmListFileArgument> args{
-    cmListFileArgument("RETURN_VALUE", cmListFileArgument::Unquoted, 0),
-    cmListFileArgument("return_value", cmListFileArgument::Unquoted, 0),
+    cmListFileArgument("RETURN_VALUE"_s, cmListFileArgument::Unquoted, 0),
+    cmListFileArgument("return_value"_s, cmListFileArgument::Unquoted, 0),
   };
 
   if (this->Impl->Parts[PartStart]) {
@@ -843,12 +843,12 @@ int cmCTest::ProcessSteps()
     auto const func = cmListFileFunction(
       "ctest_submit", 0, 0,
       {
-        cmListFileArgument("RETRY_COUNT", cmListFileArgument::Unquoted, 0),
+        cmListFileArgument("RETRY_COUNT"_s, cmListFileArgument::Unquoted, 0),
         cmListFileArgument(count, cmListFileArgument::Quoted, 0),
-        cmListFileArgument("RETRY_DELAY", cmListFileArgument::Unquoted, 0),
+        cmListFileArgument("RETRY_DELAY"_s, cmListFileArgument::Unquoted, 0),
         cmListFileArgument(delay, cmListFileArgument::Quoted, 0),
-        cmListFileArgument("RETURN_VALUE", cmListFileArgument::Unquoted, 0),
-        cmListFileArgument("return_value", cmListFileArgument::Unquoted, 0),
+        cmListFileArgument("RETURN_VALUE"_s, cmListFileArgument::Unquoted, 0),
+        cmListFileArgument("return_value"_s, cmListFileArgument::Unquoted, 0),
       });
     auto status = cmExecutionStatus(mf);
     if (!mf.ExecuteCommand(func, status) ||
@@ -2673,7 +2673,7 @@ int cmCTest::ExecuteTests(std::vector<std::string> const& args)
     return handler.ProcessHandler();
   };
   int ret = instrumentation.InstrumentCommand("ctest", args, processHandler);
-  instrumentation.CollectTimingData(cmInstrumentationQuery::Hook::PostTest);
+  instrumentation.CollectTimingData(cmInstrumentationQuery::Hook::PostCTest);
   if (ret < 0) {
     cmCTestLog(this, ERROR_MESSAGE, "Errors while running CTest\n");
     if (!this->Impl->OutputTestOutputOnTestFailure) {
@@ -2742,7 +2742,7 @@ void cmCTest::SetStopTime(std::string const& time_str)
            lctime->tm_mon + 1, lctime->tm_mday, time_str.c_str(),
            tzone_offset);
 
-  time_t stop_time = cm_get_date(current_time, buf);
+  time_t stop_time = cm_parse_date(current_time, buf);
   if (stop_time == -1) {
     this->Impl->StopTime = std::chrono::system_clock::time_point();
     return;

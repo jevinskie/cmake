@@ -57,6 +57,13 @@ std::string const COMPILE_FLAGS("COMPILE_FLAGS");
 std::string const CMAKE_LANGUAGE("CMAKE");
 std::string const INCLUDE_DIRECTORIES("INCLUDE_DIRECTORIES");
 
+std::string const CMAKE_UNITY_BUILD("CMAKE_UNITY_BUILD");
+std::string const CMAKE_UNITY_BUILD_BATCH_SIZE("CMAKE_UNITY_BUILD_BATCH_SIZE");
+std::string const UNITY_BUILD("UNITY_BUILD");
+std::string const UNITY_BUILD_BATCH_SIZE("UNITY_BUILD_BATCH_SIZE");
+std::string const SKIP_UNITY_BUILD_INCLUSION("SKIP_UNITY_BUILD_INCLUSION");
+std::string const UNITY_GROUP("UNITY_GROUP");
+
 } // anonymous namespace
 
 cmFastbuildNormalTargetGenerator::cmFastbuildNormalTargetGenerator(
@@ -250,6 +257,7 @@ bool cmFastbuildNormalTargetGenerator::DetectBaseLinkerCommand(
   cmRulePlaceholderExpander::RuleVariables vars;
   vars.CMTargetName = this->GeneratorTarget->GetName().c_str();
   vars.CMTargetType = cmState::GetTargetTypeName(targetType).c_str();
+  vars.Config = Config.c_str();
   vars.Language = linkLanguage.c_str();
   std::string const manifests =
     cmJoin(this->GetManifestsAsFastbuildPath(), " ");
@@ -567,7 +575,7 @@ void cmFastbuildNormalTargetGenerator::GenerateModuleDefinitionInfo(
       for (cmSourceFile const* it : objectSources) {
         mapping[it];
       }
-      GeneratorTarget->LocalGenerator->ComputeObjectFilenames(mapping,
+      GeneratorTarget->LocalGenerator->ComputeObjectFilenames(mapping, Config,
                                                               GeneratorTarget);
 
       std::vector<std::string> objs;
@@ -809,8 +817,6 @@ void cmFastbuildNormalTargetGenerator::Generate()
     FastbuildTargetDep targetDep{ tname };
     if (dep->GetType() == cmStateEnums::OBJECT_LIBRARY) {
       targetDep.Type = FastbuildTargetDepType::ORDER_ONLY;
-    } else {
-      targetDep.Type = FastbuildTargetDepType::ALL;
     }
     fastbuildTarget.PreBuildDependencies.emplace(std::move(targetDep));
   }
@@ -840,7 +846,8 @@ void cmFastbuildNormalTargetGenerator::Generate()
     fastbuildTarget.PostBuildExecNodes.Nodes.emplace_back(std::move(cc));
   }
 
-  fastbuildTarget.ObjectListNodes = GenerateObjects();
+  GenerateObjects(fastbuildTarget);
+
   std::vector<std::string> objectDepends;
   AddObjectDependencies(fastbuildTarget, objectDepends);
 
@@ -905,7 +912,28 @@ void cmFastbuildNormalTargetGenerator::Generate()
 
   AddStampExeIfApplicable(fastbuildTarget);
 
+  // size 1 means that it's not a multi-arch lib (which can only be the case on
+  // Darwin).
+  if (fastbuildTarget.LinkerNode.size() == 1 &&
+      fastbuildTarget.LinkerNode[0].Type ==
+        FastbuildLinkerNode::STATIC_LIBRARY &&
+      !fastbuildTarget.PostBuildExecNodes.Nodes.empty()) {
+    ProcessPostBuildForStaticLib(fastbuildTarget);
+  }
+
   AdditionalCleanFiles();
+
+  if (!fastbuildTarget.DependenciesAlias.PreBuildDependencies.empty()) {
+    for (FastbuildObjectListNode& objListNode :
+         fastbuildTarget.ObjectListNodes) {
+      objListNode.PreBuildDependencies.emplace(
+        fastbuildTarget.DependenciesAlias.Name);
+    }
+    for (auto& linkerNode : fastbuildTarget.LinkerNode) {
+      linkerNode.PreBuildDependencies.emplace(
+        fastbuildTarget.DependenciesAlias.Name);
+    }
+  }
 
   this->GetGlobalGenerator()->AddTarget(std::move(fastbuildTarget));
 }
@@ -976,6 +1004,25 @@ void cmFastbuildNormalTargetGenerator::AddStampExeIfApplicable(
   }
 }
 
+void cmFastbuildNormalTargetGenerator::ProcessPostBuildForStaticLib(
+  FastbuildTarget& fastbuildTarget) const
+{
+  // "Library" nodes do not have "LinkerStampExe" property, so we need to be
+  // clever here: create an alias that will refer to the binary as well as to
+  // all post-build steps. Also, make sure that post-build steps depend on the
+  // binary itself.
+  LogMessage("ProcessPostBuildForStaticLib(...)");
+  FastbuildAliasNode alias;
+  alias.Name = std::move(fastbuildTarget.LinkerNode[0].Name);
+  for (FastbuildExecNode& postBuildExec :
+       fastbuildTarget.PostBuildExecNodes.Nodes) {
+    postBuildExec.PreBuildDependencies.emplace(
+      fastbuildTarget.LinkerNode[0].LinkerOutput);
+    alias.PreBuildDependencies.emplace(postBuildExec.Name);
+  }
+  fastbuildTarget.AliasNodes.emplace_back(std::move(alias));
+}
+
 void cmFastbuildNormalTargetGenerator::CollapseAllExecsIntoOneScriptfile(
   std::string const& scriptFileName,
   std::vector<FastbuildExecNode> const& execs) const
@@ -1008,14 +1055,18 @@ void cmFastbuildNormalTargetGenerator::CollapseAllExecsIntoOneScriptfile(
 std::string cmFastbuildNormalTargetGenerator::ComputeCodeCheckOptions(
   cmSourceFile const& srcFile)
 {
-  cmValue const skipCodeCheck = srcFile.GetProperty("SKIP_LINTING");
-  std::string staticCheckRule;
-  if (!skipCodeCheck.IsOn()) {
-    std::string compilerLauncher;
-    staticCheckRule = this->GenerateCodeCheckRules(srcFile, compilerLauncher,
-                                                   "", Config, nullptr);
-    LogMessage(cmStrCat("CodeCheck: ", staticCheckRule));
+  cmValue const srcSkipCodeCheckVal = srcFile.GetProperty("SKIP_LINTING");
+  bool const skipCodeCheck = srcSkipCodeCheckVal.IsSet()
+    ? srcSkipCodeCheckVal.IsOn()
+    : this->GetGeneratorTarget()->GetPropertyAsBool("SKIP_LINTING");
+
+  if (skipCodeCheck) {
+    return {};
   }
+  std::string compilerLauncher;
+  std::string staticCheckRule = this->GenerateCodeCheckRules(
+    srcFile, compilerLauncher, "", Config, nullptr);
+  LogMessage(cmStrCat("CodeCheck: ", staticCheckRule));
   return staticCheckRule;
 }
 
@@ -1080,8 +1131,6 @@ cmFastbuildNormalTargetGenerator::ComputeRuleVariables() const
   compileObjectVars.CMTargetName = GeneratorTarget->GetName().c_str();
   compileObjectVars.CMTargetType =
     cmState::GetTargetTypeName(GeneratorTarget->GetType()).c_str();
-  compileObjectVars.CMTargetLabels =
-    this->GetGeneratorTarget()->GetTargetLabelsString().c_str();
   compileObjectVars.Source = FASTBUILD_1_INPUT_PLACEHOLDER;
   compileObjectVars.Object = FASTBUILD_2_INPUT_PLACEHOLDER;
   compileObjectVars.ObjectDir =
@@ -1178,8 +1227,7 @@ std::vector<std::string> cmFastbuildNormalTargetGenerator::GetArches() const
   return arches;
 }
 
-std::vector<FastbuildObjectListNode>
-cmFastbuildNormalTargetGenerator::GenerateObjects()
+void cmFastbuildNormalTargetGenerator::GenerateObjects(FastbuildTarget& target)
 {
   this->GetGlobalGenerator()->AllFoldersToClean.insert(ObjectOutDir);
 
@@ -1192,22 +1240,60 @@ cmFastbuildNormalTargetGenerator::GenerateObjects()
 
   std::set<std::string> createdPCH;
 
+  // Directory level.
+  bool useUnity =
+    GeneratorTarget->GetLocalGenerator()->GetMakefile()->IsDefinitionSet(
+      CMAKE_UNITY_BUILD);
+  // Check if explicitly disabled for this target.
+  auto const targetProp = GeneratorTarget->GetProperty(UNITY_BUILD);
+  if (targetProp.IsSet() && targetProp.IsOff()) {
+    useUnity = false;
+  }
+
+  // List of sources isolated from the unity build if enabled.
+  std::set<std::string> isolatedFromUnity;
+
+  // Mapping from unity group (if any) to sources belonging to that group.
+  std::map<std::string, std::vector<std::string>> sourcesWithGroups;
+
   for (cmSourceFile const* source : objectSources) {
 
     cmSourceFile const& srcFile = *source;
+    std::string const pathToFile = srcFile.GetFullPath();
+    if (useUnity) {
+      // Check if the source should be added to "UnityInputIsolatedFiles".
+      if (srcFile.GetPropertyAsBool(SKIP_UNITY_BUILD_INCLUSION)) {
+        isolatedFromUnity.emplace(pathToFile);
+      }
+      std::string const perFileUnityGroup =
+        srcFile.GetSafeProperty(UNITY_GROUP);
+      if (!perFileUnityGroup.empty()) {
+        sourcesWithGroups[perFileUnityGroup].emplace_back(pathToFile);
+      }
+    }
+
+    this->GetGlobalGenerator()->AddFileToClean(cmStrCat(
+      ObjectOutDir, '/', this->GeneratorTarget->GetObjectName(source)));
 
     // Do not generate separate node for PCH source file.
     if (this->GeneratorTarget->GetPchSource(Config, srcFile.GetLanguage()) ==
-        srcFile.GetFullPath()) {
+        pathToFile) {
       continue;
     }
 
     std::string const language = srcFile.GetLanguage();
-    LogMessage(cmStrCat("Source file: ",
-                        this->ConvertToFastbuildPath(srcFile.GetFullPath())));
+    LogMessage(
+      cmStrCat("Source file: ", this->ConvertToFastbuildPath(pathToFile)));
     LogMessage("Language: " + language);
 
     std::string const staticCheckOptions = ComputeCodeCheckOptions(srcFile);
+
+    auto const isDisabled = [this](char const* prop) {
+      auto const propValue = this->GeneratorTarget->GetProperty(prop);
+      return propValue && propValue.IsOff();
+    };
+    bool const disableCaching = isDisabled("FASTBUILD_CACHING");
+    bool const disableDistribution = isDisabled("FASTBUILD_DISTRIBUTION");
 
     for (auto const& arch : this->GetArches()) {
       std::string const compileOptions = GetCompileOptions(srcFile, arch);
@@ -1235,7 +1321,7 @@ cmFastbuildNormalTargetGenerator::GenerateObjects()
         nodesPermutations[objectListHash];
 
       // Absolute path needed in "RunCMake.SymlinkTrees" test.
-      objectListNode.CompilerInputFiles.push_back(srcFile.GetFullPath());
+      objectListNode.CompilerInputFiles.push_back(pathToFile);
 
       std::vector<std::string> const outputs =
         GetSourceProperty(srcFile, "OBJECT_OUTPUTS");
@@ -1250,6 +1336,12 @@ cmFastbuildNormalTargetGenerator::GenerateObjects()
       if (!objectListNode.CompilerOptions.empty()) {
         continue;
       }
+      if (disableCaching) {
+        objectListNode.AllowCaching = false;
+      }
+      if (disableDistribution) {
+        objectListNode.AllowDistribution = false;
+      }
 
       objectListNode.CompilerOutputPath = objOutDirWithPossibleSubdir;
       LogMessage(cmStrCat("Output path: ", objectListNode.CompilerOutputPath));
@@ -1258,8 +1350,7 @@ cmFastbuildNormalTargetGenerator::GenerateObjects()
                                 objectListNode);
       ComputePCH(*source, objectListNode, createdPCH);
 
-      objectListNode.Name =
-        cmStrCat(language, "_ObjectGroup_", GetTargetName());
+      objectListNode.Name = cmStrCat(this->GetName(), '_', language, "_Objs");
       // TODO: Ask cmake the output objects and group by extension instead
       // of doing this
       if (language == "RC") {
@@ -1276,17 +1367,14 @@ cmFastbuildNormalTargetGenerator::GenerateObjects()
     }
   }
 
-  int groupNameCount = 1;
+  int groupNameCount = 0;
 
   for (auto& val : nodesPermutations) {
     auto& objectListNode = val.second;
-    objectListNode.Name =
-      cmStrCat(objectListNode.Name, "-", objectListNode.CompilerOutputPath,
-               "-", std::to_string(groupNameCount++));
+    objectListNode.Name = cmStrCat(objectListNode.Name, "_", ++groupNameCount);
     LogMessage(cmStrCat("ObjectList name: ", objectListNode.Name));
   }
-
-  std::vector<FastbuildObjectListNode> objects;
+  std::vector<FastbuildObjectListNode>& objects = target.ObjectListNodes;
   objects.reserve(nodesPermutations.size());
   for (auto& val : nodesPermutations) {
     auto& node = val.second;
@@ -1297,7 +1385,154 @@ cmFastbuildNormalTargetGenerator::GenerateObjects()
       std::swap(*objects.begin(), objects.back());
     }
   }
-  return objects;
+  if (useUnity) {
+    target.UnityNodes =
+      GenerateUnity(objects, isolatedFromUnity, sourcesWithGroups);
+  }
+}
+
+FastbuildUnityNode cmFastbuildNormalTargetGenerator::GetOneUnity(
+  std::set<std::string> const& isolatedFiles, std::vector<std::string>& files,
+  int unitySize) const
+{
+  FastbuildUnityNode result;
+  for (auto iter = files.begin(); iter != files.end();) {
+    std::string pathToFile = std::move(*iter);
+    iter = files.erase(iter);
+    // This source must be isolated
+    if (isolatedFiles.find(pathToFile) != isolatedFiles.end()) {
+      result.UnityInputFiles.emplace_back(pathToFile);
+      result.UnityInputIsolatedFiles.emplace_back(std::move(pathToFile));
+    } else {
+      result.UnityInputFiles.emplace_back(std::move(pathToFile));
+    }
+    if (int(result.UnityInputFiles.size() -
+            result.UnityInputIsolatedFiles.size()) == unitySize) {
+      break;
+    }
+  }
+  return result;
+}
+int cmFastbuildNormalTargetGenerator::GetUnityBatchSize() const
+{
+  int unitySize = 8;
+  try {
+    auto const perTargetSize =
+      GeneratorTarget->GetSafeProperty(UNITY_BUILD_BATCH_SIZE);
+    if (!perTargetSize.empty()) {
+      unitySize = std::stoi(perTargetSize);
+    }
+    // Per-directory level.
+    else {
+      unitySize = std::stoi(
+        GeneratorTarget->GetLocalGenerator()->GetMakefile()->GetDefinition(
+          CMAKE_UNITY_BUILD_BATCH_SIZE));
+    }
+  } catch (...) {
+    return unitySize;
+  }
+  return unitySize;
+}
+
+std::vector<FastbuildUnityNode>
+cmFastbuildNormalTargetGenerator::GenerateUnity(
+  std::vector<FastbuildObjectListNode>& objects,
+  std::set<std::string> const& isolatedSources,
+  std::map<std::string, std::vector<std::string>> const& sourcesWithGroups)
+{
+  int const unitySize = GetUnityBatchSize();
+  // Unity of size less than 2 doesn't make sense.
+  if (unitySize < 2) {
+    return {};
+  }
+
+  int unityNumber = 0;
+  int unityGroupNumber = 0;
+  std::vector<FastbuildUnityNode> result;
+
+  for (FastbuildObjectListNode& obj : objects) {
+    // Don't use unity for only 1 file.
+    if (obj.CompilerInputFiles.size() < 2) {
+      continue;
+    }
+    std::string const ext =
+      cmSystemTools::GetFilenameExtension(obj.CompilerInputFiles[0]);
+    // Process groups.
+    auto groupedNode = GenerateGroupedUnityNode(
+      obj.CompilerInputFiles, sourcesWithGroups, unityGroupNumber);
+    // We have at least 2 sources in the group.
+    if (groupedNode.UnityInputFiles.size() > 1) {
+      groupedNode.UnityOutputPath = obj.CompilerOutputPath;
+      obj.CompilerInputUnity.emplace_back(groupedNode.Name);
+      groupedNode.UnityOutputPattern = cmStrCat(groupedNode.Name, ext);
+      result.emplace_back(std::move(groupedNode));
+    }
+    // General unity batching of the remaining (non-grouped) sources.
+    while (!obj.CompilerInputFiles.empty()) {
+      FastbuildUnityNode node =
+        GetOneUnity(isolatedSources, obj.CompilerInputFiles, unitySize);
+      node.Name = cmStrCat(this->GetName(), "_Unity_", ++unityNumber);
+      node.UnityOutputPath = obj.CompilerOutputPath;
+      node.UnityOutputPattern = cmStrCat(node.Name, ext);
+
+      // Unity group of size 1 doesn't make sense - just isolate the source.
+      if (groupedNode.UnityInputFiles.size() == 1) {
+        node.UnityInputIsolatedFiles.emplace_back(
+          groupedNode.UnityInputFiles[0]);
+        node.UnityInputFiles.emplace_back(
+          std::move(groupedNode.UnityInputFiles[0]));
+        // Clear so we don't enter here on the next iteration.
+        groupedNode.UnityInputFiles.clear();
+      }
+
+      // We've got only 1 file left. No need to create a Unity node for it,
+      // just return it back to the ObjectList and exit.
+      if (node.UnityInputFiles.size() == 1) {
+        obj.CompilerInputFiles.emplace_back(
+          std::move(node.UnityInputFiles[0]));
+        break;
+      }
+
+      obj.CompilerInputUnity.emplace_back(node.Name);
+      result.emplace_back(std::move(node));
+    }
+  }
+  return result;
+}
+
+FastbuildUnityNode cmFastbuildNormalTargetGenerator::GenerateGroupedUnityNode(
+  std::vector<std::string>& inputFiles,
+  std::map<std::string, std::vector<std::string>> const& sourcesWithGroups,
+  int& groupId)
+{
+  std::vector<FastbuildUnityNode> result;
+  for (auto const& item : sourcesWithGroups) {
+    auto const& group = item.first;
+    auto const& sources = item.second;
+    FastbuildUnityNode node;
+    // Check if any of the sources belong to this group.
+    for (auto const& source : sources) {
+      auto const iter =
+        std::find(inputFiles.begin(), inputFiles.end(), source);
+      if (iter == inputFiles.end()) {
+        continue;
+      }
+      node.Name =
+        cmStrCat(this->GetName(), "_Unity_Group_", group, '_', ++groupId);
+      node.UnityInputFiles.emplace_back(source);
+
+      // Remove from the general batching.
+      inputFiles.erase(
+        std::remove(inputFiles.begin(), inputFiles.end(), source),
+        inputFiles.end());
+    }
+    if (!node.UnityInputFiles.empty()) {
+      // The unity group belongs to the ObjectLists that we're processing.
+      // We've grouped all the sources we could from the current ObjectList.
+      return node;
+    }
+  }
+  return {};
 }
 
 std::string cmFastbuildNormalTargetGenerator::ResolveIfAlias(
@@ -1520,8 +1755,10 @@ void cmFastbuildNormalTargetGenerator::AppendPrebuildDeps(
       LogMessage("Adding dep to " + fastbuildTargetName);
       linkerNode.PreBuildDependencies.insert(std::move(fastbuildTargetName));
     } else {
-      LogMessage("Adding dep " + linkDep + " for sorting");
-      linkerNode.PreBuildDependencies.insert(linkDep);
+      if (!cmIsNOTFOUND(linkDep)) {
+        LogMessage("Adding dep " + linkDep + " for sorting");
+        linkerNode.PreBuildDependencies.insert(linkDep);
+      }
     }
   }
 }
@@ -1733,6 +1970,9 @@ void cmFastbuildNormalTargetGenerator::AddLipoCommand(FastbuildTarget& target)
   FastbuildExecNode exec;
   exec.ExecExecutable = lipo;
   exec.ExecOutput = target.RealOutput;
+  if (exec.ExecOutput != target.Name) {
+    exec.Name = target.Name;
+  }
   for (auto const& ArchSpecificTarget : target.LinkerNode) {
     exec.ExecInput.emplace_back(ArchSpecificTarget.LinkerOutput);
   }

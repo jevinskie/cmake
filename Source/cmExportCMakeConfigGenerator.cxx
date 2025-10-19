@@ -26,7 +26,7 @@
 #include "cmSystemTools.h"
 #include "cmTarget.h"
 #include "cmValue.h"
-#include "cmVersion.h"
+#include "cmVersionMacros.h"
 
 struct cmLinkInterface;
 
@@ -292,7 +292,18 @@ void cmExportCMakeConfigGenerator::GenerateImportTargetCode(
       os << "add_library(" << targetName << " OBJECT IMPORTED)\n";
       break;
     case cmStateEnums::INTERFACE_LIBRARY:
-      os << "add_library(" << targetName << " INTERFACE IMPORTED)\n";
+      if (target->IsSymbolic()) {
+        os << "if(CMAKE_VERSION VERSION_GREATER_EQUAL \"4.2.0\")\n"
+              "  add_library("
+           << targetName << " INTERFACE SYMBOLIC IMPORTED)\n"
+           << "elseif(CMAKE_VERSION VERSION_GREATER_EQUAL 3.2.0)\n"
+           << "  add_library(" << targetName << " INTERFACE IMPORTED)\n"
+           << "  set_target_properties(" << targetName
+           << " PROPERTIES SYMBOLIC TRUE)\n"
+           << "endif()\n";
+      } else {
+        os << "add_library(" << targetName << " INTERFACE IMPORTED)\n";
+      }
       break;
     default: // should never happen
       break;

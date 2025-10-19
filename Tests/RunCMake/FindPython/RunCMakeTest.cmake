@@ -178,6 +178,8 @@ endif()
 if(CMake_TEST_FindPython3_CPython)
   run_cmake(Python3-BadComponent)
   run_cmake(DifferentComponents)
+  run_python(SpecifyABI TYPE Python3 VARIANT Python3)
+  run_python(SpecifyABI TYPE Python VARIANT Python.V3 OPTIONS -DPython_REQUESTED_VERSION=3)
   run_python(Python3Module ACTION RUN)
   if(NOT CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 4.8)
     run_python(Python3Embedded ACTION RUN)
@@ -320,6 +322,7 @@ if(CMake_TEST_FindPython_Various)
     run_python(ArtifactsInteractive VARIANT "OFF"
                                     OPTIONS -DCMake_TEST_FindPython3_NumPy=${CMake_TEST_FindPython3_NumPy}
                                             -DPython3_ARTIFACTS_INTERACTIVE=OFF)
+    run_python(Android OPTIONS "-DCMAKE_TOOLCHAIN_FILE=${RunCMake_SOURCE_DIR}/android_toolchain.cmake")
   endif()
 
   if(CMake_TEST_FindPython2 OR CMake_TEST_FindPython3)

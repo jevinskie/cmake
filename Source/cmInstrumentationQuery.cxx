@@ -17,12 +17,12 @@
 
 std::vector<std::string> const cmInstrumentationQuery::OptionString{
   "staticSystemInformation", "dynamicSystemInformation", "cdashSubmit",
-  "cdashVerbose"
+  "cdashVerbose", "trace"
 };
 std::vector<std::string> const cmInstrumentationQuery::HookString{
-  "postGenerate",  "preBuild",        "postBuild",
-  "preCMakeBuild", "postCMakeBuild",  "postTest",
-  "postInstall",   "prepareForCDash", "manual"
+  "postGenerate",     "preBuild",        "postBuild",
+  "preCMakeBuild",    "postCMakeBuild",  "postCTest",
+  "postCMakeInstall", "prepareForCDash", "manual"
 };
 
 namespace ErrorMessages {

@@ -1,4 +1,4 @@
-include(${CMAKE_CURRENT_LIST_DIR}/check-data-dir.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/json.cmake)
 
 if (NOT IS_DIRECTORY "${v1}/data/content")
   add_error("Custom content directory does not exist.")
@@ -10,35 +10,39 @@ if (NOT ${num} EQUAL 2)
   add_error("Found ${num} custom content files, expected 2.")
 endif()
 
-macro(assert_key contents key expected)
-  string(JSON value ERROR_VARIABLE errors GET "${contents}" ${key})
-  if (errors)
-    add_error("Did not find expected key \"${key}\" in custom content.")
-  endif()
-  if (NOT ${value} MATCHES ${expected})
-    add_error("Unexpected data in custom content file:\nGot ${value}, Expected ${expected}.")
-  endif()
-endmacro()
-
-# Check contents of configureContent files
+# Check contents of cmakeContent files
 set(firstFile "")
 foreach(content_file IN LISTS content_files)
   read_json("${content_file}" contents)
-  assert_key("${contents}" myString "string")
-  assert_key("${contents}" myBool "OFF")
-  assert_key("${contents}" myInt "1")
-  assert_key("${contents}" myFloat "2.5")
-  assert_key("${contents}" myTrue "ON")
-  assert_key("${contents}" myList "[ \"a\", \"b\", \"c\" ]")
-  assert_key("${contents}" myObject "{.*\"key\".*:.*\"value\".*}")
+
+  # Check custom content
+  string(JSON custom GET "${contents}" custom)
+  json_assert_key("${content_file}" "${custom}" myString "string")
+  json_assert_key("${content_file}" "${custom}" myBool "OFF")
+  json_assert_key("${content_file}" "${custom}" myInt "1")
+  json_assert_key("${content_file}" "${custom}" myFloat "2.5")
+  json_assert_key("${content_file}" "${custom}" myTrue "ON")
+  json_assert_key("${content_file}" "${custom}" myList "\\[ \"a\", \"b\", \"c\" \\]")
+  json_assert_key("${content_file}" "${custom}" myObject "{.*\"key\".*:.*\"value\".*}")
   if (NOT firstFile)
     set(firstFile "${content_file}")
   endif()
   if ("${content_file}" STREQUAL "${firstFile}")
-    string(JSON firstN GET "${contents}" nConfigure)
+    string(JSON firstN GET "${custom}" nConfigure)
   else()
-    string(JSON secondN GET "${contents}" nConfigure)
+    string(JSON secondN GET "${custom}" nConfigure)
   endif()
+
+  # Check target content
+  string(JSON targets GET "${contents}" targets)
+  string(JSON targetData GET "${targets}" lib)
+  json_assert_key("${content_file}" "${targetData}" labels "\\[ \"label3\" \\]")
+  json_assert_key("${content_file}" "${targetData}" type "STATIC_LIBRARY")
+
+  string(JSON targetData GET "${targets}" main)
+  json_assert_key("${content_file}" "${targetData}" labels "\\[ \"label1\", \"label2\" \\]")
+  json_assert_key("${content_file}" "${targetData}" type "EXECUTABLE")
+
 endforeach()
 
 # Ensure provided -DN=* arguments result in differing JSON contents
@@ -50,7 +54,7 @@ endif()
 # Ensure snippets reference valid files
 foreach(snippet IN LISTS snippets)
   read_json("${snippet}" contents)
-  string(JSON filename GET "${contents}" configureContent)
+  string(JSON filename GET "${contents}" cmakeContent)
   if (NOT EXISTS "${v1}/data/${filename}")
     add_error("Reference to content file that does not exist.")
   endif()

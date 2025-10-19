@@ -14,7 +14,7 @@ ExternalProject
 This module provides commands to download and build external projects as
 part of CMake build phase.
 
-Load this module in CMake with:
+Load this module in a CMake project with:
 
 .. code-block:: cmake
 
@@ -664,7 +664,7 @@ overridden if required.
   configure step needs to be rerun.
 
 ``CONFIGURE_ENVIRONMENT_MODIFICATION <modification>...``
-  .. versionadded: 4.2
+  .. versionadded:: 4.2
 
   Specify environment variables that should be modified for the configure step.
 
@@ -771,7 +771,7 @@ pass ``-v`` to the external project's build step, even if it also uses
   only when an explicit ``BUILD_COMMAND`` is specified.
 
 ``BUILD_ENVIRONMENT_MODIFICATION <modification>...``
-  .. versionadded: 4.2
+  .. versionadded:: 4.2
 
   Specify environment variables that should be modified for the build step.
 
@@ -842,7 +842,7 @@ step. This can be overridden with custom install commands if required.
   to another.
 
 ``INSTALL_ENVIRONMENT_MODIFICATION <modification>...``
-  .. versionadded: 4.2
+  .. versionadded:: 4.2
 
   Specify environment variables that should be modified for the install step.
 
@@ -893,7 +893,7 @@ options are provided.
   the ``install`` or ``build`` step.  See policy :policy:`CMP0114`.
 
 ``TEST_ENVIRONMENT_MODIFICATION <modification>...``
-  .. versionadded: 4.2
+  .. versionadded:: 4.2
 
   Specify environment variables that should be modified for the test step.
 
@@ -1135,7 +1135,7 @@ control needed to implement such step-level capabilities.
     Files on which this custom step depends.
 
   ``ENVIRONMENT_MODIFICATION <modification>...``
-    .. versionadded: 4.2
+    .. versionadded:: 4.2
 
     Specify environment variables that should be modified while running the
     commands in the external project step.
@@ -2273,60 +2273,50 @@ function(ExternalProject_Add_Step name step)
     PROPERTY _EP_${step}_WORKING_DIRECTORY
   )
 
-  # Replace list separators.
+  # Replace list separators and inject environment modifications.
   get_property(sep
     TARGET ${name}
     PROPERTY _EP_LIST_SEPARATOR
   )
-  if(sep AND command)
-    string(REPLACE "${sep}" "\\;" command "${command}")
-  endif()
-
-  # Add environment here!
   get_property(environment
     TARGET ${name}
-    PROPERTY _EP_${step}_ENVIRONMENT_MODIFICATION)
-  if(environment AND command)
-    if("${sep}" STREQUAL ":")
-      # The environment modification operation and value is separated by a
-      # colon. We should not replace that colon with a semicolon, allowing
-      # colons to act as a valid list separator.
-      # <name>=<op>:<value>
-      # Note: Environment variable names can contain `:` on Windows
-      set(result "")
-      foreach(env_modification IN LISTS environment)
-        if("${env_modification}" MATCHES "(.*)=([a-z]*):(.*)?")
-          if(CMAKE_MATCH_COUNT EQUAL 3)
-            string(REPLACE "${sep}" "\\\\\\\\\\;" _escapedMod "${CMAKE_MATCH_3}")
-          endif()
-          list(APPEND result "${CMAKE_MATCH_1}=${CMAKE_MATCH_2}:${_escapedMod}")
-        else()
-          message(SEND_ERROR "Malformed environment modification specifier:"
-          " '${env_modification}'\n"
-          "Expected MYVAR=OP:VALUE")
+    PROPERTY _EP_${step}_ENVIRONMENT_MODIFICATION
+  )
+  if(environment)
+    set(env_args "")
+    foreach(env_mod IN LISTS environment)
+      if(env_mod MATCHES [[^([^=:]+)=([a-z]+):(.*)$]])
+        set(_value "${CMAKE_MATCH_3}")
+        # Replace the separator only in the value in case it is `:`.
+        if(sep)
+          string(REPLACE "${sep}" [[\;]] _value "${_value}")
         endif()
-      endforeach()
-      set(environment ${result})
-    elseif(sep)
-      # if the separator is not a colon, we don't have to worry about
-      # accidentally replacing the separator between the modification and value
-      string(REPLACE "${sep}" "\\\\\\\\;" environment "${environment}")
-    endif()
-    list(JOIN environment ";--modify;" environment)
-    list(PREPEND environment "--modify")
-
-    string(REPLACE ";" "\;" command "${command}")
-    string(REPLACE "COMMAND" ";" command "${command}")
-
-    set(__cmd)
-    foreach(__item IN LISTS command)
-      list(APPEND __cmd "COMMAND")
-      if(__item AND NOT "x${__item}" STREQUAL "x;;")
-        list(APPEND __cmd "${CMAKE_COMMAND}" -E env ${environment} --)
+        list(APPEND env_args --modify "${CMAKE_MATCH_1}=${CMAKE_MATCH_2}:${_value}")
+      else()
+        message(SEND_ERROR "Malformed environment modification specifier:"
+        " '${env_mod}'\n"
+        "Expected MYVAR=OP:VALUE")
       endif()
-      list(APPEND __cmd "${__item}")
     endforeach()
-    set(command ${__cmd})
+    set(env_command "${CMAKE_COMMAND};-E;env;${env_args};--")
+  else()
+    set(env_command "")
+  endif()
+  if(command)
+    if(env_command)
+      # Strip empty commands so we do not add env for them.
+      string(REGEX REPLACE [[^COMMAND;+(COMMAND;+)*]] "" command "${command}")
+      string(REGEX REPLACE [[;COMMAND;+(COMMAND;+)*]] ";COMMAND;" command "${command}")
+      # Replace the separator with an extra escape to survive list(TRANSFORM).
+      if(sep)
+        string(REPLACE "${sep}" [[\\;]] command "${command}")
+      endif()
+      # Prepend every command with our environment modification launcher.
+      list(TRANSFORM command APPEND ";${env_command}" REGEX "^COMMAND$")
+      set(command "${env_command};${command}")
+    elseif(sep)
+      string(REPLACE "${sep}" [[\;]] command "${command}")
+    endif()
   endif()
 
   # Replace location tags.

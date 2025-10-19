@@ -133,12 +133,12 @@
 #  include "cmExtraEclipseCDT4Generator.h"
 #  include "cmExtraKateGenerator.h"
 #  include "cmExtraSublimeTextGenerator.h"
-#endif
 
 // NOTE: the __linux__ macro is predefined on Android host too, but
 // main CMakeLists.txt filters out this generator by host name.
-#if (defined(__linux__) && !defined(__ANDROID__)) || defined(_WIN32)
-#  include "cmGlobalGhsMultiGenerator.h"
+#  if (defined(__linux__) && !defined(__ANDROID__)) || defined(_WIN32)
+#    include "cmGlobalGhsMultiGenerator.h"
+#  endif
 #endif
 
 #if defined(__APPLE__)
@@ -1764,6 +1764,16 @@ cmake::TraceFormat cmake::StringToTraceFormat(std::string const& traceStr)
   return (it != levels.cend()) ? it->second : TraceFormat::Undefined;
 }
 
+bool cmake::PopTraceCmd()
+{
+  if (this->cmakeLangTraceCmdStack.empty()) {
+    // Nothing to pop! A caller should report an error.
+    return false;
+  }
+  this->cmakeLangTraceCmdStack.pop();
+  return true;
+}
+
 void cmake::SetTraceFile(std::string const& file)
 {
   this->TraceFile.close();
@@ -2740,20 +2750,18 @@ int cmake::ActualConfigure()
         cmStrCat('"', cmSystemTools::GetCTestCommand(), "\" --instrument ");
     }
     std::string common_args =
-      cmStrCat(" --target-name <TARGET_NAME> --build-dir \"",
+      cmStrCat(" --target-name <TARGET_NAME> --config <CONFIG> --build-dir \"",
                this->State->GetBinaryDirectory(), "\" ");
     this->State->SetGlobalProperty(
       "RULE_LAUNCH_COMPILE",
       cmStrCat(
         launcher, "--command-type compile", common_args,
-        "--config <CONFIG> "
         "--output <OBJECT> --source <SOURCE> --language <LANGUAGE> -- "));
     this->State->SetGlobalProperty(
       "RULE_LAUNCH_LINK",
       cmStrCat(
         launcher, "--command-type link", common_args,
-        "--output <TARGET> --target-type <TARGET_TYPE> --config <CONFIG> "
-        "--language <LANGUAGE> --target-labels \"<TARGET_LABELS>\" -- "));
+        "--output <TARGET> --config <CONFIG> --language <LANGUAGE> -- "));
     this->State->SetGlobalProperty(
       "RULE_LAUNCH_CUSTOM",
       cmStrCat(launcher, "--command-type custom", common_args,
@@ -2805,7 +2813,9 @@ std::unique_ptr<cmGlobalGenerator> cmake::EvaluateDefaultGlobalGenerator()
     "\\Setup\\VC;ProductDir", //
     ";InstallDir"             //
   };
-  if (cmVSSetupAPIHelper(17).IsVSInstalled()) {
+  if (cmVSSetupAPIHelper(18).IsVSInstalled()) {
+    found = "Visual Studio 18 2026";
+  } else if (cmVSSetupAPIHelper(17).IsVSInstalled()) {
     found = "Visual Studio 17 2022";
   } else if (cmVSSetupAPIHelper(16).IsVSInstalled()) {
     found = "Visual Studio 16 2019";
@@ -3105,6 +3115,9 @@ int cmake::Generate()
       return -1;
     }
     this->GlobalGenerator->Generate();
+    if (this->Instrumentation->HasQuery()) {
+      this->Instrumentation->WriteCMakeContent(this->GlobalGenerator);
+    }
     return 0;
   };
 
@@ -3147,10 +3160,10 @@ int cmake::Generate()
   this->SaveCache(this->GetHomeOutputDirectory());
 
 #if !defined(CMAKE_BOOTSTRAP)
-  this->Instrumentation->CollectTimingData(
-    cmInstrumentationQuery::Hook::PostGenerate);
   this->GlobalGenerator->WriteInstallJson();
   this->FileAPI->WriteReplies(cmFileAPI::IndexFor::Success);
+  this->Instrumentation->CollectTimingData(
+    cmInstrumentationQuery::Hook::PostGenerate);
 #endif
 
   return 0;
@@ -3252,6 +3265,8 @@ void cmake::AddDefaultGenerators()
 {
 #if defined(_WIN32) && !defined(__CYGWIN__)
 #  if !defined(CMAKE_BOOT_MINGW)
+  this->Generators.push_back(
+    cmGlobalVisualStudioVersionedGenerator::NewFactory18());
   this->Generators.push_back(
     cmGlobalVisualStudioVersionedGenerator::NewFactory17());
   this->Generators.push_back(
@@ -4161,18 +4176,22 @@ T const* cmake::FindPresetForWorkflow(
   return &*it->second.Expanded;
 }
 
-std::function<int()> cmake::BuildWorkflowStep(
+namespace {
+
+std::function<cmUVProcessChain::Status()> buildWorkflowStep(
   std::vector<std::string> const& args)
 {
   cmUVProcessChainBuilder builder;
   builder.AddCommand(args)
     .SetExternalStream(cmUVProcessChainBuilder::Stream_OUTPUT, stdout)
     .SetExternalStream(cmUVProcessChainBuilder::Stream_ERROR, stderr);
-  return [builder]() -> int {
+  return [builder]() -> cmUVProcessChain::Status {
     auto chain = builder.Start();
     chain.Wait();
-    return static_cast<int>(chain.GetStatus(0).ExitStatus);
+    return chain.GetStatus(0);
   };
+}
+
 }
 #endif
 
@@ -4235,10 +4254,11 @@ int cmake::Workflow(std::string const& presetName,
     int StepNumber;
     cm::static_string_view Type;
     std::string Name;
-    std::function<int()> Action;
+    std::function<cmUVProcessChain::Status()> Action;
 
     CalculatedStep(int stepNumber, cm::static_string_view type,
-                   std::string name, std::function<int()> action)
+                   std::string name,
+                   std::function<cmUVProcessChain::Status()> action)
       : StepNumber(stepNumber)
       , Type(type)
       , Name(std::move(name))
@@ -4265,7 +4285,7 @@ int cmake::Workflow(std::string const& presetName,
           args.emplace_back("--fresh");
         }
         steps.emplace_back(stepNumber, "configure"_s, step.PresetName,
-                           this->BuildWorkflowStep(args));
+                           buildWorkflowStep(args));
       } break;
       case cmCMakePresetsGraph::WorkflowPreset::WorkflowStep::Type::Build: {
         auto const* buildPreset = this->FindPresetForWorkflow(
@@ -4275,8 +4295,8 @@ int cmake::Workflow(std::string const& presetName,
         }
         steps.emplace_back(
           stepNumber, "build"_s, step.PresetName,
-          this->BuildWorkflowStep({ cmSystemTools::GetCMakeCommand(),
-                                    "--build", "--preset", step.PresetName }));
+          buildWorkflowStep({ cmSystemTools::GetCMakeCommand(), "--build",
+                              "--preset", step.PresetName }));
       } break;
       case cmCMakePresetsGraph::WorkflowPreset::WorkflowStep::Type::Test: {
         auto const* testPreset = this->FindPresetForWorkflow(
@@ -4286,8 +4306,8 @@ int cmake::Workflow(std::string const& presetName,
         }
         steps.emplace_back(
           stepNumber, "test"_s, step.PresetName,
-          this->BuildWorkflowStep({ cmSystemTools::GetCTestCommand(),
-                                    "--preset", step.PresetName }));
+          buildWorkflowStep({ cmSystemTools::GetCTestCommand(), "--preset",
+                              step.PresetName }));
       } break;
       case cmCMakePresetsGraph::WorkflowPreset::WorkflowStep::Type::Package: {
         auto const* packagePreset = this->FindPresetForWorkflow(
@@ -4297,14 +4317,13 @@ int cmake::Workflow(std::string const& presetName,
         }
         steps.emplace_back(
           stepNumber, "package"_s, step.PresetName,
-          this->BuildWorkflowStep({ cmSystemTools::GetCPackCommand(),
-                                    "--preset", step.PresetName }));
+          buildWorkflowStep({ cmSystemTools::GetCPackCommand(), "--preset",
+                              step.PresetName }));
       } break;
     }
     stepNumber++;
   }
 
-  int stepResult;
   bool first = true;
   for (auto const& step : steps) {
     if (!first) {
@@ -4314,8 +4333,15 @@ int cmake::Workflow(std::string const& presetName,
               << steps.size() << ": " << step.Type << " preset \"" << step.Name
               << "\"\n\n"
               << std::flush;
-    if ((stepResult = step.Action()) != 0) {
-      return stepResult;
+    cmUVProcessChain::Status const status = step.Action();
+    if (status.ExitStatus != 0) {
+      return static_cast<int>(status.ExitStatus);
+    }
+    auto const codeReasonPair = status.GetException();
+    if (codeReasonPair.first != cmUVProcessChain::ExceptionCode::None) {
+      std::cout << "Step command ended abnormally: " << codeReasonPair.second
+                << std::endl;
+      return status.SpawnResult != 0 ? status.SpawnResult : status.TermSignal;
     }
     first = false;
   }

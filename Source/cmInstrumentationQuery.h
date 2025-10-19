@@ -17,7 +17,8 @@ public:
     StaticSystemInformation,
     DynamicSystemInformation,
     CDashSubmit,
-    CDashVerbose
+    CDashVerbose,
+    Trace
   };
   static std::vector<std::string> const OptionString;
 
@@ -28,8 +29,8 @@ public:
     PostBuild,
     PreCMakeBuild,
     PostCMakeBuild,
-    PostTest,
-    PostInstall,
+    PostCTest,
+    PostCMakeInstall,
     PrepareForCDash,
     Manual
   };

@@ -53,8 +53,6 @@ struct cmDocumentationEntry;
 #define FASTBUILD_OBJECTS_ALIAS_POSTFIX "-objects"
 // Alias to all the dependencies of the target.
 #define FASTBUILD_DEPS_ARTIFACTS_ALIAS_POSTFIX "-deps"
-// Alias to build the target.
-#define FASTBUILD_BUILD_ALIAS_POSTFIX "-build"
 #define FASTBUILD_PRE_BUILD_ALIAS_POSTFIX "-pre-build"
 #define FASTBUILD_PRE_LINK_ALIAS_POSTFIX "-pre-link"
 #define FASTBUILD_POST_BUILD_ALIAS_POSTFIX "-post-build"
@@ -66,8 +64,6 @@ struct cmDocumentationEntry;
 // Alias to byproducts produced by a custom command (since FASTBuild exec node
 // does not support more than 1 output).
 #define FASTBUILD_BYPRODUCTS_ALIAS_POSTFIX "-byproducts"
-// Alias to build & run all the custom commands.
-#define FASTBUILD_ALL_ALIAS_POSTFIX "-all"
 
 #define FASTBUILD_COMPILER_PREFIX "Compiler_"
 #define FASTBUILD_LAUNCHER_PREFIX "Launcher_"
@@ -81,6 +77,7 @@ struct cmDocumentationEntry;
 #define FASTBUILD_CLEAN_TARGET_NAME "clean"
 
 #define FASTBUILD_NOOP_FILE_NAME "fbuild_noop"
+#define FASTBUILD_CLEAN_FILE_NAME "fbuild_clean-out"
 
 #define FASTBUILD_BUILD_FILE "fbuild.bff"
 
@@ -90,23 +87,25 @@ struct cmDocumentationEntry;
 #  define FASTBUILD_SCRIPT_FILE_EXTENSION ".bat"
 #  define FASTBUILD_SCRIPT_FILE_ARG "/C "
 #  define FASTBUILD_SCRIPT_CD "cd /D "
+#  define FASTBUILD_CLEAN_SCRIPT_NAME "clean" FASTBUILD_SCRIPT_FILE_EXTENSION
 #else
 #  define FASTBUILD_SCRIPT_FILE_EXTENSION ".sh"
 #  define FASTBUILD_SCRIPT_FILE_ARG ""
 #  define FASTBUILD_SCRIPT_CD "cd "
+#  define FASTBUILD_CLEAN_SCRIPT_NAME "clean" FASTBUILD_SCRIPT_FILE_EXTENSION
 #endif
 
 enum class FastbuildTargetDepType
 {
-  ALL,
-  BUILD,
+  // Order-only dependency that is not going to appear in the generated file.
   ORDER_ONLY,
-  NONE,
+  // Regular target dep.
+  REGULAR,
 };
 struct FastbuildTargetDep
 {
   std::string Name;
-  FastbuildTargetDepType Type = FastbuildTargetDepType::NONE;
+  FastbuildTargetDepType Type = FastbuildTargetDepType::REGULAR;
   FastbuildTargetDep(std::string n)
     : Name(std::move(n))
   {
@@ -127,6 +126,7 @@ enum class FastbuildTargetType
   EXEC,  // Exec node
   LINK,  // Library, DLL or Executable
   OBJECTLIST,
+  UNITY,
 };
 
 struct FastbuildTargetBase
@@ -187,10 +187,18 @@ struct FastbuildCompiler
   std::string Name;
   std::string Executable;
   std::string CmakeCompilerID;
+  std::string CompilerFamily = "custom";
   std::string CmakeCompilerVersion;
   std::string Language;
   std::vector<std::string> ExtraFiles;
   bool UseLightCache = false;
+  bool ClangRewriteIncludes = true;
+  bool ClangGCCUpdateXLanguageArg = false;
+  bool AllowResponseFile = false;
+  bool ForceResponseFile = false;
+  bool UseRelativePaths = false;
+  bool UseDeterministicPaths = false;
+  std::string SourceMapping;
   // Only used for launchers.
   std::string Args;
   bool DontUseEnv = false;
@@ -202,11 +210,14 @@ struct FastbuildObjectListNode : public FastbuildTargetBase
   std::string CompilerOptions;
   std::string CompilerOutputPath;
   std::string CompilerOutputExtension;
+  std::vector<std::string> CompilerInputUnity;
   std::string PCHInputFile;
   std::string PCHOutputFile;
   std::string PCHOptions;
 
   std::vector<std::string> CompilerInputFiles;
+  bool AllowCaching = true;
+  bool AllowDistribution = true;
 
   std::set<std::string> ObjectOutputs;
   std::set<std::string> ObjectDepends;
@@ -215,6 +226,18 @@ struct FastbuildObjectListNode : public FastbuildTargetBase
   std::string arch;
   FastbuildObjectListNode()
     : FastbuildTargetBase(FastbuildTargetType::OBJECTLIST)
+  {
+  }
+};
+
+struct FastbuildUnityNode : public FastbuildTargetBase
+{
+  std::string UnityOutputPath;
+  std::vector<std::string> UnityInputFiles;
+  std::string UnityOutputPattern;
+  std::vector<std::string> UnityInputIsolatedFiles;
+  FastbuildUnityNode()
+    : FastbuildTargetBase(FastbuildTargetType::UNITY)
   {
   }
 };
@@ -246,6 +269,7 @@ struct XCodeProject : public IDEProjectCommon
 
 struct VCXProject : public IDEProjectCommon
 {
+  std::string folder;
 };
 
 struct FastbuildLinkerNode
@@ -295,6 +319,7 @@ struct FastbuildTarget : public FastbuildTargetBase
 {
   std::map<std::string, std::string> Variables;
   std::vector<FastbuildObjectListNode> ObjectListNodes;
+  std::vector<FastbuildUnityNode> UnityNodes;
   // Potentially multiple libs for different archs (apple only);
   std::vector<FastbuildLinkerNode> LinkerNode;
   std::string RealOutput;
@@ -306,9 +331,6 @@ struct FastbuildTarget : public FastbuildTargetBase
   std::vector<FastbuildCopyNode> CopyNodes;
   FastbuildExecNodes PreLinkExecNodes;
   FastbuildExecNodes PostBuildExecNodes;
-  // Must be written after the build, but before custom commands, since post
-  // build commands need to depend on it.
-  FastbuildAliasNode BuildAlias;
   bool IsGlobal = false;
   bool ExcludeFromAll = false;
   bool AllowDistribution = true;
@@ -325,6 +347,7 @@ class cmGlobalFastbuildGenerator : public cmGlobalCommonGenerator
 public:
   cmGlobalFastbuildGenerator(cmake* cm);
 
+  void ReadCompilerOptions(FastbuildCompiler& compiler, cmMakefile* mf);
   void ProcessEnvironment();
 
   static std::unique_ptr<cmGlobalGeneratorFactory> NewFactory();
@@ -353,6 +376,8 @@ public:
   }
 
   bool IsMultiConfig() const override { return false; }
+
+  bool SupportsCustomObjectNames() const override { return false; }
 
   void ComputeTargetObjectDirectory(cmGeneratorTarget*) const override;
   void AppendDirectoryForConfig(std::string const& prefix,
@@ -497,6 +522,7 @@ public:
 
   void WriteTarget(FastbuildTarget const& target);
   void WriteExec(FastbuildExecNode const& Exec, int indent = 1);
+  void WriteUnity(FastbuildUnityNode const& Unity);
   void WriteObjectList(FastbuildObjectListNode const& ObjectList,
                        bool allowDistribution);
   void WriteLinker(FastbuildLinkerNode const&, bool);
@@ -513,6 +539,7 @@ public:
   void WriteSolution();
   void WriteXCodeTopLevelProject();
   void WriteTargetRebuildBFF();
+  void WriteCleanScript();
   void WriteTargetClean();
 
   void AddTargetAll();
@@ -588,6 +615,7 @@ public:
   // configuration (like .objs files used to create module definition from
   // objects).
   std::unordered_set<std::string> AllFilesToKeep;
+  bool UsingRelativePaths = false;
 
 private:
   std::unordered_set<std::string> AllFilesToClean;

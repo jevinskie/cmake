@@ -23,6 +23,7 @@
 #include "cmCustomCommand.h"
 #include "cmCustomCommandGenerator.h"
 #include "cmFileSet.h"
+#include "cmGenExContext.h"
 #include "cmGeneratedFileStream.h"
 #include "cmGeneratorExpression.h"
 #include "cmGeneratorOptions.h"
@@ -205,6 +206,7 @@ void cmMakefileTargetGenerator::CreateRuleFile()
 
 void cmMakefileTargetGenerator::WriteTargetBuildRules()
 {
+  cm::GenEx::Context context(this->LocalGenerator, this->GetConfigName());
   this->GeneratorTarget->CheckCxxModuleStatus(this->GetConfigName());
 
   // -- Write the custom commands for this target
@@ -362,13 +364,11 @@ void cmMakefileTargetGenerator::WriteTargetBuildRules()
     auto fileEntries = file_set->CompileFileEntries();
     auto directoryEntries = file_set->CompileDirectoryEntries();
     auto directories = file_set->EvaluateDirectoryEntries(
-      directoryEntries, this->LocalGenerator, this->GetConfigName(),
-      this->GeneratorTarget);
+      directoryEntries, context, this->GeneratorTarget);
 
     std::map<std::string, std::vector<std::string>> files;
     for (auto const& entry : fileEntries) {
-      file_set->EvaluateFileEntry(directories, files, entry,
-                                  this->LocalGenerator, this->GetConfigName(),
+      file_set->EvaluateFileEntry(directories, files, entry, context,
                                   this->GeneratorTarget);
     }
 
@@ -932,7 +932,6 @@ void cmMakefileTargetGenerator::WriteObjectRuleFiles(
   vars.CMTargetName = this->GeneratorTarget->GetName().c_str();
   vars.CMTargetType =
     cmState::GetTargetTypeName(this->GeneratorTarget->GetType()).c_str();
-  vars.CMTargetLabels = this->GeneratorTarget->GetTargetLabelsString().c_str();
   vars.Language = lang.c_str();
   vars.Target = targetOutPathReal.c_str();
   vars.TargetPDB = targetOutPathPDB.c_str();
@@ -1091,8 +1090,12 @@ void cmMakefileTargetGenerator::WriteObjectRuleFiles(
       compilerLauncher = GetCompilerLauncher(lang, config);
     }
 
-    cmValue const skipCodeCheck = source.GetProperty("SKIP_LINTING");
-    if (!skipCodeCheck.IsOn()) {
+    cmValue const srcSkipCodeCheckVal = source.GetProperty("SKIP_LINTING");
+    bool const skipCodeCheck = srcSkipCodeCheckVal.IsSet()
+      ? srcSkipCodeCheckVal.IsOn()
+      : this->GetGeneratorTarget()->GetPropertyAsBool("SKIP_LINTING");
+
+    if (!skipCodeCheck) {
       std::string const codeCheck = this->GenerateCodeCheckRules(
         source, compilerLauncher, "$(CMAKE_COMMAND)", config, nullptr);
       if (!codeCheck.empty()) {
@@ -1709,7 +1712,6 @@ void cmMakefileTargetGenerator::WriteDeviceLinkRule(
   vars.CMTargetName = this->GetGeneratorTarget()->GetName().c_str();
   vars.CMTargetType =
     cmState::GetTargetTypeName(this->GetGeneratorTarget()->GetType()).c_str();
-  vars.CMTargetLabels = this->GeneratorTarget->GetTargetLabelsString().c_str();
   vars.Language = "CUDA";
   vars.Object = output.c_str();
   vars.Fatbinary = fatbinaryOutput.c_str();

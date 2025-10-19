@@ -60,7 +60,7 @@
       "type": "string",
       "description": "Unique identifier for the target. The format is unspecified and should not be interpreted by clients."
     },
-    "type": {
+    "typeV2_0": {
       "type": "string",
       "enum": [
         "EXECUTABLE",
@@ -71,6 +71,35 @@
         "INTERFACE_LIBRARY",
         "UTILITY"
       ]
+    },
+    "typeV2_9": {
+      "type": "string",
+      "enum": [
+        "EXECUTABLE",
+        "STATIC_LIBRARY",
+        "SHARED_LIBRARY",
+        "MODULE_LIBRARY",
+        "OBJECT_LIBRARY",
+        "INTERFACE_LIBRARY",
+        "UNKNOWN_LIBRARY",
+        "UTILITY"
+      ]
+    },
+    "importedV2_9": {
+      "type": "boolean",
+      "description": "True if the target is imported"
+    },
+    "localV2_9": {
+      "type": "boolean",
+      "description": "True if the target is defined in a local scope rather than being a global target"
+    },
+    "symbolicV2_9": {
+      "type": "boolean",
+      "description": "True if an interface target has the SYMBOLIC property set"
+    },
+    "abstractV2_9": {
+      "type": "boolean",
+      "description": "True if the target is not part of the build system"
     },
     "backtrace": {
       "type": "integer",
@@ -333,6 +362,128 @@
           "id": {
             "type": "string",
             "description": "Unique identifier of another target on which this one depends"
+          },
+          "backtrace": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Index into backtraceGraph nodes array of the command that created the dependency, if available"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "linkLibrariesV2_9": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the target for the dependency"
+          },
+          "fragment": {
+            "type": "string",
+            "description": "Raw linker command line arguments that capture the dependency"
+          },
+          "backtrace": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Index into backtraceGraph nodes array of the command that created the dependency, if available"
+          },
+          "fromDependency": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Unique identifier of another target whose INTERFACE_LINK_LIBRARIES_DIRECT property created this dependency"
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "interfaceLinkLibrariesV2_9": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the target for the dependency"
+          },
+          "fragment": {
+            "type": "string",
+            "description": "Raw linker command line arguments that capture the dependency"
+          },
+          "backtrace": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Index into backtraceGraph nodes array of the command that created the dependency, if available"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "compileDependenciesV2_9": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the target for the dependency"
+          },
+          "backtrace": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Index into backtraceGraph nodes array of the command that created the dependency, if available"
+          },
+          "fromDependency": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Unique identifier of another target whose INTERFACE_LINK_LIBRARIES_DIRECT property created this dependency"
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "interfaceCompileDependenciesV2_9": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the target for the dependency"
+          },
+          "backtrace": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Index into backtraceGraph nodes array of the command that created the dependency, if available"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "onlyTargetDependenciesArrayV2_9": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the target for the dependency"
           },
           "backtrace": {
             "type": "integer",
@@ -865,7 +1016,7 @@
           "$ref": "#/definitions/id"
         },
         "type": {
-          "$ref": "#/definitions/type"
+          "$ref": "#/definitions/typeV2_0"
         },
         "backtrace": {
           "$ref": "#/definitions/backtrace"
@@ -929,7 +1080,7 @@
           "$ref": "#/definitions/id"
         },
         "type": {
-          "$ref": "#/definitions/type"
+          "$ref": "#/definitions/typeV2_0"
         },
         "backtrace": {
           "$ref": "#/definitions/backtrace"
@@ -993,7 +1144,7 @@
           "$ref": "#/definitions/id"
         },
         "type": {
-          "$ref": "#/definitions/type"
+          "$ref": "#/definitions/typeV2_0"
         },
         "backtrace": {
           "$ref": "#/definitions/backtrace"
@@ -1057,7 +1208,7 @@
           "$ref": "#/definitions/id"
         },
         "type": {
-          "$ref": "#/definitions/type"
+          "$ref": "#/definitions/typeV2_0"
         },
         "backtrace": {
           "$ref": "#/definitions/backtrace"
@@ -1124,7 +1275,7 @@
           "$ref": "#/definitions/id"
         },
         "type": {
-          "$ref": "#/definitions/type"
+          "$ref": "#/definitions/typeV2_0"
         },
         "backtrace": {
           "$ref": "#/definitions/backtrace"
@@ -1191,7 +1342,7 @@
           "$ref": "#/definitions/id"
         },
         "type": {
-          "$ref": "#/definitions/type"
+          "$ref": "#/definitions/typeV2_0"
         },
         "backtrace": {
           "$ref": "#/definitions/backtrace"
@@ -1261,7 +1412,7 @@
           "$ref": "#/definitions/id"
         },
         "type": {
-          "$ref": "#/definitions/type"
+          "$ref": "#/definitions/typeV2_0"
         },
         "backtrace": {
           "$ref": "#/definitions/backtrace"
@@ -1338,7 +1489,16 @@
           "$ref": "#/definitions/id"
         },
         "type": {
-          "$ref": "#/definitions/type"
+          "$ref": "#/definitions/typeV2_9"
+        },
+        "imported": {
+          "$ref": "#/definitions/importedV2_9"
+        },
+        "local": {
+          "$ref": "#/definitions/localV2_9"
+        },
+        "abstract": {
+          "$ref": "#/definitions/abstractV2_9"
         },
         "backtrace": {
           "$ref": "#/definitions/backtrace"
@@ -1376,11 +1536,32 @@
         "dependencies": {
           "$ref": "#/definitions/dependencies"
         },
+        "linkLibraries": {
+          "$ref": "#/definitions/linkLibrariesV2_9"
+        },
+        "interfaceLinkLibraries": {
+          "$ref": "#/definitions/interfaceLinkLibrariesV2_9"
+        },
+        "compileDependencies": {
+          "$ref": "#/definitions/compileDependenciesV2_9"
+        },
+        "interfaceCompileDependencies": {
+          "$ref": "#/definitions/interfaceCompileDependenciesV2_9"
+        },
+        "objectDependencies": {
+          "$ref": "#/definitions/onlyTargetDependenciesArrayV2_9"
+        },
+        "orderDependencies": {
+          "$ref": "#/definitions/onlyTargetDependenciesArrayV2_9"
+        },
         "fileSets": {
           "$ref": "#/definitions/fileSetsV2_5"
         },
         "sources": {
           "$ref": "#/definitions/sourcesV2_5"
+        },
+        "symbolic": {
+          "$ref": "#/definitions/symbolicV2_9"
         },
         "sourceGroups": {
           "$ref": "#/definitions/sourceGroups"

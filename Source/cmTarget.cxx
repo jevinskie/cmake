@@ -420,6 +420,7 @@ TargetProperty const StaticTargetProperties[] = {
   // ---- Install
   { "INSTALL_NAME_DIR"_s, IC::CanCompileSources },
   { "INSTALL_OBJECT_NAME_STRATEGY"_s, IC::CanCompileSources },
+  { "INSTALL_OBJECT_ONLY_USE_DESTINATION"_s, IC::CanCompileSources },
   { "INSTALL_REMOVE_ENVIRONMENT_RPATH"_s, IC::CanCompileSources },
   { "INSTALL_RPATH"_s, ""_s, IC::CanCompileSources },
   { "INSTALL_RPATH_USE_LINK_PATH"_s, "OFF"_s, IC::CanCompileSources },
@@ -464,6 +465,7 @@ TargetProperty const StaticTargetProperties[] = {
   { "Fortran_LINKER_LAUNCHER"_s, IC::CanCompileSources },
 
   // Static analysis
+  { "SKIP_LINTING"_s, IC::CanCompileSources },
   // -- C
   { "C_CLANG_TIDY"_s, IC::CanCompileSources },
   { "C_CLANG_TIDY_EXPORT_FIXES_DIR"_s, IC::CanCompileSources },
@@ -606,6 +608,7 @@ public:
   bool IsAndroid;
   bool BuildInterfaceIncludesAppended;
   bool PerConfig;
+  bool IsSymbolic;
   cmTarget::Visibility TargetVisibility;
   std::set<BT<std::pair<std::string, bool>>> Utilities;
   std::set<std::string> CodegenDependencies;
@@ -883,6 +886,7 @@ cmTarget::cmTarget(std::string const& name, cmStateEnums::TargetType type,
   this->impl->IsAIX = false;
   this->impl->IsApple = false;
   this->impl->IsAndroid = false;
+  this->impl->IsSymbolic = false;
   this->impl->TargetVisibility = vis;
   this->impl->BuildInterfaceIncludesAppended = false;
   this->impl->PerConfig = (perConfig == PerConfig::Yes);
@@ -1804,6 +1808,7 @@ void cmTarget::CopyImportedCxxModulesProperties(cmTarget const* tgt)
     "CXX_CPPCHECK",
     "CXX_ICSTAT",
     "CXX_INCLUDE_WHAT_YOU_USE",
+    "SKIP_LINTING",
 
     // Build graph properties
     "EXCLUDE_FROM_ALL",
@@ -1943,6 +1948,7 @@ MAKE_PROP(LINK_LIBRARIES);
 MAKE_PROP(MANUALLY_ADDED_DEPENDENCIES);
 MAKE_PROP(NAME);
 MAKE_PROP(SOURCES);
+MAKE_PROP(SYMBOLIC);
 MAKE_PROP(TYPE);
 MAKE_PROP(BINARY_DIR);
 MAKE_PROP(SOURCE_DIR);
@@ -2044,6 +2050,7 @@ bool IsSettableProperty(cmMakefile* context, cmTarget* target,
     { "MANUALLY_ADDED_DEPENDENCIES", { ROC::All } },
     { "NAME", { ROC::All } },
     { "SOURCES", { ROC::Imported } },
+    { "SYMBOLIC", { ROC::All } },
     { "TYPE", { ROC::All } },
     { "ALIAS_GLOBAL", { ROC::All, cmPolicies::CMP0160 } },
     { "BINARY_DIR", { ROC::All, cmPolicies::CMP0160 } },
@@ -2062,6 +2069,11 @@ bool IsSettableProperty(cmMakefile* context, cmTarget* target,
   }
   return true;
 }
+}
+
+void cmTarget::SetSymbolic(bool const value)
+{
+  this->impl->IsSymbolic = value;
 }
 
 void cmTarget::SetProperty(std::string const& prop, cmValue value)
@@ -2603,6 +2615,7 @@ cmValue cmTarget::GetProperty(std::string const& prop) const
     propBINARY_DIR,
     propSOURCE_DIR,
     propSOURCES,
+    propSYMBOLIC,
     propINTERFACE_LINK_LIBRARIES,
     propINTERFACE_LINK_LIBRARIES_DIRECT,
     propINTERFACE_LINK_LIBRARIES_DIRECT_EXCLUDE,
@@ -2621,6 +2634,10 @@ cmValue cmTarget::GetProperty(std::string const& prop) const
         return nullptr;
       }
       return cmValue(propertyIter->second.Value);
+    }
+
+    if (prop == propSYMBOLIC) {
+      return this->IsSymbolic() ? cmValue(propTRUE) : cmValue(propFALSE);
     }
 
     UsageRequirementProperty const* usageRequirements[] = {
@@ -2755,6 +2772,11 @@ bool cmTarget::IsAIX() const
 bool cmTarget::IsApple() const
 {
   return this->impl->IsApple;
+}
+
+bool cmTarget::IsSymbolic() const
+{
+  return this->impl->IsSymbolic;
 }
 
 bool cmTarget::IsNormal() const
@@ -3233,10 +3255,14 @@ bool cmTarget::GetMappedConfig(std::string const& desiredConfig, cmValue& loc,
   bool const newResult =
     this->GetMappedConfigNew(desiredConfig, newLoc, newImp, newSuffix);
 
+  auto configFromSuffix = [](cm::string_view s) -> cm::string_view {
+    return s.empty() ? "(none)"_s : s.substr(1);
+  };
+
   if (!this->GetMappedConfigOld(desiredConfig, loc, imp, suffix)) {
     if (newResult) {
       // NEW policy found a configuration, OLD did not.
-      auto newConfig = cm::string_view{ newSuffix }.substr(1);
+      cm::string_view newConfig = configFromSuffix(newSuffix);
       std::string const err = cmStrCat(
         cmPolicies::GetPolicyWarning(cmPolicies::CMP0200),
         "\nConfiguration selection for imported target \"", this->GetName(),
@@ -3248,7 +3274,7 @@ bool cmTarget::GetMappedConfig(std::string const& desiredConfig, cmValue& loc,
     return false;
   }
 
-  auto oldConfig = cm::string_view{ suffix }.substr(1);
+  cm::string_view oldConfig = configFromSuffix(suffix);
   if (!newResult) {
     // NEW policy did not find a configuration, OLD did.
     std::string const err =
@@ -3259,7 +3285,7 @@ bool cmTarget::GetMappedConfig(std::string const& desiredConfig, cmValue& loc,
     this->GetMakefile()->IssueMessage(MessageType::AUTHOR_WARNING, err);
   } else if (suffix != newSuffix) {
     // OLD and NEW policies found different configurations.
-    auto newConfig = cm::string_view{ newSuffix }.substr(1);
+    cm::string_view newConfig = configFromSuffix(newSuffix);
     std::string const err =
       cmStrCat(cmPolicies::GetPolicyWarning(cmPolicies::CMP0200),
                "\nConfiguration selection for imported target \"",

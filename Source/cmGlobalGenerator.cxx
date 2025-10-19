@@ -1444,6 +1444,7 @@ bool cmGlobalGenerator::Compute()
 
   if (cmValue v = this->CMakeInstance->GetCacheDefinition(
         "CMAKE_INTERMEDIATE_DIR_STRATEGY")) {
+    this->GetCMakeInstance()->MarkCliAsUsed("CMAKE_INTERMEDIATE_DIR_STRATEGY");
     if (*v == "FULL") {
       this->IntDirStrategy = IntermediateDirStrategy::Full;
     } else if (*v == "SHORT") {
@@ -1457,6 +1458,8 @@ bool cmGlobalGenerator::Compute()
   }
   if (cmValue v = this->CMakeInstance->GetCacheDefinition(
         "CMAKE_AUTOGEN_INTERMEDIATE_DIR_STRATEGY")) {
+    this->GetCMakeInstance()->MarkCliAsUsed(
+      "CMAKE_AUTOGEN_INTERMEDIATE_DIR_STRATEGY");
     if (*v == "FULL") {
       this->QtAutogenIntDirStrategy = IntermediateDirStrategy::Full;
     } else if (*v == "SHORT") {
@@ -2867,7 +2870,6 @@ void cmGlobalGenerator::AddGlobalTarget_PackageSource(
   singleLine.push_back(cmSystemTools::GetCPackCommand());
   singleLine.push_back("--config");
   singleLine.push_back("./CPackSourceConfig.cmake");
-  singleLine.push_back(std::move(configFile));
   gti.CommandLines.push_back(std::move(singleLine));
   targets.push_back(std::move(gti));
 }
@@ -3494,10 +3496,11 @@ void cmGlobalGenerator::GetFilesReplacedDuringGenerate(
             std::back_inserter(filenames));
 }
 
-void cmGlobalGenerator::GetTargetSets(
-  TargetDependSet& projectTargets, TargetDependSet& originalTargets,
-  cmLocalGenerator* root, std::vector<cmLocalGenerator*>& generators)
+cmGlobalGenerator::TargetDependSet cmGlobalGenerator::GetTargetsForProject(
+  cmLocalGenerator const* root,
+  std::vector<cmLocalGenerator*> const& generators) const
 {
+  TargetDependSet projectTargets;
   // loop over all local generators
   for (auto* generator : generators) {
     // check to make sure generator is not excluded
@@ -3510,12 +3513,11 @@ void cmGlobalGenerator::GetTargetSets(
           target->GetLocalGenerator() != root) {
         continue;
       }
-      // put the target in the set of original targets
-      originalTargets.insert(target.get());
       // Get the set of targets that depend on target
       this->AddTargetDepends(target.get(), projectTargets);
     }
   }
+  return projectTargets;
 }
 
 bool cmGlobalGenerator::IsRootOnlyTarget(cmGeneratorTarget* target) const
@@ -3525,7 +3527,7 @@ bool cmGlobalGenerator::IsRootOnlyTarget(cmGeneratorTarget* target) const
 }
 
 void cmGlobalGenerator::AddTargetDepends(cmGeneratorTarget const* target,
-                                         TargetDependSet& projectTargets)
+                                         TargetDependSet& projectTargets) const
 {
   // add the target itself
   if (projectTargets.insert(target).second) {

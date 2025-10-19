@@ -1,4 +1,4 @@
-^CMake Debug Log at FromPATHEnv.cmake:[0-9]+ \(find_package\):
+^CMake Debug Log at FromPATHEnv\.cmake:[0-9]+ \(find_package\):
   find_package considered the following paths for FindResolved.cmake:
 
     [^
@@ -86,4 +86,4 @@
 ]*/Tests/RunCMake/find_package/PackageRoot/ResolvedConfig.cmake
 
 Call Stack \(most recent call first\):
-  CMakeLists.txt:[0-9]+ \(include\)$
+  CMakeLists\.txt:[0-9]+ \(include\)$

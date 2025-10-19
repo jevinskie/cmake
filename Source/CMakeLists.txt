@@ -270,9 +270,11 @@ add_library(
   cmGccDepfileLexerHelper.h
   cmGccDepfileReader.cxx
   cmGccDepfileReader.h
+  cmGenExContext.cxx
+  cmGenExContext.h
+  cmGenExEvaluation.cxx
+  cmGenExEvaluation.h
   cmGeneratedFileStream.cxx
-  cmGeneratorExpressionContext.cxx
-  cmGeneratorExpressionContext.h
   cmGeneratorExpressionDAGChecker.cxx
   cmGeneratorExpressionDAGChecker.h
   cmGeneratorExpressionEvaluationFile.cxx
@@ -795,8 +797,8 @@ add_library(
   cmFastbuildUtilityTargetGenerator.cxx
   cmFastbuildUtilityTargetGenerator.h
 
-  cm_get_date.h
-  cm_get_date.c
+  cm_parse_date.h
+  cm_parse_date.c
   cm_utf8.h
   cm_utf8.c
   cm_codecvt.hxx
@@ -935,8 +937,6 @@ if(WIN32)
         cmGlobalNMakeMakefileGenerator.h
         cmGlobalJOMMakefileGenerator.cxx
         cmGlobalJOMMakefileGenerator.h
-        cmGlobalVisualStudio71Generator.cxx
-        cmGlobalVisualStudio71Generator.h
         cmGlobalVisualStudio7Generator.cxx
         cmGlobalVisualStudio7Generator.h
         cmGlobalVisualStudio8Generator.cxx
@@ -975,6 +975,9 @@ if(WIN32)
         cmVisualStudioWCEPlatformParser.cxx
         cmVSSetupHelper.cxx
         cmVSSetupHelper.h
+        cmVSSolution.cxx
+        cmVSSolution.h
+        cmVSVersion.h
       )
 
     # Add a manifest file to executables on Windows to allow for
@@ -1195,7 +1198,9 @@ add_library(
   CPack/cmCPackArchiveGenerator.cxx
   CPack/cmCPackComponentGroup.cxx
   CPack/cmCPackDebGenerator.cxx
+  CPack/cmCPackDebGenerator.h
   CPack/cmCPackExternalGenerator.cxx
+  CPack/cmCPackExternalGenerator.h
   CPack/cmCPackGeneratorFactory.cxx
   CPack/cmCPackGenerator.cxx
   CPack/cmCPackLog.cxx
@@ -1258,6 +1263,15 @@ if(UNIX)
     set(FREEBSD_PKG_INCLUDE_DIRS NOTFOUND)
     set(FREEBSD_PKG_LIBRARIES NOTFOUND)
   endif()
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_sources(
+    CPackLib
+    PRIVATE
+      CPack/cmCPackAppImageGenerator.cxx
+      CPack/cmCPackAppImageGenerator.h
+    )
 endif()
 
 if(CYGWIN)

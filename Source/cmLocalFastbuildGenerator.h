@@ -6,6 +6,7 @@
 #include <string>
 
 #include "cmLocalCommonGenerator.h"
+#include "cmOutputConverter.h"
 
 class cmGeneratorTarget;
 class cmGlobalFastbuildGenerator;
@@ -26,10 +27,14 @@ public:
 
   void ComputeObjectFilenames(
     std::map<cmSourceFile const*, cmObjectLocations>& mapping,
-    cmGeneratorTarget const* gt = nullptr) override;
+    std::string const& config, cmGeneratorTarget const* gt = nullptr) override;
 
   cmGlobalFastbuildGenerator const* GetGlobalFastbuildGenerator() const;
   cmGlobalFastbuildGenerator* GetGlobalFastbuildGenerator();
 
   void AdditionalCleanFiles(std::string const& config);
+
+private:
+  std::string ConvertToIncludeReference(
+    std::string const& path, cmOutputConverter::OutputFormat format) override;
 };

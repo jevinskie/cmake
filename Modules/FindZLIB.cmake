@@ -28,7 +28,7 @@ Result Variables
 This module defines the following variables:
 
 ``ZLIB_FOUND``
-  Boolean indicating whether (the requested version of) zlib is found.
+  Boolean indicating whether (the requested version of) zlib was found.
 
 ``ZLIB_VERSION``
   .. versionadded:: 3.26
@@ -153,8 +153,8 @@ unset(_ZLIB_x86)
 list(APPEND _ZLIB_SEARCHES _ZLIB_SEARCH_NORMAL)
 
 if(ZLIB_USE_STATIC_LIBS)
-  set(ZLIB_NAMES zlibstatic zlibstat zlib z)
-  set(ZLIB_NAMES_DEBUG zlibstaticd zlibstatd zlibd zd)
+  set(ZLIB_NAMES zs zlibstatic zlibstat zlib z)
+  set(ZLIB_NAMES_DEBUG zsd zlibstaticd zlibstatd zlibd zd)
 else()
   set(ZLIB_NAMES z zlib zdll zlib1 zlibstatic zlibwapi zlibvc zlibstat)
   set(ZLIB_NAMES_DEBUG zd zlibd zdlld zlibd1 zlib1d zlibstaticd zlibwapid zlibvcd zlibstatd)

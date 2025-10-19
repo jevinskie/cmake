@@ -206,6 +206,8 @@ syn keyword cmakeProperty contained
             \ EXPORT_PROPERTIES
             \ EXTERNAL_OBJECT
             \ EchoString
+            \ FASTBUILD_CACHING
+            \ FASTBUILD_DISTRIBUTION
             \ FAIL_REGULAR_EXPRESSION
             \ FIND_LIBRARY_USE_LIB32_PATHS
             \ FIND_LIBRARY_USE_LIB64_PATHS
@@ -431,6 +433,7 @@ syn keyword cmakeProperty contained
             \ UNITY_BUILD_BATCH_SIZE
             \ UNITY_BUILD_CODE_AFTER_INCLUDE
             \ UNITY_BUILD_CODE_BEFORE_INCLUDE
+            \ UNITY_BUILD_FILENAME_PREFIX
             \ UNITY_BUILD_MODE
             \ UNITY_BUILD_RELOCATABLE
             \ UNITY_BUILD_UNIQUE_ID

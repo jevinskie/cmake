@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 @CASE_CMAKELISTS_PREFIX_CODE@
 project(CTestInstrumentation@CASE_NAME@)
 if(USE_INSTRUMENTATION)
-  set(CMAKE_EXPERIMENTAL_INSTRUMENTATION "d16a3082-c4e1-489b-b90c-55750a334f27")
+  set(CMAKE_EXPERIMENTAL_INSTRUMENTATION "ec7aa2dc-b87f-45a3-8022-fe01c5f59984")
 endif()
 include(CTest)
 add_executable(main main.c)

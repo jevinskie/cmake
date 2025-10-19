@@ -11,7 +11,12 @@ if("${CMAKE_Fortran_COMPILER_ID};${CMAKE_Fortran_SIMULATE_ID}" MATCHES "^Intel(L
 endif()
 
 if(CMAKE_Fortran_COMPILER_ID STREQUAL "LFortran")
-  add_compile_options(--implicit-interface --generate-object-code)
+  if(CMAKE_Fortran_COMPILER_VERSION VERSION_GREATER_EQUAL "0.55")
+    set(_LFORTRAN_SC_FLAG --separate-compilation)
+  else()
+    set(_LFORTRAN_SC_FLAG --generate-object-code)
+  endif()
+  add_compile_options(--implicit-interface ${_LFORTRAN_SC_FLAG})
 endif()
 
 # create a library with hello and world functions
@@ -192,4 +197,10 @@ if(CMAKE_Fortran_COMPILE_OPTIONS_PREPROCESS_OFF AND
   endif()
 
   set_property(SOURCE no_preprocess_source_upper.F no_preprocess_source_fpp.fpp PROPERTY Fortran_PREPROCESS OFF)
+endif()
+
+# Test that we are safe from infinite include recursion in dependency scanner
+# (SunPro Fortran compiler does not support recursive inclusion)
+if (NOT CMAKE_Fortran_COMPILER_ID STREQUAL "SunPro")
+  add_executable(test_include_loop test_include_loop.F)
 endif()

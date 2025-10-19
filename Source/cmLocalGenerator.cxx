@@ -25,6 +25,7 @@
 #include "cmsys/RegularExpression.hxx"
 
 #include "cmAlgorithms.h"
+#include "cmCMakePath.h"
 #include "cmComputeLinkInformation.h"
 #include "cmCryptoHash.h"
 #include "cmCustomCommand.h"
@@ -44,6 +45,7 @@
 #include "cmList.h"
 #include "cmMakefile.h"
 #include "cmMessageType.h"
+#include "cmObjectLocation.h"
 #include "cmRange.h"
 #include "cmRulePlaceholderExpander.h"
 #include "cmSourceFile.h"
@@ -1857,6 +1859,10 @@ std::set<BT<std::string>> cmLocalGenerator::GetTargetDefines(
   if (std::string const* exportMacro = target->GetExportMacro()) {
     this->AppendDefines(defines, *exportMacro);
   }
+  for (auto const& sharedLibCompileDef :
+       target->GetSharedLibraryCompileDefs(config)) {
+    this->AppendDefines(defines, sharedLibCompileDef);
+  }
 
   // Add preprocessor definitions for this target and configuration.
   std::vector<BT<std::string>> targetDefines =
@@ -2786,6 +2792,8 @@ void cmLocalGenerator::AddPchDependencies(cmGeneratorTarget* target)
 
         auto* pch_sf = this->Makefile->GetOrCreateSource(
           pchSource, false, cmSourceFileLocationKind::Known);
+        pch_sf->SetSpecialSourceType(
+          cmSourceFile::SpecialSourceType::PchSource);
         // PCH sources should never be scanned as they cannot contain C++
         // module references.
         pch_sf->SetProperty("CXX_SCAN_FOR_MODULES", "0");
@@ -2881,6 +2889,8 @@ void cmLocalGenerator::AddPchDependencies(cmGeneratorTarget* target)
           // be grouped as "Precompile Header File"
           auto* pchHeader_sf = this->Makefile->GetOrCreateSource(
             pchHeader, false, cmSourceFileLocationKind::Known);
+          pchHeader_sf->SetSpecialSourceType(
+            cmSourceFile::SpecialSourceType::PchHeader);
           std::string err;
           pchHeader_sf->ResolveFullPath(&err);
           if (!err.empty()) {
@@ -2943,9 +2953,8 @@ void cmLocalGenerator::CopyPchCompilePdb(
          << from_file << "\"))\n";
     file << "    file(MAKE_DIRECTORY \"" << to_dir << "\")\n";
     file << "    execute_process(COMMAND ${CMAKE_COMMAND} -E copy";
-    file << " \"" << from_file << "\""
-         << " \"" << to_dir << "\" RESULT_VARIABLE result "
-         << " ERROR_QUIET)\n";
+    file << " \"" << from_file << "\"" << " \"" << to_dir
+         << "\" RESULT_VARIABLE result " << " ERROR_QUIET)\n";
     file << "    if (NOT result EQUAL 0)\n"
          << "      execute_process(COMMAND ${CMAKE_COMMAND}"
          << " -E sleep 1)\n"
@@ -2953,8 +2962,7 @@ void cmLocalGenerator::CopyPchCompilePdb(
     file << "      break()\n"
          << "    endif()\n";
     file << "  elseif(NOT EXISTS \"" << from_file << "\")\n"
-         << "    execute_process(COMMAND ${CMAKE_COMMAND}"
-         << " -E sleep 1)\n"
+         << "    execute_process(COMMAND ${CMAKE_COMMAND}" << " -E sleep 1)\n"
          << "  endif()\n";
     file << "endforeach()\n";
     outputs.push_back(configGenex(dest_file));
@@ -2991,7 +2999,9 @@ void cmLocalGenerator::CopyPchCompilePdb(
     cmSourceFile* copy_rule = this->AddCustomCommandToOutput(std::move(cc));
     if (copy_rule) {
       copy_rule->SetProperty("CXX_SCAN_FOR_MODULES", "0");
-      target->AddSource(copy_rule->ResolveFullPath());
+      auto* pch_pdb_sf = target->AddSource(copy_rule->ResolveFullPath());
+      pch_pdb_sf->SetSpecialSourceType(
+        cmSourceFile::SpecialSourceType::PchPdbReuseSource);
     }
   }
 }
@@ -3173,6 +3183,14 @@ std::string unity_file_extension(std::string const& lang)
   }
   return extension;
 }
+
+char const* unity_file_prefix(cmGeneratorTarget* target)
+{
+  if (cmValue val = target->GetProperty("UNITY_BUILD_FILENAME_PREFIX")) {
+    return val->c_str();
+  }
+  return "unity_";
+}
 }
 
 std::vector<cmLocalGenerator::UnitySource>
@@ -3186,15 +3204,15 @@ cmLocalGenerator::AddUnityFilesModeAuto(
   if (batchSize == 0) {
     batchSize = filtered_sources.size();
   }
-
+  char const* filename_prefix = unity_file_prefix(target);
   std::vector<UnitySource> unity_files;
   for (size_t itemsLeft = filtered_sources.size(), chunk, batch = 0;
        itemsLeft > 0; itemsLeft -= chunk, ++batch) {
 
     chunk = std::min(itemsLeft, batchSize);
 
-    std::string filename =
-      cmStrCat(filename_base, "unity_", batch, unity_file_extension(lang));
+    std::string filename = cmStrCat(filename_base, filename_prefix, batch,
+                                    unity_file_extension(lang));
     auto const begin = filtered_sources.begin() + batch * batchSize;
     auto const end = begin + chunk;
     unity_files.emplace_back(this->WriteUnitySource(
@@ -3230,10 +3248,11 @@ cmLocalGenerator::AddUnityFilesModeGroup(
     }
   }
 
+  char const* filename_prefix = unity_file_prefix(target);
   for (auto const& item : explicit_mapping) {
     auto const& name = item.first;
-    std::string filename =
-      cmStrCat(filename_base, "unity_", name, unity_file_extension(lang));
+    std::string filename = cmStrCat(filename_base, filename_prefix, name,
+                                    unity_file_extension(lang));
     unity_files.emplace_back(this->WriteUnitySource(
       target, configs, cmMakeRange(item.second), beforeInclude, afterInclude,
       std::move(filename), filename_base, pathMode));
@@ -3244,7 +3263,9 @@ cmLocalGenerator::AddUnityFilesModeGroup(
 
 void cmLocalGenerator::AddUnityBuild(cmGeneratorTarget* target)
 {
-  if (!target->GetPropertyAsBool("UNITY_BUILD")) {
+  // cmFastbuildNormalTargetGenerator handles unity build.
+  if (this->GetGlobalGenerator()->IsFastbuild() ||
+      !target->GetPropertyAsBool("UNITY_BUILD")) {
     return;
   }
 
@@ -3331,6 +3352,8 @@ void cmLocalGenerator::AddUnityBuild(cmGeneratorTarget* target)
 
     for (UnitySource const& file : unity_files) {
       auto* unity = this->GetMakefile()->GetOrCreateSource(file.Path);
+      unity->SetSpecialSourceType(
+        cmSourceFile::SpecialSourceType::UnitySource);
       target->AddSource(file.Path, true);
       unity->SetProperty("SKIP_UNITY_BUILD_INCLUSION", "ON");
       unity->SetProperty("UNITY_SOURCE_FILE", file.Path);
@@ -4141,7 +4164,7 @@ std::string& cmLocalGenerator::CreateSafeUniqueObjectFileName(
 
 void cmLocalGenerator::ComputeObjectFilenames(
   std::map<cmSourceFile const*, cmObjectLocations>& /*unused*/,
-  cmGeneratorTarget const* /*unused*/)
+  std::string const& /*unused*/, cmGeneratorTarget const* /*unused*/)
 {
 }
 
@@ -4168,6 +4191,11 @@ bool cmLocalGenerator::IsNMake() const
 bool cmLocalGenerator::IsNinjaMulti() const
 {
   return this->GetState()->UseNinjaMulti();
+}
+
+bool cmLocalGenerator::IsWindowsVSIDE() const
+{
+  return this->GetState()->UseWindowsVSIDE();
 }
 
 namespace {
@@ -4222,6 +4250,193 @@ std::string cmLocalGenerator::GetRelativeSourceFileName(
   return objectName;
 }
 
+std::string cmLocalGenerator::GetCustomObjectFileName(
+  cmSourceFile const& source) const
+{
+  if (!this->GetGlobalGenerator()->SupportsCustomObjectNames()) {
+    return std::string{};
+  }
+
+  if (auto objName = source.GetProperty("OBJECT_NAME")) {
+    cmGeneratorExpression ge(*this->GetCMakeInstance());
+    auto cge = ge.Parse(objName);
+    static std::string const INVALID_GENEX =
+      "_cmake_invalid_object_name_genex";
+    static std::string const INVALID_VALUE =
+      "_cmake_invalid_object_name_value";
+
+    if (!cge) {
+      this->Makefile->IssueMessage(
+        MessageType::FATAL_ERROR,
+        cmStrCat("The  \"OBJECT_NAME\" property for\n  ", source.GetFullPath(),
+                 "\nis not a valid generator expression (", objName, ")."));
+      return INVALID_GENEX;
+    }
+    if (cge->GetHadHeadSensitiveCondition()) {
+      // Not reachable; all target-sensitive  genexes actually fail to parse.
+      this->Makefile->IssueMessage(
+        MessageType::FATAL_ERROR,
+        cmStrCat("The  \"OBJECT_NAME\" property for\n  ", source.GetFullPath(),
+                 "\ncontains a condition that queries the consuming target "
+                 "which is not supported (",
+                 objName, ")."));
+      return INVALID_GENEX;
+    }
+    if (cge->GetHadLinkLanguageSensitiveCondition()) {
+      // Not reachable; all target-sensitive  genexes actually fail to parse.
+      this->Makefile->IssueMessage(
+        MessageType::FATAL_ERROR,
+        cmStrCat("The  \"OBJECT_NAME\" property for\n  ", source.GetFullPath(),
+                 "\ncontains a condition that queries the link language "
+                 "which is not supported (",
+                 objName, ")."));
+      return INVALID_GENEX;
+    }
+
+    auto objNameValue = cge->Evaluate(this, "");
+    if (cge->GetHadContextSensitiveCondition()) {
+      this->Makefile->IssueMessage(
+        MessageType::FATAL_ERROR,
+        cmStrCat("The  \"OBJECT_NAME\" property for\n  ", source.GetFullPath(),
+                 "\ncontains a context-sensitive condition which is not "
+                 "supported (",
+                 objName, ")."));
+      return INVALID_GENEX;
+    }
+
+    // Skip if it evaluates to empty.
+    if (!objNameValue.empty()) {
+      cmCMakePath objNamePath = objNameValue;
+      // Verify that it is a relative path.
+      if (objNamePath.IsAbsolute()) {
+        this->Makefile->IssueMessage(
+          MessageType::FATAL_ERROR,
+          cmStrCat(
+            "The  \"OBJECT_NAME\" property for\n  ", source.GetFullPath(),
+            "\nresolves to an absolute path which is not supported:\n  ",
+            objNameValue));
+        return INVALID_VALUE;
+      }
+      auto isInvalidComponent = [](cmCMakePath const& component) -> bool {
+        return component == ".."_s;
+      };
+      // Verify that it contains no `..` components.
+      if (std::any_of(objNamePath.begin(), objNamePath.end(),
+                      isInvalidComponent)) {
+        this->Makefile->IssueMessage(
+          MessageType::FATAL_ERROR,
+          cmStrCat("The  \"OBJECT_NAME\" property for\n  ",
+                   source.GetFullPath(), "\ncontains an invalid component (",
+                   objNameValue, ")."));
+        return INVALID_VALUE;
+      }
+
+      return objNameValue;
+    }
+  }
+
+  return std::string{};
+}
+
+std::string cmLocalGenerator::GetCustomInstallObjectFileName(
+  cmSourceFile const& source, std::string const& config,
+  char const* custom_ext) const
+{
+  if (auto objName = source.GetProperty("INSTALL_OBJECT_NAME")) {
+    cmGeneratorExpression ge(*this->GetCMakeInstance());
+    auto cge = ge.Parse(objName);
+    static std::string const INVALID_GENEX =
+      "_cmake_invalid_object_name_genex";
+    static std::string const INVALID_VALUE =
+      "_cmake_invalid_object_name_value";
+
+    if (!cge) {
+      this->Makefile->IssueMessage(
+        MessageType::FATAL_ERROR,
+        cmStrCat("The  \"INSTALL_OBJECT_NAME\" property for\n  ",
+                 source.GetFullPath(),
+                 "\nis not a valid generator expression (", objName, ")."));
+      return INVALID_GENEX;
+    }
+    if (cge->GetHadHeadSensitiveCondition()) {
+      // Not reachable; all target-sensitive  genexes actually fail to parse.
+      this->Makefile->IssueMessage(
+        MessageType::FATAL_ERROR,
+        cmStrCat("The  \"INSTALL_OBJECT_NAME\" property for\n  ",
+                 source.GetFullPath(),
+                 "\ncontains a condition that queries the consuming target "
+                 "which is not supported (",
+                 objName, ")."));
+      return INVALID_GENEX;
+    }
+    if (cge->GetHadLinkLanguageSensitiveCondition()) {
+      // Not reachable; all target-sensitive  genexes actually fail to parse.
+      this->Makefile->IssueMessage(
+        MessageType::FATAL_ERROR,
+        cmStrCat("The  \"INSTALL_OBJECT_NAME\" property for\n  ",
+                 source.GetFullPath(),
+                 "\ncontains a condition that queries the link language "
+                 "which is not supported (",
+                 objName, ")."));
+      return INVALID_GENEX;
+    }
+
+    auto objNameValue = cge->Evaluate(this, config);
+
+    // Skip if it evaluates to empty.
+    if (!objNameValue.empty()) {
+      cmCMakePath objNamePath = objNameValue;
+      // Verify that it is a relative path.
+      if (objNamePath.IsAbsolute()) {
+        this->Makefile->IssueMessage(
+          MessageType::FATAL_ERROR,
+          cmStrCat(
+            "The  \"INSTALL_OBJECT_NAME\" property for\n  ",
+            source.GetFullPath(),
+            "\nresolves to an absolute path which is not supported:\n  ",
+            objNameValue));
+        return INVALID_VALUE;
+      }
+      auto isInvalidComponent = [](cmCMakePath const& component) -> bool {
+        return component == ".."_s;
+      };
+      // Verify that it contains no `..` components.
+      if (std::any_of(objNamePath.begin(), objNamePath.end(),
+                      isInvalidComponent)) {
+        this->Makefile->IssueMessage(
+          MessageType::FATAL_ERROR,
+          cmStrCat("The  \"INSTALL_OBJECT_NAME\" property for\n  ",
+                   source.GetFullPath(), "\ncontains an invalid component (",
+                   objNameValue, ")."));
+        return INVALID_VALUE;
+      }
+
+      if (custom_ext) {
+        objNameValue += custom_ext;
+      } else {
+        objNameValue +=
+          this->GetGlobalGenerator()->GetLanguageOutputExtension(source);
+      }
+
+      return objNameValue;
+    }
+  }
+
+  return std::string{};
+}
+
+void cmLocalGenerator::FillCustomInstallObjectLocations(
+  cmSourceFile const& source, std::string const& config,
+  char const* custom_ext,
+  std::map<std::string, cmObjectLocation>& mapping) const
+{
+  auto installLoc =
+    this->GetCustomInstallObjectFileName(source, config, custom_ext);
+  if (!installLoc.empty()) {
+    mapping[config] = installLoc;
+  }
+}
+
 std::string cmLocalGenerator::GetObjectFileNameWithoutTarget(
   cmSourceFile const& source, std::string const& dir_max,
   bool* hasSourceExtension, char const* customOutputExtension,
@@ -4232,8 +4447,20 @@ std::string cmLocalGenerator::GetObjectFileNameWithoutTarget(
     useShortObjectNames = *forceShortObjectName;
   }
 
+  if (!useShortObjectNames &&
+      this->GetGlobalGenerator()->SupportsCustomObjectNames()) {
+    auto customName = this->GetCustomObjectFileName(source);
+    if (!customName.empty()) {
+      auto ext = this->GlobalGenerator->GetLanguageOutputExtension(source);
+      if (customOutputExtension) {
+        ext = *customOutputExtension;
+      }
+      return cmStrCat(customName, ext);
+    }
+  }
+
   // This can return an absolute path in the case where source is
-  // not relative to the current source or binary directoreis
+  // not relative to the current source or binary directories
   std::string objectName = this->GetRelativeSourceFileName(source);
   // if it is still a full path check for the try compile case
   // try compile never have in source sources, and should not
@@ -4243,7 +4470,7 @@ std::string cmLocalGenerator::GetObjectFileNameWithoutTarget(
       objectName = cmSystemTools::GetFilenameName(source.GetFullPath());
     }
   }
-  bool const isPchObject = objectName.find("cmake_pch") != std::string::npos;
+  bool const isPchObject = source.IsPchHeader() || source.IsPchSource();
 
   // Short object path policy selected, use as little info as necessary to
   // select an object name
@@ -4291,7 +4518,7 @@ std::string cmLocalGenerator::GetObjectFileNameWithoutTarget(
     }
 
     // Strip source file extension when shortening object file paths
-    if (this->UseShortObjectNames()) {
+    if (useShortObjectNames) {
       objectName = cmSystemTools::GetFilenameWithoutExtension(objectName);
     }
     // Store the new extension.

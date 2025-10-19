@@ -13,12 +13,14 @@ function(run_toolchain case)
   set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/${case}-build)
   run_cmake_with_options(${case} ${ARGN})
   set(RunCMake_TEST_NO_CLEAN 1)
+  set(RunCMake_TEST_OUTPUT_MERGE 1)
   run_cmake_command(${case}-build ${CMAKE_COMMAND} --build .)
 endfunction()
 
 macro(run_cmake_target test subtest target)
   set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/${test}-build)
   set(RunCMake_TEST_NO_CLEAN 1)
+  set(RunCMake_TEST_OUTPUT_MERGE 1)
   run_cmake_command(${test}-${subtest}-build ${CMAKE_COMMAND} --build . --target ${target} --config Release --verbose ${ARGN})
   unset(RunCMake_TEST_BINARY_DIR)
   unset(RunCMake_TEST_NO_CLEAN)
@@ -39,28 +41,39 @@ foreach(_emscripten_toolchain IN LISTS _emscripten_toolchains)
   set(comp_ar ${BIN_DIR}/emar${EMCC_SUFFIX})
 
   # Create an executable from .c sources only.
-  run_toolchain(emscripten-c
+  run_toolchain(C-exe
     -DCMAKE_SYSTEM_NAME=Emscripten
     -DCMAKE_C_COMPILER=${c_comp}
   )
 
   # Create an executable from .c and .cxx sources.
-  run_toolchain(emscripten-cxx
+  run_toolchain(CXX-exe
     -DCMAKE_SYSTEM_NAME=Emscripten
     -DCMAKE_C_COMPILER=${c_comp}
     -DCMAKE_CXX_COMPILER=${cxx_comp}
   )
 
-  # Create a library and executable from .c sources.
-  run_toolchain(emscripten-lib
+  # Create a static library and executable from .c sources.
+  run_toolchain(C-lib-static
     -DCMAKE_SYSTEM_NAME=Emscripten
     -DCMAKE_C_COMPILER=${c_comp}
   )
 
-  run_cmake_with_options(emscripten-WHOLE_ARCHIVE
+  # Create a shared library and executable from .c sources.
+  run_toolchain(C-lib-shared
     -DCMAKE_SYSTEM_NAME=Emscripten
     -DCMAKE_C_COMPILER=${c_comp}
   )
-  run_cmake_target(emscripten-WHOLE_ARCHIVE link-exe main)
-  run_cmake_target(emscripten-WHOLE_ARCHIVE circular-exe main_circular)
+
+  run_toolchain(C-lib-circular
+    -DCMAKE_SYSTEM_NAME=Emscripten
+    -DCMAKE_C_COMPILER=${c_comp}
+  )
+
+  run_cmake_with_options(C-WHOLE_ARCHIVE
+    -DCMAKE_SYSTEM_NAME=Emscripten
+    -DCMAKE_C_COMPILER=${c_comp}
+  )
+  run_cmake_target(C-WHOLE_ARCHIVE link-exe main)
+  run_cmake_target(C-WHOLE_ARCHIVE circular-exe main_circular)
 endforeach()

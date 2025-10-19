@@ -5,12 +5,27 @@ function(instrument test)
   # Set Paths Variables
   set(config "${CMAKE_CURRENT_LIST_DIR}/config")
   set(ENV{CMAKE_CONFIG_DIR} ${config})
-  cmake_parse_arguments(ARGS
-    "BUILD;BUILD_MAKE_PROGRAM;INSTALL;TEST;COPY_QUERIES;COPY_QUERIES_GENERATED;NO_WARN;STATIC_QUERY;DYNAMIC_QUERY;INSTALL_PARALLEL;MANUAL_HOOK;PRESERVE_DATA;NO_CONFIGURE"
-    "CHECK_SCRIPT;CONFIGURE_ARG" "" ${ARGN})
+  set(OPTIONS
+    "BUILD"
+    "BUILD_MAKE_PROGRAM"
+    "INSTALL"
+    "INSTALL_PARALLEL"
+    "TEST"
+    "NO_WARN"
+    "COPY_QUERIES"
+    "COPY_QUERIES_GENERATED"
+    "STATIC_QUERY"
+    "DYNAMIC_QUERY"
+    "TRACE_QUERY"
+    "MANUAL_HOOK"
+    "PRESERVE_DATA"
+    "NO_CONFIGURE"
+  )
+  cmake_parse_arguments(ARGS "${OPTIONS}" "CHECK_SCRIPT;CONFIGURE_ARG" "" ${ARGN})
   set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/${test})
-  set(uuid "d16a3082-c4e1-489b-b90c-55750a334f27")
+  set(uuid "ec7aa2dc-b87f-45a3-8022-fe01c5f59984")
   set(v1 ${RunCMake_TEST_BINARY_DIR}/.cmake/instrumentation-${uuid}/v1)
+  set(v1 ${v1} PARENT_SCOPE)
   set(query_dir ${CMAKE_CURRENT_LIST_DIR}/query)
 
   # Clear previous instrumentation data
@@ -26,7 +41,11 @@ function(instrument test)
   if (ARGS_STATIC_QUERY)
     set(static_query_hook_arg 1)
   endif()
-  set(GET_HOOK "\\\"${CMAKE_COMMAND}\\\" -P \\\"${RunCMake_SOURCE_DIR}/hook.cmake\\\" ${static_query_hook_arg}")
+  set(trace_query_hook_arg 0)
+  if (ARGS_TRACE_QUERY)
+    set(trace_query_hook_arg 1)
+  endif()
+  set(GET_HOOK "\\\"${CMAKE_COMMAND}\\\" -P \\\"${RunCMake_SOURCE_DIR}/hook.cmake\\\" ${static_query_hook_arg} ${trace_query_hook_arg}")
 
   # Load query JSON and cmake (with cmake_instrumentation(...)) files
   set(query ${query_dir}/${test}.json.in)
@@ -111,20 +130,28 @@ instrument(hooks-2 BUILD INSTALL TEST)
 instrument(hooks-no-callbacks MANUAL_HOOK)
 
 # Check data file contents for optional query data
-instrument(no-query BUILD INSTALL TEST
-  CHECK_SCRIPT check-data-dir.cmake)
-instrument(dynamic-query BUILD INSTALL TEST DYNAMIC_QUERY
-  CHECK_SCRIPT check-data-dir.cmake)
-instrument(both-query BUILD INSTALL TEST DYNAMIC_QUERY
-  CHECK_SCRIPT check-data-dir.cmake)
+instrument(no-query
+  BUILD INSTALL TEST
+  CHECK_SCRIPT check-data-dir.cmake
+)
+instrument(dynamic-query
+  BUILD INSTALL TEST DYNAMIC_QUERY
+  CHECK_SCRIPT check-data-dir.cmake
+)
+instrument(both-query
+  BUILD INSTALL TEST DYNAMIC_QUERY
+  CHECK_SCRIPT check-data-dir.cmake
+)
 
 # Test cmake_instrumentation command
 instrument(cmake-command
-  COPY_QUERIES NO_WARN DYNAMIC_QUERY
-  CHECK_SCRIPT check-generated-queries.cmake)
+  COPY_QUERIES NO_WARN STATIC_QUERY DYNAMIC_QUERY
+  CHECK_SCRIPT check-generated-queries.cmake
+)
 instrument(cmake-command-data
   COPY_QUERIES NO_WARN BUILD INSTALL TEST DYNAMIC_QUERY
-  CHECK_SCRIPT check-data-dir.cmake)
+  CHECK_SCRIPT check-data-dir.cmake
+)
 instrument(cmake-command-bad-api-version NO_WARN)
 instrument(cmake-command-bad-data-version NO_WARN)
 instrument(cmake-command-missing-version NO_WARN)
@@ -132,35 +159,63 @@ instrument(cmake-command-bad-arg NO_WARN)
 instrument(cmake-command-parallel-install
   BUILD INSTALL TEST NO_WARN INSTALL_PARALLEL DYNAMIC_QUERY
   CHECK_SCRIPT check-data-dir.cmake)
-instrument(cmake-command-resets-generated NO_WARN
-  COPY_QUERIES_GENERATED
+instrument(cmake-command-resets-generated
+  NO_WARN COPY_QUERIES_GENERATED
   CHECK_SCRIPT check-data-dir.cmake
 )
-instrument(cmake-command-cmake-build NO_WARN
-  BUILD
+instrument(cmake-command-cmake-build
+  NO_WARN BUILD
   CHECK_SCRIPT check-no-make-program-hooks.cmake
 )
 
 # Test CUSTOM_CONTENT
-instrument(cmake-command-custom-content NO_WARN BUILD
+instrument(cmake-command-custom-content
+  NO_WARN BUILD
   CONFIGURE_ARG "-DN=1"
 )
-instrument(cmake-command-custom-content NO_WARN BUILD
+instrument(cmake-command-custom-content
+  NO_WARN BUILD PRESERVE_DATA
   CONFIGURE_ARG "-DN=2"
   CHECK_SCRIPT check-custom-content.cmake
-  PRESERVE_DATA
 )
-instrument(cmake-command-custom-content NO_WARN NO_CONFIGURE
-  MANUAL_HOOK
-  PRESERVE_DATA
+set(indexDir ${v1}/data/index)
+set(fakeIndex ${indexDir}/index-0.json)
+file(MAKE_DIRECTORY ${indexDir})
+file(TOUCH ${fakeIndex})
+# fakeIndex newer than all content files prevents their deletion
+set(EXPECTED_CONTENT_FILES 2)
+instrument(cmake-command-custom-content
+  NO_WARN NO_CONFIGURE MANUAL_HOOK PRESERVE_DATA
   CHECK_SCRIPT check-custom-content-removed.cmake
 )
-
+file(REMOVE ${fakeIndex})
+# old content files will be removed if no index file exists
+set(EXPECTED_CONTENT_FILES 1)
+instrument(cmake-command-custom-content
+  NO_WARN NO_CONFIGURE MANUAL_HOOK PRESERVE_DATA
+  CHECK_SCRIPT check-custom-content-removed.cmake
+)
 instrument(cmake-command-custom-content-bad-type NO_WARN)
 instrument(cmake-command-custom-content-bad-content NO_WARN)
 
+# Test Google trace
+instrument(trace-query
+  BUILD INSTALL TEST TRACE_QUERY
+  CHECK_SCRIPT check-generated-queries.cmake
+)
+instrument(cmake-command-trace
+  NO_WARN BUILD INSTALL TEST TRACE_QUERY
+)
+instrument(cmake-command-trace
+  NO_WARN BUILD PRESERVE_DATA
+  CHECK_SCRIPT check-trace-removed.cmake
+)
+
 # Test make/ninja hooks
-if(RunCMake_GENERATOR STREQUAL "MSYS Makefiles")
+if(RunCMake_GENERATOR STREQUAL "FASTBuild")
+  # FIXME(#27184): This does not work for FASTBuild.
+  set(Skip_BUILD_MAKE_PROGRAM_Case 1)
+elseif(RunCMake_GENERATOR STREQUAL "MSYS Makefiles")
   # FIXME(#27079): This does not work for MSYS Makefiles.
   set(Skip_BUILD_MAKE_PROGRAM_Case 1)
 elseif(RunCMake_GENERATOR STREQUAL "NMake Makefiles")
@@ -181,7 +236,10 @@ elseif(RunCMake_GENERATOR STREQUAL "NMake Makefiles")
    endif()
 endif()
 if(NOT Skip_BUILD_MAKE_PROGRAM_Case)
-  instrument(cmake-command-make-program NO_WARN
-    BUILD_MAKE_PROGRAM
+  instrument(cmake-command-make-program
+    NO_WARN BUILD_MAKE_PROGRAM
     CHECK_SCRIPT check-make-program-hooks.cmake)
+  instrument(cmake-command-build-snippet
+    NO_WARN BUILD_MAKE_PROGRAM
+    CHECK_SCRIPT check-data-dir.cmake)
 endif()

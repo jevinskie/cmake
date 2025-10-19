@@ -20,12 +20,20 @@
 
 #include "cmAlgorithms.h"
 #include "cmLinkItem.h"
+#include "cmList.h"
 #include "cmListFileCache.h"
 #include "cmObjectLocation.h"
 #include "cmPolicies.h"
 #include "cmStandardLevel.h"
 #include "cmStateTypes.h"
 #include "cmValue.h"
+
+namespace cm {
+namespace GenEx {
+struct Context;
+struct Evaluation;
+}
+}
 
 class cmake;
 enum class cmBuildStep;
@@ -40,7 +48,6 @@ class cmSourceFile;
 struct cmSyntheticTargetCache;
 class cmTarget;
 
-struct cmGeneratorExpressionContext;
 struct cmGeneratorExpressionDAGChecker;
 
 class cmGeneratorTarget
@@ -63,6 +70,7 @@ public:
   bool IsImported() const;
   bool IsImportedGloballyVisible() const;
   bool IsForeign() const;
+  bool IsSymbolic() const;
   bool CanCompileSources() const;
   bool HasKnownRuntimeArtifactLocation(std::string const& config) const;
   std::string const& GetLocation(std::string const& config) const;
@@ -376,6 +384,11 @@ public:
       If no macro should be defined null is returned.  */
   std::string const* GetExportMacro() const;
 
+  /** Get the list of preprocessor definitions, that should be defined
+      when building sources in this target.
+      If no macro should be defined the empty list is returned.  */
+  cmList const& GetSharedLibraryCompileDefs(std::string const& config) const;
+
   /** Get the soname of the target.  Allowed only for a shared library.  */
   std::string GetSOName(std::string const& config,
                         cmStateEnums::ArtifactType artifact =
@@ -498,7 +511,7 @@ public:
   bool IsDotNetSdkTarget() const;
 
   void GetObjectLibrariesInSources(
-    std::vector<cmGeneratorTarget*>& objlibs) const;
+    std::vector<BT<cmGeneratorTarget*>>& objlibs) const;
 
   std::string GetFullNameImported(std::string const& config,
                                   cmStateEnums::ArtifactType artifact) const;
@@ -522,8 +535,6 @@ public:
 
   std::vector<std::string> GetAppleArchs(std::string const& config,
                                          cm::optional<std::string> lang) const;
-
-  std::string const& GetTargetLabelsString();
 
   // The classification of the flag.
   enum class FlagClassification
@@ -845,7 +856,7 @@ public:
    */
   void ClearLinkInterfaceCache();
 
-  void AddSource(std::string const& src, bool before = false);
+  cmSourceFile* AddSource(std::string const& src, bool before = false);
   void AddTracedSources(std::vector<std::string> const& srcs);
 
   /**
@@ -1006,7 +1017,7 @@ public:
   class TargetPropertyEntry;
 
   std::string EvaluateInterfaceProperty(
-    std::string const& prop, cmGeneratorExpressionContext* context,
+    std::string const& prop, cm::GenEx::Evaluation* eval,
     cmGeneratorExpressionDAGChecker* dagCheckerParent, UseTo usage) const;
 
   struct TransitiveProperty
@@ -1026,8 +1037,7 @@ public:
     BuiltinTransitiveProperties;
 
   cm::optional<TransitiveProperty> IsTransitiveProperty(
-    cm::string_view prop, cmLocalGenerator const* lg,
-    std::string const& config,
+    cm::string_view prop, cm::GenEx::Context const& context,
     cmGeneratorExpressionDAGChecker const* dagChecker) const;
 
   bool HaveInstallTreeRPATH(std::string const& config) const;
@@ -1162,6 +1172,7 @@ private:
   mutable std::map<std::string, std::vector<std::string>> SystemIncludesCache;
 
   mutable std::string ExportMacro;
+  mutable std::unordered_map<std::string, cmList> SharedLibraryCompileDefs;
 
   void ConstructSourceFileFlags() const;
   mutable bool SourceFileFlagsConstructed = false;
@@ -1316,7 +1327,7 @@ private:
 
   mutable std::unordered_map<std::string, bool> MaybeInterfacePropertyExists;
   bool MaybeHaveInterfaceProperty(std::string const& prop,
-                                  cmGeneratorExpressionContext* context,
+                                  cm::GenEx::Evaluation* eval,
                                   UseTo usage) const;
 
   using TargetPropertyEntryVector =
@@ -1445,6 +1456,9 @@ private:
   cmValue GetPropertyWithPairedLanguageSupport(std::string const& lang,
                                                char const* suffix) const;
 
+  std::vector<cmLinkItem> ComputeImplicitLanguageTargets(
+    std::string const& lang, std::string const& config) const;
+
   void ComputeLinkImplementationRuntimeLibraries(
     std::string const& config, cmOptionalLinkImplementation& impl) const;
 
@@ -1527,6 +1541,17 @@ public:
   std::string BuildDatabasePath(std::string const& lang,
                                 std::string const& config) const;
 
+  enum class MsvcCharSet
+  {
+    None,
+    Unicode,
+    MultiByte,
+    SingleByte,
+  };
+
+  // Detect if the current define selects any known charset entry or not
+  static MsvcCharSet GetMsvcCharSet(std::string const& singleDefine);
+
 private:
   void BuildFileSetInfoCache(std::string const& config) const;
   struct InfoByConfig
@@ -1546,10 +1571,10 @@ private:
 class cmGeneratorTarget::TargetPropertyEntry
 {
 protected:
-  static cmLinkImplItem NoLinkImplItem;
+  static cmLinkItem NoLinkItem;
 
 public:
-  TargetPropertyEntry(cmLinkImplItem const& item);
+  TargetPropertyEntry(cmLinkItem const& item);
   virtual ~TargetPropertyEntry() = default;
 
   static std::unique_ptr<TargetPropertyEntry> Create(
@@ -1558,17 +1583,15 @@ public:
   static std::unique_ptr<TargetPropertyEntry> CreateFileSet(
     std::vector<std::string> dirs, bool contextSensitiveDirs,
     std::unique_ptr<cmCompiledGeneratorExpression> entryCge,
-    cmFileSet const* fileSet, cmLinkImplItem const& item = NoLinkImplItem);
+    cmFileSet const* fileSet, cmLinkItem const& item = NoLinkItem);
 
   virtual std::string const& Evaluate(
-    cmLocalGenerator* lg, std::string const& config,
-    cmGeneratorTarget const* headTarget,
-    cmGeneratorExpressionDAGChecker* dagChecker,
-    std::string const& language) const = 0;
+    cm::GenEx::Context const& context, cmGeneratorTarget const* headTarget,
+    cmGeneratorExpressionDAGChecker* dagChecker) const = 0;
 
   virtual cmListFileBacktrace GetBacktrace() const = 0;
   virtual std::string const& GetInput() const = 0;
   virtual bool GetHadContextSensitiveCondition() const;
 
-  cmLinkImplItem const& LinkImplItem;
+  cmLinkItem const& LinkItem;
 };

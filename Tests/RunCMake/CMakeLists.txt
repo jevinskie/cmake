@@ -213,6 +213,9 @@ elseif(CMake_TEST_Qt5)
     set(ninja_test_with_qt_version 5)
   endif()
 endif()
+if(CMAKE_GENERATOR MATCHES "FASTBuild")
+  add_RunCMake_test(FASTBuild)
+endif()
 if(CMAKE_GENERATOR MATCHES "Ninja")
   set(Ninja_ARGS
     -DCMAKE_C_COMPILER_ID=${CMAKE_C_COMPILER_ID}
@@ -421,8 +424,9 @@ if(CMAKE_USE_SYSTEM_JSONCPP)
 endif()
 add_RunCMake_test(FileAPI -DPython_EXECUTABLE=${Python_EXECUTABLE}
                           -DCMAKE_CXX_COMPILER_ID=${CMAKE_CXX_COMPILER_ID}
+                          -DCMAKE_CXX_SIMULATE_ID=${CMAKE_CXX_SIMULATE_ID}
                           -DCMake_TEST_JSON_SCHEMA=${CMake_TEST_JSON_SCHEMA})
-if(CMAKE_GENERATOR MATCHES "Make|Ninja")
+if(CMAKE_GENERATOR MATCHES "Make|Ninja|FASTBuild")
   add_RunCMake_test(Instrumentation)
 endif()
 add_RunCMake_test(ConfigDir)
@@ -522,8 +526,13 @@ add_RunCMake_test(GenEx-TARGET_RUNTIME_DLLS)
 add_RunCMake_test(GenEx-PATH)
 add_RunCMake_test(GenEx-PATH_EQUAL)
 add_RunCMake_test(GenEx-LIST)
-add_RunCMake_test(GeneratorExpression -DCMake_TEST_OBJC=${CMake_TEST_OBJC} -DCMake_TEST_Fortran=${CMake_TEST_Fortran}
-                                      -DCMake_TEST_CUDA=${CMake_TEST_CUDA} -DCMake_TEST_HIP=${CMake_TEST_HIP})
+add_RunCMake_test(GeneratorExpression
+  -DCMake_TEST_OBJC=${CMake_TEST_OBJC}
+  -DCMake_TEST_Fortran=${CMake_TEST_Fortran}
+  -DCMake_TEST_CUDA=${CMake_TEST_CUDA}
+  -DCMake_TEST_HIP=${CMake_TEST_HIP}
+  -DCMAKE_C_OUTPUT_EXTENSION=${CMAKE_C_OUTPUT_EXTENSION}
+)
 add_RunCMake_test(GeneratorExpressionShortCircuit)
 add_RunCMake_test(GeneratorInstance)
 add_RunCMake_test(GeneratorPlatform)
@@ -567,6 +576,8 @@ if(XCODE_VERSION)
   set(ObjectLibrary_ARGS -DXCODE_VERSION=${XCODE_VERSION})
 endif()
 add_RunCMake_test(ObjectLibrary)
+add_RunCMake_test(INSTALL_OBJECT_NAME)
+add_RunCMake_test(OBJECT_NAME)
 add_RunCMake_test(ParseImplicitIncludeInfo)
 add_RunCMake_test(ParseImplicitLinkInfo)
 if(UNIX AND CMAKE_SHARED_LIBRARY_RUNTIME_C_FLAG)
@@ -584,11 +595,12 @@ add_RunCMake_test(TargetArtifacts -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME})
 add_RunCMake_test(TargetObjects)
 add_RunCMake_test(TargetProperties)
 add_RunCMake_test(ToolchainFile)
+
 if(NOT CMake_TEST_EXTERNAL_CMAKE)
   set(Tutorial_ARGS TEST_DIR Tutorial -DTutorial_SOURCE_DIR=${CMake_SOURCE_DIR}/Help/guide/tutorial)
-  add_RunCMake_test(Tutorial-NoMath ${Tutorial_ARGS} -DTutorial_USE_MYMATH=OFF)
-  add_RunCMake_test(Tutorial-MyMath ${Tutorial_ARGS} -DTutorial_USE_MYMATH=ON)
+  add_RunCMake_test(Tutorial ${Tutorial_ARGS})
 endif()
+
 add_RunCMake_test(find_dependency)
 add_RunCMake_test(CompileDefinitions)
 add_RunCMake_test(CompileWarningAsError
@@ -729,6 +741,7 @@ if(DEFINED CMake_TEST_NO_WRITE_ONLY_DIR)
   list(APPEND if_ARGS -DCMake_TEST_NO_WRITE_ONLY_DIR=${CMake_TEST_NO_WRITE_ONLY_DIR})
 endif()
 add_RunCMake_test(INSTALL_OBJECT_NAME_STRATEGY)
+add_RunCMake_test(INSTALL_OBJECT_ONLY_USE_DESTINATION)
 add_RunCMake_test(if -DMSYS=${MSYS})
 add_RunCMake_test(include)
 add_RunCMake_test(include_directories)
@@ -818,7 +831,13 @@ add_RunCMake_test(DependencyGraph)
 set_property(TEST RunCMake.DependencyGraph APPEND PROPERTY LABELS "Fortran")
 
 # Add C++ Module tests.
-add_RunCMake_test(CXXModules -DCMake_TEST_MODULE_COMPILATION=${CMake_TEST_MODULE_COMPILATION} -DCMake_TEST_MODULE_COMPILATION_RULES=${CMake_TEST_MODULE_COMPILATION_RULES})
+add_RunCMake_test(CXXModules
+  -DCMake_TEST_MODULE_COMPILATION=${CMake_TEST_MODULE_COMPILATION}
+  -DCMake_TEST_MODULE_COMPILATION_RULES=${CMake_TEST_MODULE_COMPILATION_RULES}
+  -DCMake_TEST_CXX_STDLIB_MODULES_JSON=${CMake_TEST_CXX_STDLIB_MODULES_JSON}
+)
+set_property(TEST RunCMake.CXXModules APPEND
+  PROPERTY LABELS "CXXModules")
 
 # ctresalloc links against CMakeLib and CTestLib, which means it can't be built
 # if CMake_TEST_EXTERNAL_CMAKE is activated (the compiler might be different.)
@@ -1287,6 +1306,12 @@ endif()
 
 add_RunCMake_test_group(CPack "${cpack_tests}")
 
+if(CMake_TEST_CPACK_APPIMAGE)
+  add_RunCMake_test(CPack_AppImage
+    -DCMake_TEST_CPACK_APPIMAGE_RUNTIME_FILE=${CMake_TEST_CPACK_APPIMAGE_RUNTIME_FILE}
+  )
+endif()
+
 if(CMake_TEST_CPACK_WIX3 OR CMake_TEST_CPACK_WIX4)
   add_RunCMake_test(CPack_WIX
     -DCMake_TEST_CPACK_WIX3=${CMake_TEST_CPACK_WIX3}
@@ -1417,3 +1442,13 @@ if(CMake_TEST_Emscripten_TOOLCHAINS)
   add_RunCMake_test(Emscripten -DCMake_TEST_Emscripten_TOOLCHAINS=${CMake_TEST_Emscripten_TOOLCHAINS})
   set_property(TEST RunCMake.Emscripten APPEND PROPERTY LABELS "Emscripten")
 endif()
+
+add_RunCMake_test(SharedLibraryDefines
+  -DCMake_TEST_CUDA=${CMake_TEST_CUDA}
+)
+set_property(TEST RunCMake.SharedLibraryDefines APPEND PROPERTY LABELS "CUDA")
+
+add_RunCMake_test(MsvcCharsetDefines
+  -DCMake_TEST_CUDA=${CMake_TEST_CUDA}
+)
+set_property(TEST RunCMake.MsvcCharsetDefines APPEND PROPERTY LABELS "CUDA")

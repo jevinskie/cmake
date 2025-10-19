@@ -1,5 +1,5 @@
 ^NotDefined -> NotFound
-CMake Warning at ConfigureLogTransitionsConfig2Suppressed.cmake:[0-9]+ \(find_package\):
+CMake Warning at ConfigureLogTransitionsConfig2Suppressed\.cmake:[0-9]+ \(find_package\):
   By not providing "FindViaConfig.cmake" in CMAKE_MODULE_PATH this project
   has asked CMake to find a package configuration file provided by
   "ViaConfig", but CMake did not find one.
@@ -15,11 +15,11 @@ CMake Warning at ConfigureLogTransitionsConfig2Suppressed.cmake:[0-9]+ \(find_pa
   "ViaConfig" provides a separate development package or SDK, be sure it has
   been installed.
 Call Stack \(most recent call first\):
-  CMakeLists.txt:[0-9]+ \(include\)
+  CMakeLists\.txt:[0-9]+ \(include\)
 
 
 NotFound -> NotFound
-CMake Warning at ConfigureLogTransitionsConfig2Suppressed.cmake:[0-9]+ \(find_package\):
+CMake Warning at ConfigureLogTransitionsConfig2Suppressed\.cmake:[0-9]+ \(find_package\):
   By not providing "FindViaConfig.cmake" in CMAKE_MODULE_PATH this project
   has asked CMake to find a package configuration file provided by
   "ViaConfig", but CMake did not find one.
@@ -35,13 +35,13 @@ CMake Warning at ConfigureLogTransitionsConfig2Suppressed.cmake:[0-9]+ \(find_pa
   "ViaConfig" provides a separate development package or SDK, be sure it has
   been installed.
 Call Stack \(most recent call first\):
-  CMakeLists.txt:[0-9]+ \(include\)
+  CMakeLists\.txt:[0-9]+ \(include\)
 
 
 NotFound -> Found
 Found -> Found
 Found -> NotFound
-CMake Warning at ConfigureLogTransitionsConfig2Suppressed.cmake:[0-9]+ \(find_package\):
+CMake Warning at ConfigureLogTransitionsConfig2Suppressed\.cmake:[0-9]+ \(find_package\):
   By not providing "FindViaConfig.cmake" in CMAKE_MODULE_PATH this project
   has asked CMake to find a package configuration file provided by
   "ViaConfig", but CMake did not find one.
@@ -57,7 +57,7 @@ CMake Warning at ConfigureLogTransitionsConfig2Suppressed.cmake:[0-9]+ \(find_pa
   "ViaConfig" provides a separate development package or SDK, be sure it has
   been installed.
 Call Stack \(most recent call first\):
-  CMakeLists.txt:[0-9]+ \(include\)
+  CMakeLists\.txt:[0-9]+ \(include\)
 
 
 END

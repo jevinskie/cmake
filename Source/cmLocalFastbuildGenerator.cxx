@@ -16,6 +16,7 @@
 #include "cmObjectLocation.h"
 #include "cmSystemTools.h"
 #include "cmValue.h"
+#include "cmake.h"
 
 class cmGlobalGenerator;
 
@@ -60,12 +61,14 @@ cmLocalFastbuildGenerator::GetGlobalFastbuildGenerator()
 
 void cmLocalFastbuildGenerator::ComputeObjectFilenames(
   std::map<cmSourceFile const*, cmObjectLocations>& mapping,
-  cmGeneratorTarget const* gt)
+  std::string const& config, cmGeneratorTarget const* gt)
 {
   for (auto& si : mapping) {
     cmSourceFile const* sf = si.first;
     si.second.LongLoc =
       this->GetObjectFileNameWithoutTarget(*sf, gt->ObjectDirectory);
+    this->FillCustomInstallObjectLocations(*sf, config, nullptr,
+                                           si.second.InstallLongLoc);
   }
 }
 
@@ -93,4 +96,20 @@ void cmLocalFastbuildGenerator::AdditionalCleanFiles(std::string const& config)
         cmSystemTools::CollapseFullPath(cleanFile, binaryDir)));
     }
   }
+}
+
+std::string cmLocalFastbuildGenerator::ConvertToIncludeReference(
+  std::string const& path, cmOutputConverter::OutputFormat format)
+{
+  std::string converted = this->ConvertToOutputForExisting(path, format);
+  cmGlobalFastbuildGenerator const* GG = this->GetGlobalFastbuildGenerator();
+  if (GG->UsingRelativePaths && cmSystemTools::FileIsFullPath(path)) {
+    std::string const binDir = this->ConvertToOutputFormat(
+      GG->GetCMakeInstance()->GetHomeOutputDirectory(), OutputFormat::SHELL);
+    if (binDir == converted) {
+      return ".";
+    }
+    return cmSystemTools::RelativePath(binDir, converted);
+  }
+  return converted;
 }

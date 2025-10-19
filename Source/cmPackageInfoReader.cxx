@@ -231,15 +231,14 @@ void AppendProperty(cmMakefile* makefile, cmTarget* target,
                     cm::string_view property, cm::string_view configuration,
                     std::string const& value)
 {
-  std::string fullprop;
-  if (configuration.empty()) {
-    fullprop = cmStrCat("INTERFACE_"_s, property);
+  std::string const fullprop = cmStrCat("INTERFACE_", property);
+  if (!configuration.empty()) {
+    std::string const genexValue =
+      cmStrCat("$<$<CONFIG:", configuration, ">:", value, '>');
+    target->AppendProperty(fullprop, genexValue, makefile->GetBacktrace());
   } else {
-    fullprop = cmStrCat("INTERFACE_"_s, property, '_',
-                        cmSystemTools::UpperCase(configuration));
+    target->AppendProperty(fullprop, value, makefile->GetBacktrace());
   }
-
-  target->AppendProperty(fullprop, value, makefile->GetBacktrace());
 }
 
 template <typename Transform>
@@ -774,7 +773,9 @@ bool cmPackageInfoReader::ImportTargets(cmMakefile* makefile,
 
     cmTarget* target = nullptr;
     if (type == "symbolic"_s) {
-      // TODO
+      target = this->AddLibraryComponent(
+        makefile, cmStateEnums::INTERFACE_LIBRARY, fullName, *ci, package);
+      target->SetSymbolic(true);
     } else if (type == "dylib"_s) {
       target = this->AddLibraryComponent(
         makefile, cmStateEnums::SHARED_LIBRARY, fullName, *ci, package);

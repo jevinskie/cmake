@@ -521,6 +521,13 @@ void cmGlobalNinjaGenerator::WriteVariable(std::ostream& os,
   if (variablesShouldNotBeTrimmed.find(name) ==
       variablesShouldNotBeTrimmed.end()) {
     val = cmTrimWhitespace(value);
+    // If the value ends with `\n` and a `$` was left at the end of the trimmed
+    // value, put the newline back. Otherwise the next stanza is hidden by the
+    // trailing `$` escaping the newline.
+    if (cmSystemTools::StringEndsWith(value, "\n") &&
+        cmSystemTools::StringEndsWith(val, "$")) {
+      val += '\n';
+    }
   } else {
     val = value;
   }
@@ -1779,9 +1786,7 @@ void cmGlobalNinjaGenerator::WriteBuiltinTargets(std::ostream& os)
   this->WriteTargetClean(os);
   this->WriteTargetHelp(os);
 #ifndef CMAKE_BOOTSTRAP
-  if (this->GetCMakeInstance()
-        ->GetInstrumentation()
-        ->HasPreOrPostBuildHook()) {
+  if (this->GetCMakeInstance()->GetInstrumentation()->HasQuery()) {
     this->WriteTargetInstrument(os);
   }
 #endif
@@ -1860,9 +1865,7 @@ void cmGlobalNinjaGenerator::WriteTargetRebuildManifest(std::ostream& os)
   reBuild.ImplicitDeps.push_back(this->CMakeCacheFile);
 
 #ifndef CMAKE_BOOTSTRAP
-  if (this->GetCMakeInstance()
-        ->GetInstrumentation()
-        ->HasPreOrPostBuildHook()) {
+  if (this->GetCMakeInstance()->GetInstrumentation()->HasQuery()) {
     reBuild.ExplicitDeps.push_back(this->NinjaOutputPath("start_instrument"));
   }
 #endif

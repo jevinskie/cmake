@@ -433,6 +433,17 @@ void cmVisualStudio10TargetGenerator::Generate()
     if (!this->ComputeLibOptions()) {
       return;
     }
+    for (std::string const& config : this->Configurations) {
+      // Default character set if not populated above.
+      this->CharSet.emplace(
+        config,
+        (this->GeneratorTarget->GetPropertyAsBool("VS_WINRT_COMPONENT") ||
+         this->GlobalGenerator->TargetsWindowsPhone() ||
+         this->GlobalGenerator->TargetsWindowsStore() ||
+         this->GeneratorTarget->GetPropertyAsBool("VS_WINRT_EXTENSIONS"))
+          ? MsvcCharSet::Unicode
+          : MsvcCharSet::MultiByte);
+    }
   }
   std::string path =
     cmStrCat(this->LocalGenerator->GetCurrentBinaryDirectory(), '/',
@@ -1536,15 +1547,11 @@ void cmVisualStudio10TargetGenerator::WriteMSToolConfigurationValues(
   }
 
   if ((this->GeneratorTarget->GetType() <= cmStateEnums::OBJECT_LIBRARY &&
-       this->ClOptions[config]->UsingUnicode()) ||
-      this->GeneratorTarget->GetPropertyAsBool("VS_WINRT_COMPONENT") ||
-      this->GlobalGenerator->TargetsWindowsPhone() ||
-      this->GlobalGenerator->TargetsWindowsStore() ||
-      this->GeneratorTarget->GetPropertyAsBool("VS_WINRT_EXTENSIONS")) {
+       this->CharSet[config] == MsvcCharSet::Unicode)) {
     e1.Element("CharacterSet", "Unicode");
   } else if (this->GeneratorTarget->GetType() <=
                cmStateEnums::OBJECT_LIBRARY &&
-             this->ClOptions[config]->UsingSBCS()) {
+             this->CharSet[config] == MsvcCharSet::SingleByte) {
     e1.Element("CharacterSet", "NotSet");
   } else {
     e1.Element("CharacterSet", "MultiByte");
@@ -2721,16 +2728,21 @@ void cmVisualStudio10TargetGenerator::WriteAllSources(Elem& e0)
         this->WriteExcludeFromBuild(e2, exclude_configs);
       }
 
+      std::string customObjectName;
       if (this->GlobalGenerator->UseShortObjectNames()) {
+        customObjectName =
+          this->LocalGenerator->GetShortObjectFileName(*si.Source);
+      } else {
+        customObjectName =
+          this->LocalGenerator->GetCustomObjectFileName(*si.Source);
+      }
+      if (!customObjectName.empty()) {
         std::string outputName = "ObjectFileName";
         if (si.Source->GetLanguage() == "CUDA"_s) {
           outputName = "CompileOut";
         }
-        e2.Element(
-          outputName,
-          cmStrCat("$(IntDir)",
-                   this->LocalGenerator->GetShortObjectFileName(*si.Source),
-                   ".obj"));
+        e2.Element(outputName,
+                   cmStrCat("$(IntDir)", customObjectName, ".obj"));
       }
 
       this->FinishWritingSource(e2, toolSettings);
@@ -3600,6 +3612,8 @@ bool cmVisualStudio10TargetGenerator::ComputeClOptions(
         this->GeneratorTarget->GetExportMacro()) {
     clOptions.AddDefine(*exportMacro);
   }
+  // No need to add the SharedLibraryCompileDefs define here:
+  // it is added by VisualStudio itself
 
   if (this->MSTools) {
     // If we have the VS_WINRT_COMPONENT set then force Compile as WinRT
@@ -3622,6 +3636,10 @@ bool cmVisualStudio10TargetGenerator::ComputeClOptions(
         this->TargetCompileAsWinRT = true;
       }
     }
+  }
+
+  if (cm::optional<MsvcCharSet> charSet = clOptions.GetCharSet()) {
+    this->CharSet.emplace(configName, *charSet);
   }
 
   if (this->ProjectType != VsProjectType::csproj &&
@@ -3663,6 +3681,17 @@ bool cmVisualStudio10TargetGenerator::ComputeClOptions(
     // project specifies no flags.  Do not let UseDebugLibraries affect them.
     if (!clOptions.HasFlag("BasicRuntimeChecks")) {
       clOptions.AddFlag("BasicRuntimeChecks", "Default");
+    }
+    if (!clOptions.HasFlag("BufferSecurityCheck")) {
+      clOptions.AddFlag("BufferSecurityCheck", "");
+    }
+    if (!clOptions.HasFlag("CallingConvention")) {
+      clOptions.AddFlag("CallingConvention", "");
+    }
+    // We cannot use the `Default` value, because it is incompatible with
+    // VS2019 & first releases of VS2022
+    if (!clOptions.HasFlag("FloatingPointModel")) {
+      clOptions.AddFlag("FloatingPointModel", "");
     }
     if (!clOptions.HasFlag("ForceConformanceInForLoopScope")) {
       clOptions.AddFlag("ForceConformanceInForLoopScope", "");
@@ -3974,6 +4003,8 @@ bool cmVisualStudio10TargetGenerator::ComputeCudaOptions(
         this->GeneratorTarget->GetExportMacro()) {
     cudaOptions.AddDefine(*exportMacro);
   }
+  // No need to add the SharedLibraryCompileDefs define here:
+  // it is added by VisualStudio itself
 
   // Get includes for this target
   cudaOptions.AddIncludes(this->GetIncludes(configName, "CUDA"));
@@ -3988,6 +4019,10 @@ bool cmVisualStudio10TargetGenerator::ComputeCudaOptions(
     cudaOptions.AddFlag("CudaRuntime", "Shared");
   } else if (cudaRuntime == "NONE"_s) {
     cudaOptions.AddFlag("CudaRuntime", "None");
+  }
+
+  if (cm::optional<MsvcCharSet> charSet = cudaOptions.GetCharSet()) {
+    this->CharSet.emplace(configName, *charSet);
   }
 
   if (this->ProjectType == VsProjectType::vcxproj && this->MSTools) {
@@ -4588,7 +4623,7 @@ bool cmVisualStudio10TargetGenerator::ComputeLinkOptions(
         if (this->GlobalGenerator->TargetsWindowsCE()) {
           linkOptions.AddFlag("SubSystem", "WindowsCE");
           if (this->GeneratorTarget->GetType() == cmStateEnums::EXECUTABLE) {
-            if (this->ClOptions[config]->UsingUnicode()) {
+            if (this->CharSet[config] == MsvcCharSet::Unicode) {
               linkOptions.AddFlag("EntryPointSymbol", "wWinMainCRTStartup");
             } else {
               linkOptions.AddFlag("EntryPointSymbol", "WinMainCRTStartup");
@@ -4601,7 +4636,7 @@ bool cmVisualStudio10TargetGenerator::ComputeLinkOptions(
         if (this->GlobalGenerator->TargetsWindowsCE()) {
           linkOptions.AddFlag("SubSystem", "WindowsCE");
           if (this->GeneratorTarget->GetType() == cmStateEnums::EXECUTABLE) {
-            if (this->ClOptions[config]->UsingUnicode()) {
+            if (this->CharSet[config] == MsvcCharSet::Unicode) {
               linkOptions.AddFlag("EntryPointSymbol", "mainWCRTStartup");
             } else {
               linkOptions.AddFlag("EntryPointSymbol", "mainACRTStartup");
