@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <set>
 #include <utility>
+#include <vector>
 
 #include <cmext/algorithm>
 
@@ -44,7 +45,7 @@ static bool cmLinkItemValidForDevice(std::string const& item)
   // * '-pthread' => drop
   // * '-a' => drop
   // * '-framework Name' (as one string) => drop
-  return (!cmHasLiteralPrefix(item, "-") || //
+  return (!cmHasPrefix(item, '-') ||        //
           cmHasLiteralPrefix(item, "-l") || //
           cmHasLiteralPrefix(item, "-L") || //
           cmHasLiteralPrefix(item, "--library"));

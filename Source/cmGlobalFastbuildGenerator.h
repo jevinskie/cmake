@@ -24,13 +24,8 @@
 class cmFastbuildTargetGenerator;
 class cmGeneratorTarget;
 class cmGlobalGeneratorFactory;
-class cmLinkLineComputer;
-class cmLocalGenerator;
 class cmMakefile;
-class cmOutputConverter;
-class cmStateDirectory;
 class cmake;
-enum class cmDepfileFormat;
 struct cmDocumentationEntry;
 
 #define FASTBUILD_DOLLAR_TAG "FASTBUILD_DOLLAR_TAG"
@@ -320,7 +315,8 @@ struct FastbuildTarget : public FastbuildTargetBase
   std::map<std::string, std::string> Variables;
   std::vector<FastbuildObjectListNode> ObjectListNodes;
   std::vector<FastbuildUnityNode> UnityNodes;
-  // Potentially multiple libs for different archs (apple only);
+  // Potentially multiple libs for different archs (apple only)
+  std::vector<FastbuildLinkerNode> CudaDeviceLinkNode;
   std::vector<FastbuildLinkerNode> LinkerNode;
   std::string RealOutput;
   FastbuildAliasNode PreBuildExecNodes, ExecNodes;
@@ -365,8 +361,8 @@ public:
     std::string const& projectDir, std::vector<std::string> const& targetNames,
     std::string const& config, int jobs, bool verbose,
     cmBuildOptions buildOptions = cmBuildOptions(),
-    std::vector<std::string> const& makeOptions =
-      std::vector<std::string>()) override;
+    std::vector<std::string> const& makeOptions = std::vector<std::string>(),
+    BuildTryCompile isInTryCompile = BuildTryCompile::No) override;
 
   std::unique_ptr<cmLocalGenerator> CreateLocalGenerator(
     cmMakefile* makefile) override;
@@ -410,7 +406,7 @@ public:
   {
     return "install/parallel";
   }
-  char const* GetTestTargetName() const override { return "test"; }
+  char const* GetTestTargetName() const override { return "RUN_TESTS"; }
   char const* GetPackageTargetName() const override { return "package"; }
   char const* GetPackageSourceTargetName() const override
   {

@@ -4,6 +4,8 @@ run_cmake(7zip)
 run_cmake(gnutar)
 run_cmake(gnutar-gz)
 run_cmake(pax)
+run_cmake(pax-lzma)
+run_cmake(pax-lzma2)
 run_cmake(pax-xz)
 run_cmake(pax-zstd)
 run_cmake(paxr)
@@ -11,6 +13,13 @@ run_cmake(paxr-bz2)
 run_cmake(zip)
 
 run_cmake(working-directory)
+
+# Check the --cmake-tar-threads option
+run_cmake(argument-validation-threads)
+run_cmake(threads-bz2)
+run_cmake(threads-gz)
+run_cmake(threads-xz)
+run_cmake(threads-zstd)
 
 # Extracting only selected files or directories
 run_cmake(zip-filtered)

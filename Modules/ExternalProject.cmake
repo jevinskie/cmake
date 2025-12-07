@@ -686,7 +686,7 @@ overridden if required.
     )
 
   This snippet defines two environment variables when configuring the example
-  project. The ``SDKROOT`` environment variable is set to ``macosx`, while
+  project. The ``SDKROOT`` environment variable is set to ``macosx``, while
   the value of ``PKG_CONFIG_PATH`` is forwarded to the external project.
 
   Environment modifications work with ``LIST_SEPARATOR`` to replace the
@@ -2285,7 +2285,7 @@ function(ExternalProject_Add_Step name step)
   if(environment)
     set(env_args "")
     foreach(env_mod IN LISTS environment)
-      if(env_mod MATCHES [[^([^=:]+)=([a-z]+):(.*)$]])
+      if(env_mod MATCHES [[^([^=:]+)=([a-z_]+):(.*)$]])
         set(_value "${CMAKE_MATCH_3}")
         # Replace the separator only in the value in case it is `:`.
         if(sep)

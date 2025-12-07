@@ -4,7 +4,6 @@
 
 #include <cstdlib>
 #include <memory>
-#include <ratio>
 #include <set>
 #include <utility>
 
@@ -869,7 +868,7 @@ bool cmCTestBuildHandler::RunMakeCommand(std::string const& command,
         auto* timedOutPtr = static_cast<bool*>(t->data);
         *timedOutPtr = true;
       },
-      timeout * 1000, 0);
+      timeout * 1000, 0, cm::uv_update_time::yes);
   }
 
   // For every chunk of data
@@ -1010,6 +1009,7 @@ bool cmCTestBuildHandler::RunMakeCommand(std::string const& command,
         break;
     }
   } else {
+    chain.Terminate();
     cmCTestOptionalLog(this->CTest, WARNING,
                        "There was a timeout" << std::endl, this->Quiet);
   }

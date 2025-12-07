@@ -123,6 +123,8 @@ bool cmCTestBuildAndTest::RunTest(std::vector<std::string> const& argv,
         std::cout << "\n*** Exception executing: " << exception.second;
       } break;
     }
+  } else {
+    chain.Terminate();
   }
 
   return result;
@@ -177,9 +179,7 @@ int cmCTestBuildAndTest::Run()
     return 1;
   }
 
-  cmake cm(cmake::RoleProject, cmState::Project);
-  cm.SetHomeDirectory("");
-  cm.SetHomeOutputDirectory("");
+  cmake cm(cmState::Role::Project);
   cmCTestBuildAndTestCaptureRAII captureRAII(cm);
   static_cast<void>(captureRAII);
 

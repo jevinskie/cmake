@@ -225,11 +225,24 @@ macro(CMAKE_HANDLE_SYSTEM_LIBRARIES)
     # Avoid messaging about curl-only dependencies.
     list(REMOVE_ITEM UTILITIES NGHTTP2)
   endif()
+
+  set(DEPS_SYSTEM "")
+  set(DEPS_BUNDLED "")
   foreach(util IN LISTS UTILITIES ITEMS KWIML)
     if(CMAKE_USE_SYSTEM_${util})
-      message(STATUS "Using system-installed ${util}")
+      string(APPEND DEPS_SYSTEM " ${util}")
+    else()
+      string(APPEND DEPS_BUNDLED " ${util}")
     endif()
   endforeach()
+  if(DEPS_SYSTEM)
+    message(STATUS "Using system-installed:${DEPS_SYSTEM}")
+  endif()
+  if(DEPS_BUNDLED)
+    message(STATUS "Using bundled:${DEPS_BUNDLED}")
+  endif()
+  unset(DEPS_SYSTEM)
+  unset(DEPS_BUNDLED)
 
   # Inform utility library header wrappers whether to use system versions.
   configure_file(Utilities/cmThirdParty.h.in Utilities/cmThirdParty.h @ONLY)
@@ -450,19 +463,6 @@ if(NOT CMake_TEST_EXTERNAL_CMAKE)
   # build the utilities
   include(CMakeBuildUtilities)
 
-  if(BUILD_QtDialog)
-    if(APPLE)
-      set(CMAKE_BUNDLE_VERSION
-        "${CMake_VERSION_MAJOR}.${CMake_VERSION_MINOR}.${CMake_VERSION_PATCH}")
-      set(CMAKE_BUNDLE_LOCATION "${CMAKE_INSTALL_PREFIX}")
-      # make sure CMAKE_INSTALL_PREFIX ends in /
-      if(NOT CMAKE_INSTALL_PREFIX MATCHES "/$")
-        string(APPEND CMAKE_INSTALL_PREFIX "/")
-      endif()
-      string(APPEND CMAKE_INSTALL_PREFIX "CMake.app/Contents")
-    endif()
-  endif()
-
   if(UNIX)
     # Install executables with the RPATH set for libraries outside the build tree.
     # This is also suitable for binaries in the build tree.  Avoid re-link on install.
@@ -548,12 +548,12 @@ if(NOT CMake_TEST_EXTERNAL_CMAKE)
   install(FILES
     "${CMake_LICENSE_FILE}"
     "${CMake_SOURCE_DIR}/CONTRIBUTORS.rst"
-    DESTINATION ${CMAKE_DOC_DIR})
+    DESTINATION ${CMake_INSTALL_DOC_DIR})
 
   # Install script directories.
   install(
     DIRECTORY Help Modules Templates
-    DESTINATION ${CMAKE_DATA_DIR}
+    DESTINATION ${CMake_INSTALL_DATA_DIR}
     FILE_PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
     DIRECTORY_PERMISSIONS OWNER_READ OWNER_EXECUTE OWNER_WRITE
                           GROUP_READ GROUP_EXECUTE

@@ -30,6 +30,7 @@
 #include "cmMessageType.h"
 #include "cmPolicies.h"
 #include "cmSourceFile.h"
+#include "cmSourceGroup.h"
 #include "cmState.h"
 #include "cmStateTypes.h"
 #include "cmStringAlgorithms.h"
@@ -797,6 +798,9 @@ cm::string_view cmGlobalVisualStudioGenerator::ExternalProjectTypeId(
   if (extension == ".dbproj"_s) {
     return Solution::Project::TypeIdDatabase;
   }
+  if (extension == ".wapproj"_s) {
+    return Solution::Project::TypeIdWinAppPkg;
+  }
   if (extension == ".wixproj"_s) {
     return Solution::Project::TypeIdWiX;
   }
@@ -988,26 +992,31 @@ cm::VS::Solution cmGlobalVisualStudioGenerator::CreateSolution(
       continue;
     }
 
-    cmValue vcprojName = gt->GetProperty("GENERATOR_FILE_NAME");
-    cmValue vcprojType = gt->GetProperty("GENERATOR_FILE_NAME_EXT");
-    if (vcprojName && vcprojType) {
+    if (cmValue vcprojName = gt->GetProperty("GENERATOR_FILE_NAME")) {
       cmLocalGenerator* lg = gt->GetLocalGenerator();
       std::string dir =
         root->MaybeRelativeToCurBinDir(lg->GetCurrentBinaryDirectory());
       if (dir == "."_s) {
         dir.clear();
-      } else if (!cmHasLiteralSuffix(dir, "/")) {
+      } else if (!cmHasSuffix(dir, '/')) {
         dir += "/";
       }
 
-      project->Path = cmStrCat(dir, *vcprojName, *vcprojType);
+      cm::string_view vcprojExt;
       if (this->TargetIsFortranOnly(gt)) {
+        vcprojExt = ".vfproj"_s;
         project->TypeId = Solution::Project::TypeIdFortran;
       } else if (gt->IsCSharpOnly()) {
+        vcprojExt = ".csproj"_s;
         project->TypeId = Solution::Project::TypeIdCSharp;
       } else {
+        vcprojExt = ".vcproj"_s;
         project->TypeId = Solution::Project::TypeIdDefault;
       }
+      if (cmValue genExt = gt->GetProperty("GENERATOR_FILE_NAME_EXT")) {
+        vcprojExt = *genExt;
+      }
+      project->Path = cmStrCat(dir, *vcprojName, vcprojExt);
 
       if (gt->IsDotNetSdkTarget() &&
           !cmGlobalVisualStudioGenerator::IsReservedTarget(gt->GetName())) {
@@ -1042,9 +1051,6 @@ cm::VS::Solution cmGlobalVisualStudioGenerator::CreateSolution(
   }
 
   cmMakefile* mf = root->GetMakefile();
-  // Unfortunately we have to copy the source groups because
-  // FindSourceGroup uses a regex which is modifying the group.
-  std::vector<cmSourceGroup> sourceGroups = mf->GetSourceGroups();
   std::vector<std::string> items =
     cmList{ root->GetMakefile()->GetProperty("VS_SOLUTION_ITEMS") };
   for (std::string item : items) {
@@ -1052,7 +1058,8 @@ cm::VS::Solution cmGlobalVisualStudioGenerator::CreateSolution(
       item =
         cmSystemTools::CollapseFullPath(item, mf->GetCurrentSourceDirectory());
     }
-    cmSourceGroup* sg = mf->FindSourceGroup(item, sourceGroups);
+    cmSourceGroup* sg =
+      cmSourceGroup::FindSourceGroup(item, mf->GetSourceGroups());
     std::string folderName = sg->GetFullName();
     if (folderName.empty()) {
       folderName = "Solution Items"_s;

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -25,6 +26,8 @@
 
 #include <cmext/algorithm>
 #include <cmext/string_view>
+
+#include <sys/types.h>
 
 #include "cmsys/FStream.hxx"
 #include "cmsys/Glob.hxx"
@@ -51,7 +54,7 @@
 #include "cmExternalMakefileProjectGenerator.h"
 #include "cmFileTimeCache.h"
 #include "cmGeneratorTarget.h"
-#include "cmGlobCacheEntry.h"
+#include "cmGlobCacheEntry.h" // IWYU pragma: keep
 #include "cmGlobalGenerator.h"
 #include "cmGlobalGeneratorFactory.h"
 #include "cmLinkLineComputer.h"
@@ -296,13 +299,13 @@ cmDocumentationEntry cmake::CMAKE_STANDARD_OPTIONS_TABLE[19] = {
     "not errors." }
 };
 
-cmake::cmake(Role role, cmState::Mode mode, cmState::ProjectKind projectKind)
+cmake::cmake(cmState::Role role, cmState::TryCompile isTryCompile)
   : CMakeWorkingDirectory(cmSystemTools::GetLogicalWorkingDirectory())
   , FileTimeCache(cm::make_unique<cmFileTimeCache>())
 #ifndef CMAKE_BOOTSTRAP
   , VariableWatch(cm::make_unique<cmVariableWatch>())
 #endif
-  , State(cm::make_unique<cmState>(mode, projectKind))
+  , State(cm::make_unique<cmState>(role, isTryCompile))
   , Messenger(cm::make_unique<cmMessenger>())
 {
   this->TraceFile.close();
@@ -320,14 +323,16 @@ cmake::cmake(Role role, cmState::Mode mode, cmState::ProjectKind projectKind)
 
   this->AddDefaultGenerators();
   this->AddDefaultExtraGenerators();
-  if (role == RoleScript || role == RoleProject) {
+  if (role == cmState::Role::Project || role == cmState::Role::FindPackage ||
+      role == cmState::Role::Script || role == cmState::Role::CTest ||
+      role == cmState::Role::CPack) {
     this->AddScriptingCommands();
   }
-  if (role == RoleProject) {
+  if (role == cmState::Role::Project || role == cmState::Role::FindPackage) {
     this->AddProjectCommands();
   }
 
-  if (mode == cmState::Project || mode == cmState::Help) {
+  if (role == cmState::Role::Project || role == cmState::Role::Help) {
     this->LoadEnvironmentPresets();
   }
 
@@ -445,6 +450,23 @@ std::string cmake::ReportCapabilities() const
   result = "Not supported";
 #endif
   return result;
+}
+
+bool cmake::RoleSupportsExitCode() const
+{
+  cmState::Role const role = this->State->GetRole();
+  return role == cmState::Role::Script || role == cmState::Role::CTest;
+}
+
+cmake::CommandFailureAction cmake::GetCommandFailureAction() const
+{
+  switch (this->State->GetRole()) {
+    case cmState::Role::Project:
+    case cmState::Role::CTest:
+      return CommandFailureAction::EXIT_CODE;
+    default:
+      return CommandFailureAction::FATAL_ERROR;
+  }
 }
 
 void cmake::CleanupCommandsAndMacros()
@@ -651,6 +673,7 @@ bool cmake::SetCacheArgs(std::vector<std::string> const& args)
   };
 
   auto ScriptLambda = [&](std::string const& path, cmake* state) -> bool {
+    assert(this->State->GetRole() == cmState::Role::Script);
 #ifdef CMake_ENABLE_DEBUGGER
     // Script mode doesn't hit the usual code path in cmake::Run() that starts
     // the debugger, so start it manually here instead.
@@ -662,8 +685,6 @@ bool cmake::SetCacheArgs(std::vector<std::string> const& args)
     GetProjectCommandsInScriptMode(state->GetState());
     // Documented behavior of CMAKE{,_CURRENT}_{SOURCE,BINARY}_DIR is to be
     // set to $PWD for -P mode.
-    state->SetWorkingMode(SCRIPT_MODE,
-                          cmake::CommandFailureAction::FATAL_ERROR);
     state->SetHomeDirectory(cmSystemTools::GetLogicalWorkingDirectory());
     state->SetHomeOutputDirectory(cmSystemTools::GetLogicalWorkingDirectory());
     state->ReadListFile(args, path);
@@ -735,7 +756,7 @@ bool cmake::SetCacheArgs(std::vector<std::string> const& args)
   for (decltype(args.size()) i = 1; i < args.size(); ++i) {
     std::string const& arg = args[i];
 
-    if (arg == "--" && this->GetWorkingMode() == SCRIPT_MODE) {
+    if (arg == "--" && this->State->GetRole() == cmState::Role::Script) {
       // Stop processing CMake args and avoid possible errors
       // when arbitrary args are given to CMake script.
       break;
@@ -750,7 +771,7 @@ bool cmake::SetCacheArgs(std::vector<std::string> const& args)
     }
   }
 
-  if (this->GetWorkingMode() == FIND_PACKAGE_MODE) {
+  if (this->State->GetRole() == cmState::Role::FindPackage) {
     return this->FindPackage(args);
   }
 
@@ -804,7 +825,7 @@ void cmake::ReadListFile(std::vector<std::string> const& args,
     snapshot.GetDirectory().SetCurrentSource(this->GetHomeDirectory());
     snapshot.SetDefaultDefinitions();
     cmMakefile mf(gg, snapshot);
-    if (this->GetWorkingMode() != NORMAL_MODE) {
+    if (this->State->GetRole() == cmState::Role::Script) {
       mf.SetScriptModeFile(cmSystemTools::ToNormalizedPathOnDisk(path));
       mf.SetArgcArgv(args);
     }
@@ -1426,7 +1447,7 @@ void cmake::SetArgs(std::vector<std::string> const& args)
     // iterate each argument
     std::string const& arg = args[i];
 
-    if (this->GetWorkingMode() == SCRIPT_MODE && arg == "--") {
+    if (this->State->GetRole() == cmState::Role::Script && arg == "--") {
       // Stop processing CMake args and avoid possible errors
       // when arbitrary args are given to CMake script.
       break;
@@ -1462,7 +1483,7 @@ void cmake::SetArgs(std::vector<std::string> const& args)
     if (!parsedCorrectly) {
       cmSystemTools::Error("Run 'cmake --help' for all supported options.");
       exit(1);
-    } else if (!matched && cmHasLiteralPrefix(arg, "-")) {
+    } else if (!matched && cmHasPrefix(arg, '-')) {
       possibleUnknownArg = arg;
     } else if (!matched) {
       bool parsedDirectory = this->SetDirectoriesFromFile(arg);
@@ -1472,12 +1493,14 @@ void cmake::SetArgs(std::vector<std::string> const& args)
     }
   }
 
-  if (!extraProvidedPath.empty() && this->GetWorkingMode() == NORMAL_MODE) {
+  if (!extraProvidedPath.empty() &&
+      this->State->GetRole() == cmState::Role::Project) {
     this->IssueMessage(MessageType::WARNING,
                        cmStrCat("Ignoring extra path from command line:\n \"",
                                 extraProvidedPath, '"'));
   }
-  if (!possibleUnknownArg.empty() && this->GetWorkingMode() != SCRIPT_MODE) {
+  if (!possibleUnknownArg.empty() &&
+      this->State->GetRole() != cmState::Role::Script) {
     cmSystemTools::Error(cmStrCat("Unknown argument ", possibleUnknownArg));
     cmSystemTools::Error("Run 'cmake --help' for all supported options.");
     exit(1);
@@ -1526,7 +1549,7 @@ void cmake::SetArgs(std::vector<std::string> const& args)
     !presetName.empty();
 #endif
 
-  if (this->CurrentWorkingMode == cmake::NORMAL_MODE && !haveSourceDir &&
+  if (this->State->GetRole() == cmState::Role::Project && !haveSourceDir &&
       !haveBinaryDir && !havePreset) {
     this->IssueMessage(
       MessageType::WARNING,
@@ -1569,8 +1592,7 @@ void cmake::SetArgs(std::vector<std::string> const& args)
         presetsGraph.PrintAllPresets();
       }
 
-      this->SetWorkingMode(WorkingMode::HELP_MODE,
-                           cmake::CommandFailureAction::FATAL_ERROR);
+      this->State->SetRoleToHelpForListPresets();
       return;
     }
 
@@ -1889,7 +1911,7 @@ bool cmake::SetDirectoriesFromFile(std::string const& arg)
     if (this->LoadCache(cachePath)) {
       cmValue existingValue =
         this->State->GetCacheEntryValue("CMAKE_HOME_DIRECTORY");
-      if (existingValue) {
+      if (existingValue && !existingValue.IsEmpty()) {
         this->SetHomeOutputDirectory(cachePath);
         this->SetHomeDirectory(*existingValue);
         return true;
@@ -2137,7 +2159,7 @@ void cmake::SetHomeDirectoryViaCommandLine(std::string const& path)
 
   auto prev_path = this->GetHomeDirectory();
   if (prev_path != path && !prev_path.empty() &&
-      this->GetWorkingMode() == NORMAL_MODE) {
+      this->State->GetRole() == cmState::Role::Project) {
     this->IssueMessage(
       MessageType::WARNING,
       cmStrCat("Ignoring extra path from command line:\n \"", prev_path, '"'));
@@ -2147,12 +2169,13 @@ void cmake::SetHomeDirectoryViaCommandLine(std::string const& path)
 
 void cmake::SetHomeDirectory(std::string const& dir)
 {
+  assert(!dir.empty());
   this->State->SetSourceDirectory(dir);
   if (this->CurrentSnapshot.IsValid()) {
     this->CurrentSnapshot.SetDefinition("CMAKE_SOURCE_DIR", dir);
   }
 
-  if (this->State->GetProjectKind() == cmState::ProjectKind::Normal) {
+  if (this->State->GetIsTryCompile() == cmState::TryCompile::No) {
     this->Messenger->SetTopSource(this->GetHomeDirectory());
   } else {
     this->Messenger->SetTopSource(cm::nullopt);
@@ -2166,6 +2189,7 @@ std::string const& cmake::GetHomeDirectory() const
 
 void cmake::SetHomeOutputDirectory(std::string const& dir)
 {
+  assert(!dir.empty());
   this->State->SetBinaryDirectory(dir);
   if (this->CurrentSnapshot.IsValid()) {
     this->CurrentSnapshot.SetDefinition("CMAKE_BINARY_DIR", dir);
@@ -2705,7 +2729,7 @@ int cmake::ActualConfigure()
   auto endTime = std::chrono::steady_clock::now();
 
   // configure result
-  if (this->GetWorkingMode() == cmake::NORMAL_MODE) {
+  if (this->State->GetRole() == cmState::Role::Project) {
     std::ostringstream msg;
     if (cmSystemTools::GetErrorOccurredFlag()) {
       msg << "Configuring incomplete, errors occurred!";
@@ -2936,7 +2960,7 @@ int cmake::Run(std::vector<std::string> const& args, bool noconfigure)
   if (cmSystemTools::GetErrorOccurredFlag()) {
     return -1;
   }
-  if (this->GetWorkingMode() == HELP_MODE) {
+  if (this->State->GetRole() == cmState::Role::Help) {
     return 0;
   }
 
@@ -2966,7 +2990,7 @@ int cmake::Run(std::vector<std::string> const& args, bool noconfigure)
     return 0;
   }
 
-  if (this->GetWorkingMode() == NORMAL_MODE) {
+  if (this->State->GetRole() == cmState::Role::Project) {
     if (this->FreshCache) {
       this->DeleteCache(this->GetHomeOutputDirectory());
     }
@@ -3013,7 +3037,7 @@ int cmake::Run(std::vector<std::string> const& args, bool noconfigure)
 #endif
 
   // In script mode we terminate after running the script.
-  if (this->GetWorkingMode() != NORMAL_MODE) {
+  if (this->State->GetRole() != cmState::Role::Project) {
     if (cmSystemTools::GetErrorOccurredFlag()) {
       return -1;
     }
@@ -3383,7 +3407,7 @@ void cmake::UpdateProgress(std::string const& msg, float prog)
 
 bool cmake::GetIsInTryCompile() const
 {
-  return this->State->GetProjectKind() == cmState::ProjectKind::TryCompile;
+  return this->State->GetIsTryCompile() == cmState::TryCompile::Yes;
 }
 
 void cmake::AppendGlobalGeneratorsDocumentation(
@@ -3473,9 +3497,7 @@ int cmake::CheckBuildSystem()
   // Read the rerun check file and use it to decide whether to do the
   // global generate.
   // Actually, all we need is the `set` command.
-  cmake cm(RoleScript, cmState::Unknown);
-  cm.SetHomeDirectory("");
-  cm.SetHomeOutputDirectory("");
+  cmake cm(cmState::Role::Script);
   cm.GetCurrentSnapshot().SetDefaultDefinitions();
   cmGlobalGenerator gg(&cm);
   cmMakefile mf(&gg, cm.GetCurrentSnapshot());
@@ -3816,9 +3838,6 @@ int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
                  std::string const& presetName, bool listPresets,
                  std::vector<std::string> const& args)
 {
-  this->SetHomeDirectory("");
-  this->SetHomeOutputDirectory("");
-
 #if !defined(CMAKE_BOOTSTRAP)
   if (!presetName.empty() || listPresets) {
     this->SetHomeDirectory(cmSystemTools::GetLogicalWorkingDirectory());
@@ -3898,7 +3917,7 @@ int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
       return 1;
     }
 
-    if (!expandedConfigurePreset->BinaryDir.empty()) {
+    if (dir.empty() && !expandedConfigurePreset->BinaryDir.empty()) {
       dir = expandedConfigurePreset->BinaryDir;
     }
 
@@ -4013,39 +4032,32 @@ int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
     cmGlobalVisualStudio14Generator::GetGenerateStampList();
 
   // Note that the stampList file only exists for VS generators.
-  if (cmSystemTools::FileExists(stampList)) {
-
+  if (cmSystemTools::FileExists(stampList) &&
+      !cmakeCheckStampList(stampList)) {
+    // Upgrade cmake role from --build to reconfigure the project.
+    this->State->SetRoleToProjectForCMakeBuildVsReconfigure();
     this->AddScriptingCommands();
+    this->AddProjectCommands();
 
-    if (!cmakeCheckStampList(stampList)) {
-      // Correctly initialize the home (=source) and home output (=binary)
-      // directories, which is required for running the generation step.
-      std::string homeOrig = this->GetHomeDirectory();
-      std::string homeOutputOrig = this->GetHomeOutputDirectory();
-      this->SetDirectoriesFromFile(cachePath);
+    // Correctly initialize the home (=source) and home output (=binary)
+    // directories, which is required for running the generation step.
+    this->SetDirectoriesFromFile(cachePath);
 
-      this->AddProjectCommands();
-
-      int ret = this->Configure();
-      if (ret) {
-        cmSystemTools::Message("CMake Configure step failed.  "
-                               "Build files cannot be regenerated correctly.");
-        return ret;
-      }
-      ret = this->Generate();
-      if (ret) {
-        cmSystemTools::Message("CMake Generate step failed.  "
-                               "Build files cannot be regenerated correctly.");
-        return ret;
-      }
-      std::string message = cmStrCat("Build files have been written to: ",
-                                     this->GetHomeOutputDirectory());
-      this->UpdateProgress(message, -1);
-
-      // Restore the previously set directories to their original value.
-      this->SetHomeDirectory(homeOrig);
-      this->SetHomeOutputDirectory(homeOutputOrig);
+    int ret = this->Configure();
+    if (ret) {
+      cmSystemTools::Message("CMake Configure step failed.  "
+                             "Build files cannot be regenerated correctly.");
+      return ret;
     }
+    ret = this->Generate();
+    if (ret) {
+      cmSystemTools::Message("CMake Generate step failed.  "
+                             "Build files cannot be regenerated correctly.");
+      return ret;
+    }
+    std::string message = cmStrCat("Build files have been written to: ",
+                                   this->GetHomeOutputDirectory());
+    this->UpdateProgress(message, -1);
   }
 #endif
 
@@ -4093,8 +4105,6 @@ int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
 
 bool cmake::Open(std::string const& dir, DryRun dryRun)
 {
-  this->SetHomeDirectory("");
-  this->SetHomeOutputDirectory("");
   if (!cmSystemTools::FileIsDirectory(dir)) {
     if (dryRun == DryRun::No) {
       std::cerr << "Error: " << dir << " is not a directory\n";
@@ -4509,10 +4519,14 @@ void cmake::SetCMakeListName(std::string const& name)
 
 std::string cmake::GetCMakeListFile(std::string const& dir) const
 {
-  std::string listFile = cmStrCat(dir, '/', this->CMakeListName);
-  if (this->CMakeListName.empty() ||
-      !cmSystemTools::FileExists(listFile, true)) {
-    return cmStrCat(dir, "/CMakeLists.txt");
+  assert(!dir.empty());
+  cm::string_view const slash = dir.back() != '/' ? "/"_s : ""_s;
+  std::string listFile;
+  if (!this->CMakeListName.empty()) {
+    listFile = cmStrCat(dir, slash, this->CMakeListName);
+  }
+  if (listFile.empty() || !cmSystemTools::FileExists(listFile, true)) {
+    listFile = cmStrCat(dir, slash, "CMakeLists.txt");
   }
   return listFile;
 }

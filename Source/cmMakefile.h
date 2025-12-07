@@ -612,10 +612,16 @@ public:
   bool CanIWriteThisFile(std::string const& fileName) const;
 
 #if !defined(CMAKE_BOOTSTRAP)
+
+  /**
+   * Resolve source group genex.
+   */
+  void ResolveSourceGroupGenex(cmLocalGenerator* lg);
+
   /**
    * Get the vector source groups.
    */
-  std::vector<cmSourceGroup> const& GetSourceGroups() const
+  SourceGroupVector const& GetSourceGroups() const
   {
     return this->SourceGroups;
   }
@@ -648,12 +654,6 @@ public:
    * The name will be tokenized.
    */
   cmSourceGroup* GetOrCreateSourceGroup(std::string const& name);
-
-  /**
-   * find what source group this source is in
-   */
-  cmSourceGroup* FindSourceGroup(std::string const& source,
-                                 std::vector<cmSourceGroup>& groups) const;
 #endif
 
   /**
@@ -1131,7 +1131,7 @@ protected:
   std::string DefineFlags;
 
 #if !defined(CMAKE_BOOTSTRAP)
-  std::vector<cmSourceGroup> SourceGroups;
+  SourceGroupVector SourceGroups;
   size_t ObjectLibrariesSourceGroupIndex;
 #endif
 

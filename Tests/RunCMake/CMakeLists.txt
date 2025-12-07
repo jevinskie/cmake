@@ -407,7 +407,7 @@ add_RunCMake_test(Configure -DMSVC_IDE=${MSVC_IDE})
 add_RunCMake_test(CpsExportImportBuild)
 add_RunCMake_test(CpsExportImportInstall)
 add_RunCMake_test(DisallowedCommands)
-if("${CMAKE_GENERATOR}" MATCHES "Unix Makefiles|Ninja")
+if("${CMAKE_GENERATOR}" MATCHES "Unix Makefiles|Ninja|FASTBuild")
   add_RunCMake_test(ExportCompileCommands)
 endif()
 add_RunCMake_test(ExcludeFromAll)
@@ -523,6 +523,7 @@ add_RunCMake_test(GenEx-TARGET_IMPORT_FILE)
 add_RunCMake_test(GenEx-GENEX_EVAL)
 add_RunCMake_test(GenEx-TARGET_PROPERTY)
 add_RunCMake_test(GenEx-TARGET_RUNTIME_DLLS)
+add_RunCMake_test(GenEx-STRING)
 add_RunCMake_test(GenEx-PATH)
 add_RunCMake_test(GenEx-PATH_EQUAL)
 add_RunCMake_test(GenEx-LIST)
@@ -719,6 +720,7 @@ foreach(var
     list(APPEND file-DOWNLOAD_ARGS -D${var}=${${var}})
   endif()
 endforeach()
+add_RunCMake_test(file-CREATE_LINK)
 add_RunCMake_test(file-DOWNLOAD)
 add_RunCMake_test(file-MAKE_DIRECTORY)
 add_RunCMake_test(file-RPATH
@@ -832,11 +834,14 @@ set_property(TEST RunCMake.DependencyGraph APPEND PROPERTY LABELS "Fortran")
 
 # Add C++ Module tests.
 add_RunCMake_test(CXXModules
+  -DCMake_TEST_CXX_STDLIB_MODULES_JSON=${CMake_TEST_CXX_STDLIB_MODULES_JSON}
+)
+add_RunCMake_test(CXXModulesCompile
   -DCMake_TEST_MODULE_COMPILATION=${CMake_TEST_MODULE_COMPILATION}
   -DCMake_TEST_MODULE_COMPILATION_RULES=${CMake_TEST_MODULE_COMPILATION_RULES}
   -DCMake_TEST_CXX_STDLIB_MODULES_JSON=${CMake_TEST_CXX_STDLIB_MODULES_JSON}
 )
-set_property(TEST RunCMake.CXXModules APPEND
+set_property(TEST RunCMake.CXXModules RunCMake.CXXModulesCompile APPEND
   PROPERTY LABELS "CXXModules")
 
 # ctresalloc links against CMakeLib and CTestLib, which means it can't be built
@@ -1014,7 +1019,8 @@ add_RunCMake_test(target_link_libraries-LINKER-prefix -DCMAKE_SYSTEM_NAME=${CMAK
                                                       -DCMAKE_C_COMPILER_ID=${CMAKE_C_COMPILER_ID}
                                                       -DCMAKE_C_COMPILER_FRONTEND_VARIANT=${CMAKE_C_COMPILER_FRONTEND_VARIANT})
 add_RunCMake_test(add_link_options -DCMAKE_C_COMPILER_ID=${CMAKE_C_COMPILER_ID})
-add_RunCMake_test(target_link_options -DCMAKE_C_COMPILER_ID=${CMAKE_C_COMPILER_ID}
+add_RunCMake_test(target_link_options -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
+                                      -DCMAKE_C_COMPILER_ID=${CMAKE_C_COMPILER_ID}
                                       -DCMake_TEST_CUDA=${CMake_TEST_CUDA})
 set_property(TEST RunCMake.target_link_options APPEND
   PROPERTY LABELS "CUDA")
@@ -1333,6 +1339,7 @@ add_RunCMake_test(AutoExportDll
 add_RunCMake_test(AndroidMK)
 add_RunCMake_test(ExportPackageInfo)
 add_RunCMake_test(InstallPackageInfo)
+add_RunCMake_test(InstallExportsAsPackageInfo)
 
 if(CMake_TEST_ANDROID_NDK OR CMake_TEST_ANDROID_STANDALONE_TOOLCHAIN)
   if(NOT "${CMAKE_GENERATOR}" MATCHES "Make|Ninja|Visual Studio 1[456]")
@@ -1367,6 +1374,7 @@ add_RunCMake_test("CTestCommandExpandLists")
 add_RunCMake_test(PrecompileHeaders -DCMAKE_C_COMPILER_ID=${CMAKE_C_COMPILER_ID}
   -DCMAKE_C_SIMULATE_ID=${CMAKE_C_SIMULATE_ID}
   -DCMAKE_C_COMPILER_VERSION=${CMAKE_C_COMPILER_VERSION})
+add_RunCMake_test(PrecompileHeaders-Reuse -DCMAKE_C_COMPILER_ID=${CMAKE_C_COMPILER_ID})
 
 # This test can take a long time due to the number of test cases.
 # Provide an option to customize it.
@@ -1439,7 +1447,8 @@ if (CMake_TEST_Renesas_TOOLCHAINS)
   set_property(TEST RunCMake.Renesas APPEND PROPERTY LABELS "Renesas")
 endif()
 if(CMake_TEST_Emscripten_TOOLCHAINS)
-  add_RunCMake_test(Emscripten -DCMake_TEST_Emscripten_TOOLCHAINS=${CMake_TEST_Emscripten_TOOLCHAINS})
+  add_RunCMake_test(Emscripten -DCMake_TEST_Emscripten_TOOLCHAINS=${CMake_TEST_Emscripten_TOOLCHAINS}
+                               -DCMake_TEST_Emscripten_NODE=${CMake_TEST_Emscripten_NODE})
   set_property(TEST RunCMake.Emscripten APPEND PROPERTY LABELS "Emscripten")
 endif()
 

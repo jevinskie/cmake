@@ -205,15 +205,6 @@ public:
                                    CopyInputRecent inputRecent,
                                    std::string* err = nullptr);
 
-  /** Copy a file if it is newer than the destination. */
-  static bool CopyFileIfNewer(std::string const& source,
-                              std::string const& destination);
-
-  /** Copy directory contents with specified copy behavior. */
-  static bool CopyADirectory(std::string const& source,
-                             std::string const& destination,
-                             CopyWhen when = CopyWhen::Always);
-
   enum class Replace
   {
     Yes,
@@ -556,6 +547,7 @@ public:
   {
     TarCompressGZip,
     TarCompressBZip2,
+    TarCompressLZMA,
     TarCompressXZ,
     TarCompressZstd,
     TarCompressNone
@@ -575,7 +567,7 @@ public:
                         cmTarCompression compressType, bool verbose,
                         std::string const& mtime = std::string(),
                         std::string const& format = std::string(),
-                        int compressionLevel = 0);
+                        int compressionLevel = 0, int numThreads = 1);
   static bool ExtractTar(std::string const& inFileName,
                          std::vector<std::string> const& files,
                          cmTarExtractTimestamps extractTimestamps,
@@ -644,7 +636,7 @@ public:
   static bool CheckRPath(std::string const& file, std::string const& newRPath);
 
   /** Remove a directory; repeat a few times in case of locked files.  */
-  static bool RepeatedRemoveDirectory(std::string const& dir);
+  static cmsys::Status RepeatedRemoveDirectory(std::string const& dir);
 
   /** Encode a string as a URL.  */
   static std::string EncodeURL(std::string const& in,

@@ -263,6 +263,7 @@ Variables that Change Behavior
    /variable/CMAKE_INCLUDE_PATH
    /variable/CMAKE_INSTALL_DEFAULT_COMPONENT_NAME
    /variable/CMAKE_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS
+   /variable/CMAKE_INSTALL_EXPORTS_AS_PACKAGE_INFO
    /variable/CMAKE_INSTALL_MESSAGE
    /variable/CMAKE_INSTALL_PREFIX
    /variable/CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT
@@ -483,7 +484,6 @@ Variables that Control the Build
    /variable/CMAKE_DEPENDS_USE_COMPILER
    /variable/CMAKE_DISABLE_PRECOMPILE_HEADERS
    /variable/CMAKE_DLL_NAME_WITH_SOVERSION
-   /variable/CMAKE_ENABLE_EXPORTS
    /variable/CMAKE_EXECUTABLE_ENABLE_EXPORTS
    /variable/CMAKE_EXE_LINKER_FLAGS
    /variable/CMAKE_EXE_LINKER_FLAGS_CONFIG
@@ -896,6 +896,7 @@ Deprecated Variables that Control the Build
 .. toctree::
    :maxdepth: 1
 
+   /variable/CMAKE_ENABLE_EXPORTS
    /variable/CMAKE_IOS_INSTALL_COMBINED
    /variable/CMAKE_LANG_USING_LINKER_MODE
    /variable/CMAKE_USE_RELATIVE_PATHS

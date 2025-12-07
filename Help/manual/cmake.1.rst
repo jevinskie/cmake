@@ -790,9 +790,13 @@ following options:
 .. option:: --preset <preset>, --preset=<preset>
 
   Use a build preset to specify build options. The project binary directory
-  is inferred from the ``configurePreset`` key. The current working directory
-  must contain CMake preset files.
-  See :manual:`preset <cmake-presets(7)>` for more details.
+  is inferred from the ``configurePreset`` key unless a directory is specified
+  after ``--build``. The current working directory must contain CMake preset
+  files. See :manual:`preset <cmake-presets(7)>` for more details.
+
+.. versionchanged:: 4.3
+  ``cmake --build`` now supports specifying a build directory and
+    preset together.
 
 .. option:: --list-presets
 
@@ -919,7 +923,23 @@ The options are:
 
 .. option:: --prefix <prefix>
 
-  Override the installation prefix, :variable:`CMAKE_INSTALL_PREFIX`.
+  Specifies an alternative installation prefix, temporarily replacing the
+  value of the :variable:`CMAKE_INSTALL_PREFIX` variable at the installation
+  phase.
+
+  The main purpose of this option is to allow installation to occur in an
+  arbitrary location.  This is commonly used in certain installation and
+  packaging workflows.  It is analogous to selecting the installation
+  directory during the installation phase.  For example, on Windows, where
+  a user may choose the destination folder for the project.
+
+  .. note::
+
+    When the project is using the :module:`GNUInstallDirs` module, there are
+    some :ref:`special cases <GNUInstallDirs special cases>` that are
+    evaluated based on the value of the :variable:`CMAKE_INSTALL_PREFIX`
+    variable during the configuration phase.  The results persist even if an
+    alternative prefix is used during installation.
 
 .. option:: --strip
 
@@ -1440,13 +1460,19 @@ Available commands are:
 
     .. versionadded:: 3.1
 
-    Compress the resulting archive with XZ.
+    Compress the resulting archive with XZ (LZMA2).
 
   .. option:: --zstd
 
     .. versionadded:: 3.15
 
     Compress the resulting archive with Zstandard.
+
+  .. option:: --lzma
+
+    .. versionadded:: 4.3
+
+    Compress the resulting archive with LZMA algorithm.
 
   .. option:: --files-from=<file>
 
@@ -1470,6 +1496,17 @@ Available commands are:
     .. versionadded:: 3.1
 
     Specify modification time recorded in tarball entries.
+
+  .. option:: --cmake-tar-threads=<number>
+
+    .. versionadded:: 4.3
+
+    Use the ``<number>`` threads to operate on the archive. Currently only
+    multi-threaded compression is supported.
+
+    If set to ``0``, the number of available cores on the machine will be
+    used instead. Note that not all compression modes support threading
+    in all environments.
 
   .. option:: --touch
 

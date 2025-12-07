@@ -50,6 +50,7 @@
 #include "cmRange.h"
 #include "cmSourceFile.h"
 #include "cmSourceFileLocation.h"
+#include "cmSourceGroup.h"
 #include "cmStack.h"
 #include "cmState.h"
 #include "cmStateDirectory.h"
@@ -194,7 +195,8 @@ cmMakefile::cmMakefile(cmGlobalGenerator* globalGenerator,
   this->AddSourceGroup("Object Files", "\\.(lo|o|obj)$");
 
   this->ObjectLibrariesSourceGroupIndex = this->SourceGroups.size();
-  this->SourceGroups.emplace_back("Object Libraries", "^MATCH_NO_SOURCES$");
+  this->SourceGroups.emplace_back(
+    cm::make_unique<cmSourceGroup>("Object Libraries", "^MATCH_NO_SOURCES$"));
 #endif
 }
 
@@ -585,7 +587,7 @@ bool cmMakefile::ExecuteCommand(cmListFileFunction const& lff,
         }
       }
       if (this->GetCMakeInstance()->HasScriptModeExitCode() &&
-          this->GetCMakeInstance()->GetWorkingMode() == cmake::SCRIPT_MODE) {
+          this->GetCMakeInstance()->RoleSupportsExitCode()) {
         // pass-through the exit code from inner cmake_language(EXIT) ,
         // possibly from include() or similar command...
         status.SetExitCode(this->GetCMakeInstance()->GetScriptModeExitCode());
@@ -2081,16 +2083,24 @@ namespace {
 }
 
 #if !defined(CMAKE_BOOTSTRAP)
+
+void cmMakefile::ResolveSourceGroupGenex(cmLocalGenerator* lg)
+{
+  for (auto const& sourceGroup : this->SourceGroups) {
+    sourceGroup->ResolveGenex(lg, {});
+  }
+}
+
 cmSourceGroup* cmMakefile::GetSourceGroup(
   std::vector<std::string> const& name) const
 {
   cmSourceGroup* sg = nullptr;
 
   // first look for source group starting with the same as the one we want
-  for (cmSourceGroup const& srcGroup : this->SourceGroups) {
-    std::string const& sgName = srcGroup.GetName();
+  for (auto const& srcGroup : this->SourceGroups) {
+    std::string const& sgName = srcGroup->GetName();
     if (sgName == name[0]) {
-      sg = const_cast<cmSourceGroup*>(&srcGroup);
+      sg = srcGroup.get();
       break;
     }
   }
@@ -2142,7 +2152,8 @@ void cmMakefile::AddSourceGroup(std::vector<std::string> const& name,
   if (i == -1) {
     // group does not exist nor belong to any existing group
     // add its first component
-    this->SourceGroups.emplace_back(name[0], regex);
+    this->SourceGroups.emplace_back(
+      cm::make_unique<cmSourceGroup>(name[0], regex));
     sg = this->GetSourceGroup(currentName);
     i = 0; // last component found
   }
@@ -2152,7 +2163,8 @@ void cmMakefile::AddSourceGroup(std::vector<std::string> const& name,
   }
   // build the whole source group path
   for (++i; i <= lastElement; ++i) {
-    sg->AddChild(cmSourceGroup(name[i], nullptr, sg->GetFullName().c_str()));
+    sg->AddChild(cm::make_unique<cmSourceGroup>(name[i], nullptr,
+                                                sg->GetFullName().c_str()));
     sg = sg->LookupChild(name[i]);
   }
 
@@ -2175,36 +2187,6 @@ cmSourceGroup* cmMakefile::GetOrCreateSourceGroup(std::string const& name)
   auto p = this->GetDefinition("SOURCE_GROUP_DELIMITER");
   return this->GetOrCreateSourceGroup(
     cmTokenize(name, p ? cm::string_view(*p) : R"(\/)"_s));
-}
-
-/**
- * Find a source group whose regular expression matches the filename
- * part of the given source name.  Search backward through the list of
- * source groups, and take the first matching group found.  This way
- * non-inherited SOURCE_GROUP commands will have precedence over
- * inherited ones.
- */
-cmSourceGroup* cmMakefile::FindSourceGroup(
-  std::string const& source, std::vector<cmSourceGroup>& groups) const
-{
-  // First search for a group that lists the file explicitly.
-  for (auto sg = groups.rbegin(); sg != groups.rend(); ++sg) {
-    cmSourceGroup* result = sg->MatchChildrenFiles(source);
-    if (result) {
-      return result;
-    }
-  }
-
-  // Now search for a group whose regex matches the file.
-  for (auto sg = groups.rbegin(); sg != groups.rend(); ++sg) {
-    cmSourceGroup* result = sg->MatchChildrenRegex(source);
-    if (result) {
-      return result;
-    }
-  }
-
-  // Shouldn't get here, but just in case, return the default group.
-  return groups.data();
 }
 #endif
 
@@ -3155,7 +3137,7 @@ void cmMakefile::AddTargetObject(std::string const& tgtName,
   // file that compiles to it. Needs a policy as it likely affects link
   // language selection if done unconditionally.
 #if !defined(CMAKE_BOOTSTRAP)
-  this->SourceGroups[this->ObjectLibrariesSourceGroupIndex].AddGroupFile(
+  this->SourceGroups[this->ObjectLibrariesSourceGroupIndex]->AddGroupFile(
     sf->ResolveFullPath());
 #endif
 }
@@ -3251,8 +3233,7 @@ int cmMakefile::TryCompile(std::string const& srcdir,
   // make sure the same generator is used
   // use this program as the cmake to be run, it should not
   // be run that way but the cmake object requires a valid path
-  cmake cm(cmake::RoleProject, cmState::Project,
-           cmState::ProjectKind::TryCompile);
+  cmake cm(cmState::Role::Project, cmState::TryCompile::Yes);
   auto gg = cm.CreateGlobalGenerator(this->GetGlobalGenerator()->GetName());
   if (!gg) {
     this->IssueMessage(MessageType::INTERNAL_ERROR,
@@ -3394,8 +3375,8 @@ cmState* cmMakefile::GetState() const
 void cmMakefile::DisplayStatus(std::string const& message, float s) const
 {
   cmake* cm = this->GetCMakeInstance();
-  if (cm->GetWorkingMode() == cmake::FIND_PACKAGE_MODE) {
-    // don't output any STATUS message in FIND_PACKAGE_MODE, since they will
+  if (cm->GetState()->GetRole() == cmState::Role::FindPackage) {
+    // don't output any STATUS message in --find-package mode, since they will
     // directly be fed to the compiler, which will be confused.
     return;
   }
@@ -4121,7 +4102,9 @@ bool cmMakefile::SetPolicy(cmPolicies::PolicyID id,
   this->StateSnapshot.SetPolicy(id, status);
 
   // Handle CMAKE_PARENT_LIST_FILE for CMP0198 policy changes
-  if (id == cmPolicies::CMP0198) {
+  if (id == cmPolicies::CMP0198 &&
+      this->GetCMakeInstance()->GetState()->GetRole() ==
+        cmState::Role::Project) {
     this->UpdateParentListFileVariable();
   }
 

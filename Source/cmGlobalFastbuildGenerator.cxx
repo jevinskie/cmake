@@ -44,8 +44,6 @@
 
 #endif
 
-class cmLinkLineComputer;
-
 #define FASTBUILD_REBUILD_BFF_TARGET_NAME "rebuild-bff"
 #define FASTBUILD_GLOB_CHECK_TARGET "glob-check"
 #define FASTBUILD_ENV_VAR_NAME "LocalEnv"
@@ -351,7 +349,8 @@ cmGlobalFastbuildGenerator::GenerateBuildCommand(
   std::string const& makeProgram, std::string const& /*projectName*/,
   std::string const& projectDir, std::vector<std::string> const& targetNames,
   std::string const& /*config*/, int /*jobs*/, bool verbose,
-  cmBuildOptions /*buildOptions*/, std::vector<std::string> const& makeOptions)
+  cmBuildOptions /*buildOptions*/, std::vector<std::string> const& makeOptions,
+  BuildTryCompile isInTryCompile)
 {
   GeneratedMakeCommand makeCommand;
   this->FastbuildCommand = this->SelectMakeProgram(makeProgram);
@@ -386,8 +385,12 @@ cmGlobalFastbuildGenerator::GenerateBuildCommand(
     makeCommand.Add("-verbose");
   }
 
-  // Make "rebuild-bff" target up-to-date before running the build.
+  // Don't do extra work during "TryCompile".
+  if (isInTryCompile == BuildTryCompile::Yes) {
+    return { std::move(makeCommand) };
+  }
 
+  // Make "rebuild-bff" target up-to-date before running the build.
   std::string output;
   ExecuteFastbuildTarget(projectDir, FASTBUILD_REBUILD_BFF_TARGET_NAME, output,
                          { "-why" });
@@ -468,15 +471,22 @@ void cmGlobalFastbuildGenerator::Generate()
 
   this->RemoveUnknownClangTidyExportFixesFiles();
 
-  if (this->GetCMakeInstance()->GetRegenerateDuringBuild()) {
+  if (this->GetCMakeInstance()->GetRegenerateDuringBuild() ||
+      this->GetCMakeInstance()->GetIsInTryCompile()) {
     return;
   }
-  // TODO: figure out how to skip this in TryCompile
+  std::string const workingDir =
+    this->GetCMakeInstance()->GetHomeOutputDirectory();
   //  Make "rebuild-bff" target up-to-date after the generation.
   //  This is actually a noop, it just asks CMake to touch the generated file
   //  so FASTBuild would consider the target as up-to-date.
-  AskCMakeToMakeRebuildBFFUpToDate(
-    this->GetCMakeInstance()->GetHomeOutputDirectory());
+  AskCMakeToMakeRebuildBFFUpToDate(workingDir);
+
+  if (this->GlobalSettingIsOn("CMAKE_EXPORT_COMPILE_COMMANDS")) {
+    std::string output;
+    ExecuteFastbuildTarget(workingDir, FASTBUILD_ALL_TARGET_NAME, output,
+                           { "-compdb" });
+  }
 }
 
 void cmGlobalFastbuildGenerator::AskCMakeToMakeRebuildBFFUpToDate(
@@ -888,6 +898,10 @@ void cmGlobalFastbuildGenerator::WriteCompilers()
     }
     WriteVariable("Executable", Quote(compilerPath), 1);
     WriteVariable("CompilerFamily", Quote(compilerDef.CompilerFamily), 1);
+    if (this->GetCMakeInstance()->GetIsInTryCompile()) {
+      WriteVariable("AllowCaching", "false", 1);
+      WriteVariable("AllowDistribution", "false", 1);
+    }
 
     if (compilerDef.UseLightCache && compilerDef.CompilerFamily == "msvc") {
       WriteVariable("UseLightCache_Experimental", "true", 1);
@@ -1401,6 +1415,9 @@ void cmGlobalFastbuildGenerator::WriteTarget(FastbuildTarget const& target)
 
   // Libraries / executables.
   if (!target.LinkerNode.empty()) {
+    for (auto const& cudaDeviceLinkNode : target.CudaDeviceLinkNode) {
+      this->WriteLinker(cudaDeviceLinkNode, target.AllowDistribution);
+    }
     for (auto const& linkerNode : target.LinkerNode) {
       this->WriteLinker(linkerNode, target.AllowDistribution);
     }
@@ -1614,7 +1631,7 @@ void cmGlobalFastbuildGenerator::WriteSolution()
         folderName,
         { { "Path", Quote(pathToFolder) },
           { "Projects",
-            cmStrCat("{", cmJoin(Wrap(projectsInFolder), ","), "}") } },
+            cmStrCat('{', cmJoin(Wrap(projectsInFolder), ","), '}') } },
         1);
       folders.emplace_back(std::move(folderName));
     }

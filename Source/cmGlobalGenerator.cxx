@@ -11,7 +11,6 @@
 #include <initializer_list>
 #include <iterator>
 #include <sstream>
-#include <type_traits>
 #include <utility>
 
 #include <cm/memory>
@@ -44,6 +43,7 @@
 #include "cmInstallRuntimeDependencySet.h"
 #include "cmLinkLineComputer.h"
 #include "cmList.h"
+#include "cmListFileCache.h"
 #include "cmLocalGenerator.h"
 #include "cmMSVC60LinkLineComputer.h"
 #include "cmMakefile.h"
@@ -70,8 +70,6 @@
 
 #  include "cmQtAutoGenGlobalInitializer.h"
 #endif
-
-class cmListFileBacktrace;
 
 std::string const kCMAKE_PLATFORM_INFO_INITIALIZED =
   "CMAKE_PLATFORM_INFO_INITIALIZED";
@@ -1187,7 +1185,7 @@ void cmGlobalGenerator::SetLanguageEnabledMaps(std::string const& l,
     std::string outputExtension = *p;
     this->LanguageToOutputExtension[l] = outputExtension;
     this->OutputExtensions[outputExtension] = outputExtension;
-    if (cmHasPrefix(outputExtension, ".")) {
+    if (cmHasPrefix(outputExtension, '.')) {
       outputExtension = outputExtension.substr(1);
       this->OutputExtensions[outputExtension] = outputExtension;
     }
@@ -1581,6 +1579,12 @@ bool cmGlobalGenerator::Compute()
 
   this->AddExtraIDETargets();
 
+#ifndef CMAKE_BOOTSTRAP
+  for (auto const& localGen : this->LocalGenerators) {
+    localGen->ResolveSourceGroupGenex();
+  }
+#endif
+
   // Trace the dependencies, after that no custom commands should be added
   // because their dependencies might not be handled correctly
   for (auto const& localGen : this->LocalGenerators) {
@@ -1611,6 +1615,7 @@ bool cmGlobalGenerator::Compute()
 
   for (auto const& localGen : this->LocalGenerators) {
     localGen->ComputeHomeRelativeOutputPath();
+    localGen->ComputeSourceGroupSearchIndex();
   }
 
   return true;
@@ -1789,7 +1794,17 @@ void cmGlobalGenerator::ComputeTargetOrder(cmGeneratorTarget const* gt,
 bool cmGlobalGenerator::ApplyCXXStdTargets()
 {
   for (auto const& gen : this->LocalGenerators) {
-    for (auto const& tgt : gen->GetGeneratorTargets()) {
+
+    // tgt->ApplyCXXStd can create targets itself, so we need iterators which
+    // won't be invalidated by that target creation
+    auto const& genTgts = gen->GetGeneratorTargets();
+    std::vector<cmGeneratorTarget*> existingTgts;
+    existingTgts.reserve(genTgts.size());
+    for (auto const& tgt : genTgts) {
+      existingTgts.push_back(tgt.get());
+    }
+
+    for (auto const& tgt : existingTgts) {
       if (!tgt->ApplyCXXStdTargets()) {
         return false;
       }
@@ -2161,9 +2176,10 @@ int cmGlobalGenerator::TryCompile(int jobs, std::string const& srcdir,
   cmBuildOptions defaultBuildOptions(false, fast, PackageResolveMode::Disable);
 
   std::stringstream ostr;
-  auto ret = this->Build(jobs, srcdir, bindir, projectName, newTarget, ostr,
-                         "", config, defaultBuildOptions, true,
-                         this->TryCompileTimeout, cmSystemTools::OUTPUT_NONE);
+  auto ret =
+    this->Build(jobs, srcdir, bindir, projectName, newTarget, ostr, "", config,
+                defaultBuildOptions, true, this->TryCompileTimeout,
+                cmSystemTools::OUTPUT_NONE, {}, BuildTryCompile::Yes);
   output = ostr.str();
   return ret;
 }
@@ -2173,7 +2189,8 @@ cmGlobalGenerator::GenerateBuildCommand(
   std::string const& /*unused*/, std::string const& /*unused*/,
   std::string const& /*unused*/, std::vector<std::string> const& /*unused*/,
   std::string const& /*unused*/, int /*unused*/, bool /*unused*/,
-  cmBuildOptions /*unused*/, std::vector<std::string> const& /*unused*/)
+  cmBuildOptions /*unused*/, std::vector<std::string> const& /*unused*/,
+  BuildTryCompile /*unused*/)
 {
   GeneratedMakeCommand makeCommand;
   makeCommand.Add("cmGlobalGenerator::GenerateBuildCommand not implemented");
@@ -2193,7 +2210,8 @@ int cmGlobalGenerator::Build(
   std::ostream& ostr, std::string const& makeCommandCSTR,
   std::string const& config, cmBuildOptions buildOptions, bool verbose,
   cmDuration timeout, cmSystemTools::OutputOption outputMode,
-  std::vector<std::string> const& nativeOptions)
+  std::vector<std::string> const& nativeOptions,
+  BuildTryCompile isInTryCompile)
 {
   bool hideconsole = cmSystemTools::GetRunCommandHideConsole();
 
@@ -2222,7 +2240,7 @@ int cmGlobalGenerator::Build(
 
   std::vector<GeneratedMakeCommand> makeCommand = this->GenerateBuildCommand(
     makeCommandCSTR, projectName, bindir, targets, realConfig, jobs, verbose,
-    buildOptions, nativeOptions);
+    buildOptions, nativeOptions, isInTryCompile);
 
   // Workaround to convince some commands to produce output.
   if (outputMode == cmSystemTools::OUTPUT_PASSTHROUGH &&

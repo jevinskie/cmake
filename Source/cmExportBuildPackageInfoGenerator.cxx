@@ -3,6 +3,7 @@
 #include "cmExportBuildPackageInfoGenerator.h"
 
 #include <cassert>
+#include <functional>
 #include <map>
 #include <utility>
 #include <vector>
@@ -31,7 +32,7 @@ bool cmExportBuildPackageInfoGenerator::GenerateMainFile(std::ostream& os)
     return false;
   }
 
-  if (!this->CheckDefaultTargets()) {
+  if (!this->CheckPackage()) {
     return false;
   }
 

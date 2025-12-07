@@ -546,7 +546,8 @@ cmGlobalXCodeGenerator::GenerateBuildCommand(
   std::string const& /*projectDir*/,
   std::vector<std::string> const& targetNames, std::string const& config,
   int jobs, bool /*verbose*/, cmBuildOptions /*buildOptions*/,
-  std::vector<std::string> const& makeOptions)
+  std::vector<std::string> const& makeOptions,
+  BuildTryCompile /*isInTryCompile */)
 {
   std::string const xcodebuild =
     this->SelectMakeProgram(makeProgram, this->GetXcodeBuildCommand());
@@ -4498,8 +4499,6 @@ bool cmGlobalXCodeGenerator::CreateGroups(
   std::vector<cmLocalGenerator*>& generators)
 {
   for (auto& generator : generators) {
-    cmMakefile* mf = generator->GetMakefile();
-    std::vector<cmSourceGroup> sourceGroups = mf->GetSourceGroups();
     for (auto const& gtgt : generator->GetGeneratorTargets()) {
       // Same skipping logic here as in CreateXCodeTargets so that we do not
       // end up with (empty anyhow) ZERO_CHECK, install, or test source
@@ -4511,9 +4510,9 @@ bool cmGlobalXCodeGenerator::CreateGroups(
         continue;
       }
 
-      auto addSourceToGroup = [this, mf, &gtgt,
-                               &sourceGroups](std::string const& source) {
-        cmSourceGroup* sourceGroup = mf->FindSourceGroup(source, sourceGroups);
+      auto addSourceToGroup = [this, &gtgt,
+                               &generator](std::string const& source) {
+        cmSourceGroup* sourceGroup = generator->FindSourceGroup(source);
         cmXCodeObject* pbxgroup =
           this->CreateOrGetPBXGroup(gtgt.get(), sourceGroup);
         std::string key = GetGroupMapKeyFromPath(gtgt.get(), source);

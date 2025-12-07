@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <functional>
 #include <initializer_list>
 #include <iostream>
 #include <map>
@@ -75,6 +76,8 @@
 #if defined(__BEOS__) || defined(__HAIKU__)
 #  include <be/kernel/OS.h> /* disable_debugger() API. */
 #endif
+
+struct tm;
 
 struct cmCTest::Private
 {
@@ -999,6 +1002,7 @@ bool cmCTest::RunMakeCommand(std::string const& command, std::string& output,
         break;
     }
   } else {
+    chain.Terminate();
     cmCTestLog(this, WARNING, "There was a timeout" << std::endl);
   }
 
@@ -2527,7 +2531,7 @@ int cmCTest::Run(std::vector<std::string> const& args)
         this->Impl->BuildAndTest.TestCommandArgs.emplace_back(args[i]);
       }
     }
-    if (!matched && cmHasLiteralPrefix(arg, "-") &&
+    if (!matched && cmHasPrefix(arg, '-') &&
         !cmHasLiteralPrefix(arg, "--preset")) {
       cmSystemTools::Error(cmStrCat("Unknown argument: ", arg));
       cmSystemTools::Error("Run 'ctest --help' for all supported options.");
@@ -2656,9 +2660,7 @@ int cmCTest::ExecuteTests(std::vector<std::string> const& args)
   cmCTestTestHandler handler(this);
 
   {
-    cmake cm(cmake::RoleScript, cmState::CTest);
-    cm.SetHomeDirectory("");
-    cm.SetHomeOutputDirectory("");
+    cmake cm(cmState::Role::CTest);
     cm.GetCurrentSnapshot().SetDefaultDefinitions();
     cmGlobalGenerator gg(&cm);
     cmMakefile mf(&gg, cm.GetCurrentSnapshot());
@@ -2670,11 +2672,14 @@ int cmCTest::ExecuteTests(std::vector<std::string> const& args)
 
   cmInstrumentation instrumentation(this->GetBinaryDir());
   auto processHandler = [&handler]() -> int {
-    return handler.ProcessHandler();
+    return handler.ProcessHandler() < 0 ? cmCTest::TEST_ERRORS : 0;
   };
-  int ret = instrumentation.InstrumentCommand("ctest", args, processHandler);
+  std::map<std::string, std::string> data;
+  data["showOnly"] = this->GetShowOnly() ? "1" : "0";
+  int ret =
+    instrumentation.InstrumentCommand("ctest", args, processHandler, data);
   instrumentation.CollectTimingData(cmInstrumentationQuery::Hook::PostCTest);
-  if (ret < 0) {
+  if (ret == cmCTest::TEST_ERRORS) {
     cmCTestLog(this, ERROR_MESSAGE, "Errors while running CTest\n");
     if (!this->Impl->OutputTestOutputOnTestFailure) {
       std::string const lastTestLog =
@@ -2685,10 +2690,8 @@ int cmCTest::ExecuteTests(std::vector<std::string> const& args)
                  "Use \"--rerun-failed --output-on-failure\" to re-run the "
                  "failed cases verbosely.\n");
     }
-    return cmCTest::TEST_ERRORS;
   }
-
-  return 0;
+  return ret;
 }
 
 int cmCTest::RunCMakeAndTest()
@@ -3284,7 +3287,8 @@ bool cmCTest::RunCommand(std::vector<std::string> const& args,
         auto* timedOutPtr = static_cast<bool*>(t->data);
         *timedOutPtr = true;
       },
-      static_cast<uint64_t>(timeout.count() * 1000.0), 0);
+      static_cast<uint64_t>(timeout.count() * 1000.0), 0,
+      cm::uv_update_time::yes);
   }
 
   std::vector<char> tempOutput;
@@ -3341,6 +3345,7 @@ bool cmCTest::RunCommand(std::vector<std::string> const& args,
 
   bool result = true;
   if (timedOut) {
+    chain.Terminate();
     char const* error_str = "Process terminated due to timeout\n";
     cmCTestLog(this, ERROR_MESSAGE, error_str << std::endl);
     stdErr->append(error_str, strlen(error_str));

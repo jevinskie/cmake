@@ -33,6 +33,8 @@ cm::string_view const Solution::Project::TypeIdVDProj =
   "54435603-DBB4-11D2-8724-00A0C9A8B90C"_s;
 cm::string_view const Solution::Project::TypeIdVisualBasic =
   "F184B08F-C81C-45F6-A57F-5ABD9991F28F"_s;
+cm::string_view const Solution::Project::TypeIdWinAppPkg =
+  "C7167F0D-BC9F-4E6E-AFE1-012C56B48DB5"_s;
 cm::string_view const Solution::Project::TypeIdWiX =
   "930C7802-8A8C-48F9-8165-68863BCCD9DD"_s;
 
@@ -311,7 +313,11 @@ void WriteSlnxProject(cmXMLElement& xmlParent, Solution const& solution,
 {
   cmXMLElement xmlProject(xmlParent, "Project");
   xmlProject.Attribute("Path", project.Path);
+  xmlProject.Attribute("Type", cmSystemTools::LowerCase(project.TypeId));
   xmlProject.Attribute("Id", cmSystemTools::LowerCase(project.Id));
+  if (project.Name == solution.StartupProject) {
+    xmlProject.Attribute("DefaultStartup", "true");
+  }
   for (Solution::Project const* d : project.BuildDependencies) {
     cmXMLElement(xmlProject, "BuildDependency").Attribute("Project", d->Path);
   }
@@ -319,6 +325,7 @@ void WriteSlnxProject(cmXMLElement& xmlParent, Solution const& solution,
   for (std::size_t i = 0; i < solution.Configs.size(); ++i) {
     if (project.Configs[i].Config != solution.Configs[i]) {
       cmXMLElement(xmlProject, "BuildType")
+        .Attribute("Solution", cmStrCat(solution.Configs[i], "|*"))
         .Attribute("Project", project.Configs[i].Config);
     }
     if (!project.Configs[i].Build) {
@@ -331,7 +338,10 @@ void WriteSlnxProject(cmXMLElement& xmlParent, Solution const& solution,
         .Attribute("Solution", cmStrCat(solution.Configs[i], "|*"));
     }
   }
-  if (project.Platform != solution.Platform) {
+  if (project.Platform != solution.Platform ||
+      // C# projects do not build interactively in the VS IDE unless they
+      // have an explicit platform, even if it matches the SLN platform.
+      project.TypeId == Solution::Project::TypeIdCSharp) {
     cmXMLElement(xmlProject, "Platform")
       .Attribute("Project", project.Platform);
   }

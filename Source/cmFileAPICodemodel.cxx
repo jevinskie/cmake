@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <functional>
 #include <limits>
 #include <map>
 #include <memory>
@@ -438,7 +439,6 @@ class Target
   std::string const& Config;
   std::string TopSource;
   std::string TopBuild;
-  std::vector<cmSourceGroup> SourceGroupsLocal;
   BacktraceData Backtraces;
 
   std::map<std::string, CompileData> CompileDataMap;
@@ -1066,7 +1066,7 @@ Json::Value DirectoryObject::DumpInstaller(cmInstallGenerator* gen)
     installer["destination"] = installDir->GetDestination(this->Config);
     Json::Value paths = Json::arrayValue;
     for (std::string const& dir : dirs) {
-      if (cmHasLiteralSuffix(dir, "/")) {
+      if (cmHasSuffix(dir, '/')) {
         paths.append(this->DumpInstallerPath(
           this->TopSource, dir.substr(0, dir.size() - 1), "."));
       } else {
@@ -1255,7 +1255,6 @@ Target::Target(cmGeneratorTarget* gt, unsigned int versionMajor,
   , TopSource(gt->GetGlobalGenerator()->GetCMakeInstance()->GetHomeDirectory())
   , TopBuild(
       gt->GetGlobalGenerator()->GetCMakeInstance()->GetHomeOutputDirectory())
-  , SourceGroupsLocal(this->GT->Makefile->GetSourceGroups())
   , Backtraces(this->TopSource)
 {
 }
@@ -1814,8 +1813,7 @@ Json::Value Target::DumpSource(cmGeneratorTarget::SourceAndKind const& sk,
     source["fileSetIndex"] = fsit->second;
   }
 
-  if (cmSourceGroup* sg =
-        this->GT->Makefile->FindSourceGroup(path, this->SourceGroupsLocal)) {
+  if (cmSourceGroup* sg = this->GT->LocalGenerator->FindSourceGroup(path)) {
     source["sourceGroupIndex"] = this->AddSourceGroup(sg, si);
   }
 
@@ -2302,8 +2300,10 @@ Json::Value Target::DumpOrderDependencies()
   // dependency.
   Json::Value jsonDependencies = Json::arrayValue;
   for (cmLinkItem const& linkItem : this->GT->GetUtilityItems()) {
-    // We don't want to dump dependencies on reserved targets like ZERO_CHECK
-    if (linkItem.Target &&
+    // We don't want to dump dependencies on reserved targets like ZERO_CHECK.
+    // We shouldn't see link items that are not targets, but for backward
+    // compatibility reasons, they are currently allowed but silently ignored.
+    if (!linkItem.Target ||
         cmGlobalGenerator::IsReservedTarget(linkItem.Target->GetName())) {
       continue;
     }

@@ -28,11 +28,7 @@
 
 class cmCustomCommand;
 class cmGeneratorTarget;
-class cmLinkLineComputer;
-class cmLocalGenerator;
 class cmMakefile;
-class cmOutputConverter;
-class cmStateDirectory;
 class cmake;
 struct cmCxxModuleExportInfo;
 
@@ -202,8 +198,8 @@ public:
     std::string const& projectDir, std::vector<std::string> const& targetNames,
     std::string const& config, int jobs, bool verbose,
     cmBuildOptions buildOptions = cmBuildOptions(),
-    std::vector<std::string> const& makeOptions =
-      std::vector<std::string>()) override;
+    std::vector<std::string> const& makeOptions = std::vector<std::string>(),
+    BuildTryCompile isInTryCompile = BuildTryCompile::No) override;
 
   // Setup target names
   char const* GetAllTargetName() const override { return "all"; }

@@ -34,10 +34,25 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "_valgrind")
     "^RunCMake.Autogen_Qt6_1$"
     "^RunCMake.GoogleTest$"
     "^RunCMake.CXXModules$"
+    "^RunCMake.CXXModulesCompile$"
     "^RunCMake.CommandLine$"
 
     # Too spurious under Valgrind.
     "^RunCMake.testUVProcessChain$"
+    )
+endif()
+
+if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "_xcode")
+  list(APPEND test_exclusions
+    # FIXME(#27358): Qt6Autogen.RerunMocOnAddFile fails in Xcode.
+    "^Qt6Autogen.RerunMocOnAddFile$"
+    )
+endif()
+
+if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "^macos_x86_64_")
+  list(APPEND test_exclusions
+    # FIXME(#27376): CMakeGUI's simpleConfigure:fail case hangs.
+    "^CMakeGUI$"
     )
 endif()
 

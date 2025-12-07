@@ -10,6 +10,7 @@
 
 #include <cm/memory>
 #include <cm/string>
+#include <cm/string_view>
 #include <cmext/algorithm>
 #include <cmext/memory>
 
@@ -469,7 +470,8 @@ cmGlobalGhsMultiGenerator::GenerateBuildCommand(
   std::string const& makeProgram, std::string const& projectName,
   std::string const& projectDir, std::vector<std::string> const& targetNames,
   std::string const& /*config*/, int jobs, bool verbose,
-  cmBuildOptions /*buildOptions*/, std::vector<std::string> const& makeOptions)
+  cmBuildOptions /*buildOptions*/, std::vector<std::string> const& makeOptions,
+  BuildTryCompile /*isInTryCompile*/)
 {
   GeneratedMakeCommand makeCommand;
 

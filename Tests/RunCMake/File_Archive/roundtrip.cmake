@@ -86,25 +86,12 @@ function(check_magic EXPECTED)
     ${ARGN}
   )
 
+  if(EXPECTED MATCHES "[^0-9a-f]" AND ACTUAL MATCHES "${EXPECTED}")
+    return()
+  endif()
+
   if(NOT ACTUAL STREQUAL EXPECTED)
     message(FATAL_ERROR
       "Actual [${ACTUAL}] does not match expected [${EXPECTED}]")
   endif()
-endfunction()
-
-
-function(check_compression_level COMPRESSION_LEVEL)
-  file(ARCHIVE_CREATE
-    OUTPUT "${FULL_OUTPUT_NAME}_compression_level"
-    FORMAT "${ARCHIVE_FORMAT}"
-    COMPRESSION_LEVEL ${COMPRESSION_LEVEL}
-    COMPRESSION "${COMPRESSION_TYPE}"
-    VERBOSE
-    PATHS ${COMPRESS_DIR})
-
-  file(ARCHIVE_EXTRACT
-    INPUT "${FULL_OUTPUT_NAME}_compression_level"
-    ${DECOMPRESSION_OPTIONS}
-    DESTINATION ${FULL_DECOMPRESS_DIR}
-    VERBOSE)
 endfunction()
