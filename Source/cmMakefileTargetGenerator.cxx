@@ -24,10 +24,11 @@
 #include "cmComputeLinkInformation.h"
 #include "cmCustomCommand.h"
 #include "cmCustomCommandGenerator.h"
-#include "cmFileSet.h"
+#include "cmFileSetMetadata.h"
 #include "cmGenExContext.h"
 #include "cmGeneratedFileStream.h"
 #include "cmGeneratorExpression.h"
+#include "cmGeneratorFileSet.h"
 #include "cmGeneratorOptions.h"
 #include "cmGeneratorTarget.h"
 #include "cmGlobalUnixMakefileGenerator3.h"
@@ -45,6 +46,7 @@
 #include "cmPolicies.h"
 #include "cmRange.h"
 #include "cmRulePlaceholderExpander.h"
+#include "cmScriptGenerator.h"
 #include "cmSourceFile.h"
 #include "cmSourceFileLocationKind.h"
 #include "cmState.h"
@@ -138,13 +140,8 @@ void cmMakefileTargetGenerator::GetDeviceLinkFlags(
 void cmMakefileTargetGenerator::GetTargetLinkFlags(
   std::string& flags, std::string const& linkLanguage)
 {
-  this->LocalGenerator->AppendFlags(
-    flags, this->GeneratorTarget->GetSafeProperty("LINK_FLAGS"));
-
-  std::string const linkFlagsConfig =
-    cmStrCat("LINK_FLAGS_", cmSystemTools::UpperCase(this->GetConfigName()));
-  this->LocalGenerator->AppendFlags(
-    flags, this->GeneratorTarget->GetSafeProperty(linkFlagsConfig));
+  this->LocalGenerator->AddTargetPropertyLinkFlags(
+    flags, this->GeneratorTarget, this->GetConfigName());
 
   std::vector<std::string> opts;
   this->GeneratorTarget->GetLinkOptions(opts, this->GetConfigName(),
@@ -352,28 +349,8 @@ void cmMakefileTargetGenerator::WriteTargetBuildRules()
   std::map<std::string, std::string> file_set_map;
 
   auto const* tgt = this->GeneratorTarget->Target;
-  for (auto const& name : tgt->GetAllFileSetNames()) {
-    auto const* file_set = tgt->GetFileSet(name);
-    if (!file_set) {
-      this->Makefile->IssueMessage(
-        MessageType::INTERNAL_ERROR,
-        cmStrCat("Target \"", tgt->GetName(),
-                 "\" is tracked to have file set \"", name,
-                 "\", but it was not found."));
-      continue;
-    }
-
-    auto fileEntries = file_set->CompileFileEntries();
-    auto directoryEntries = file_set->CompileDirectoryEntries();
-    auto directories = file_set->EvaluateDirectoryEntries(
-      directoryEntries, context, this->GeneratorTarget);
-
-    std::map<std::string, std::vector<std::string>> files;
-    for (auto const& entry : fileEntries) {
-      file_set->EvaluateFileEntry(directories, files, entry, context,
-                                  this->GeneratorTarget);
-    }
-
+  for (auto const* file_set : this->GeneratorTarget->GetAllFileSets()) {
+    auto files = file_set->GetFiles(context, this->GeneratorTarget).first;
     for (auto const& it : files) {
       for (auto const& filename : it.second) {
         file_set_map[filename] = file_set->GetType();
@@ -399,7 +376,7 @@ void cmMakefileTargetGenerator::WriteTargetBuildRules()
     auto const it = file_set_map.find(path);
     if (it != file_set_map.end()) {
       auto const& file_set_type = it->second;
-      if (file_set_type == "CXX_MODULES"_s) {
+      if (file_set_type == cm::FileSetMetadata::CXX_MODULES) {
         if (sf->GetLanguage() != "CXX"_s) {
           this->Makefile->IssueMessage(
             MessageType::FATAL_ERROR,
@@ -1469,9 +1446,9 @@ void cmMakefileTargetGenerator::WriteTargetDependRules()
       << "set(CMAKE_MULTIPLE_OUTPUT_PAIRS\n";
     /* clang-format on */
     for (auto const& pi : this->MultipleOutputPairs) {
-      *this->InfoFileStream
-        << "  " << cmOutputConverter::EscapeForCMake(pi.first) << " "
-        << cmOutputConverter::EscapeForCMake(pi.second) << "\n";
+      *this->InfoFileStream << "  " << cmScriptGenerator::Quote(pi.first)
+                            << ' ' << cmScriptGenerator::Quote(pi.second)
+                            << '\n';
     }
     *this->InfoFileStream << "  )\n\n";
   }
@@ -2334,9 +2311,12 @@ void cmMakefileTargetGenerator::AddIncludeFlags(std::string& flags,
       responseFlag = "@";
     }
     std::string const name = cmStrCat("includes_", lang, ".rsp");
-    std::string const arg = std::move(responseFlag) +
-      this->CreateResponseFile(name, includeFlags, this->FlagFileDepends[lang],
-                               lang);
+    std::string const includes_rsp = this->CreateResponseFile(
+      name, includeFlags, this->FlagFileDepends[lang], lang);
+    std::string const arg =
+      cmStrCat(std::move(responseFlag),
+               this->LocalGenerator->ConvertToOutputFormat(
+                 includes_rsp, cmOutputConverter::SHELL));
     this->LocalGenerator->AppendFlags(flags, arg);
   } else {
     this->LocalGenerator->AppendFlags(flags, includeFlags);

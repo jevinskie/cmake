@@ -17,16 +17,16 @@
 
 #include <cm/string_view>
 #include <cmext/algorithm>
-#include <cmext/string_view>
 
 #include <cm3p/json/value.h>
 
 #include "cmCryptoHash.h"
 #include "cmExportSet.h"
 #include "cmFileAPI.h"
-#include "cmFileSet.h"
+#include "cmFileSetMetadata.h"
 #include "cmGenExContext.h"
 #include "cmGeneratorExpression.h"
+#include "cmGeneratorFileSet.h"
 #include "cmGeneratorTarget.h"
 #include "cmGlobalGenerator.h"
 #include "cmInstallCxxModuleBmiGenerator.h"
@@ -48,7 +48,6 @@
 #include "cmListFileCache.h"
 #include "cmLocalGenerator.h"
 #include "cmMakefile.h"
-#include "cmMessageType.h"
 #include "cmRange.h"
 #include "cmSourceFile.h"
 #include "cmSourceGroup.h"
@@ -450,6 +449,7 @@ class Target
   {
     std::string Name;
     Json::Value SourceIndexes = Json::arrayValue;
+    Json::Value InterfaceSourceIndexes = Json::arrayValue;
   };
   std::unordered_map<cmSourceGroup const*, Json::ArrayIndex> SourceGroupsMap;
   std::vector<SourceGroup> SourceGroups;
@@ -463,6 +463,8 @@ class Target
   std::vector<CompileGroup> CompileGroups;
 
   using FileSetDatabase = std::map<std::string, Json::ArrayIndex>;
+
+  std::vector<cm::FileSetMetadata::Visibility> FileSetVisibilities;
 
   template <typename T>
   JBT<T> ToJBT(BT<T> const& bt)
@@ -484,7 +486,7 @@ class Target
   void ProcessLanguages();
   void ProcessLanguage(std::string const& lang);
 
-  Json::ArrayIndex AddSourceGroup(cmSourceGroup* sg, Json::ArrayIndex si);
+  Json::ArrayIndex AddSourceGroup(cmSourceGroup* sg);
   CompileData BuildCompileData(cmSourceFile* sf);
   CompileData MergeCompileData(CompileData const& fd);
   Json::ArrayIndex AddSourceCompileGroup(cmSourceFile* sf,
@@ -499,11 +501,14 @@ class Target
   Json::Value DumpLanguageStandard(JBTs<std::string> const& standard);
   Json::Value DumpDefine(JBT<std::string> const& def);
   std::pair<Json::Value, FileSetDatabase> DumpFileSets();
-  Json::Value DumpFileSet(cmFileSet const* fs,
+  Json::Value DumpFileSet(cmGeneratorFileSet const* fs,
                           std::vector<std::string> const& directories);
   Json::Value DumpSources(FileSetDatabase const& fsdb);
   Json::Value DumpSource(cmGeneratorTarget::SourceAndKind const& sk,
                          Json::ArrayIndex si, FileSetDatabase const& fsdb);
+  Json::Value DumpInterfaceSources(FileSetDatabase const& fsdb);
+  Json::Value DumpInterfaceSource(std::string path, Json::ArrayIndex si,
+                                  FileSetDatabase const& fsdb);
   Json::Value DumpSourceGroups();
   Json::Value DumpSourceGroup(SourceGroup& sg);
   Json::Value DumpCompileGroups();
@@ -1142,18 +1147,11 @@ Json::Value DirectoryObject::DumpInstaller(cmInstallGenerator* gen)
     auto* target = installFileSet->GetTarget();
 
     cm::GenEx::Context context(target->LocalGenerator, this->Config);
-
-    auto dirCges = fileSet->CompileDirectoryEntries();
-    auto dirs = fileSet->EvaluateDirectoryEntries(dirCges, context, target);
-
-    auto entryCges = fileSet->CompileFileEntries();
-    std::map<std::string, std::vector<std::string>> entries;
-    for (auto const& entryCge : entryCges) {
-      fileSet->EvaluateFileEntry(dirs, entries, entryCge, context, target);
-    }
+    auto dirs = fileSet->GetDirectories(context, target);
+    auto entries = fileSet->GetFiles(context, target);
 
     Json::Value files = Json::arrayValue;
-    for (auto const& it : entries) {
+    for (auto const& it : entries.first) {
       auto dir = it.first;
       if (!dir.empty()) {
         dir += '/';
@@ -1161,14 +1159,14 @@ Json::Value DirectoryObject::DumpInstaller(cmInstallGenerator* gen)
       for (auto const& file : it.second) {
         files.append(this->DumpInstallerPath(
           this->TopSource, file,
-          cmStrCat(dir, cmSystemTools::GetFilenameName(file))));
+          cmStrCat(dir, cmSystemTools::GetFilenameNameView(file))));
       }
     }
     installer["paths"] = std::move(files);
     installer["fileSetName"] = fileSet->GetName();
     installer["fileSetType"] = fileSet->GetType();
     installer["fileSetDirectories"] = Json::arrayValue;
-    for (auto const& dir : dirs) {
+    for (auto const& dir : dirs.first) {
       installer["fileSetDirectories"].append(
         RelativeIfUnder(this->TopSource, dir));
     }
@@ -1373,6 +1371,11 @@ Json::Value Target::Dump()
     // output a sources array to preserve backward compatibility
     target["sources"] = this->DumpSources(fileSetInfo.second);
 
+    auto interfaceSources = this->DumpInterfaceSources(fileSetInfo.second);
+    if (!interfaceSources.empty()) {
+      target["interfaceSources"] = std::move(interfaceSources);
+    }
+
     Json::Value folder = this->DumpFolder();
     if (!folder.isNull()) {
       target["folder"] = std::move(folder);
@@ -1466,7 +1469,7 @@ void Target::ProcessLanguage(std::string const& lang)
   }
 }
 
-Json::ArrayIndex Target::AddSourceGroup(cmSourceGroup* sg, Json::ArrayIndex si)
+Json::ArrayIndex Target::AddSourceGroup(cmSourceGroup* sg)
 {
   auto i = this->SourceGroupsMap.find(sg);
   if (i == this->SourceGroupsMap.end()) {
@@ -1476,7 +1479,6 @@ Json::ArrayIndex Target::AddSourceGroup(cmSourceGroup* sg, Json::ArrayIndex si)
     g.Name = sg->GetFullName();
     this->SourceGroups.push_back(std::move(g));
   }
-  this->SourceGroups[i->second].SourceIndexes.append(si);
   return i->second;
 }
 
@@ -1710,45 +1712,32 @@ std::pair<Json::Value, Target::FileSetDatabase> Target::DumpFileSets()
   Json::Value fsJson = Json::nullValue;
   FileSetDatabase fsdb;
 
-  // Build the fileset database.
-  auto const* tgt = this->GT->Target;
-  auto const& fs_names = tgt->GetAllFileSetNames();
+  // We record the visibility of each file set for later use when dumping
+  // interface sources, which needs to map files to file set visibility
+  // with only an index available. Those indexes match this vector.
+  this->FileSetVisibilities.clear();
 
-  if (!fs_names.empty()) {
+  // Build the fileset database.
+  auto const& fileSets = this->GT->GetAllFileSets();
+
+  if (!fileSets.empty()) {
     fsJson = Json::arrayValue;
     size_t fsIndex = 0;
-    for (auto const& fs_name : fs_names) {
-      auto const* fs = tgt->GetFileSet(fs_name);
-      if (!fs) {
-        this->GT->Makefile->IssueMessage(
-          MessageType::INTERNAL_ERROR,
-          cmStrCat("Target \"", tgt->GetName(),
-                   "\" is tracked to have file set \"", fs_name,
-                   "\", but it was not found."));
-        continue;
-      }
-
+    for (auto const* fs : fileSets) {
       cm::GenEx::Context context(this->GT->LocalGenerator, this->Config);
 
-      auto fileEntries = fs->CompileFileEntries();
-      auto directoryEntries = fs->CompileDirectoryEntries();
+      auto directories = fs->GetDirectories(context, this->GT);
 
-      auto directories =
-        fs->EvaluateDirectoryEntries(directoryEntries, context, this->GT);
+      fsJson.append(this->DumpFileSet(fs, directories.first));
+      this->FileSetVisibilities.push_back(fs->GetVisibility());
 
-      fsJson.append(this->DumpFileSet(fs, directories));
+      auto files_per_dirs = fs->GetFiles(context, this->GT);
 
-      std::map<std::string, std::vector<std::string>> files_per_dirs;
-      for (auto const& entry : fileEntries) {
-        fs->EvaluateFileEntry(directories, files_per_dirs, entry, context,
-                              this->GT);
-      }
-
-      for (auto const& files_per_dir : files_per_dirs) {
+      for (auto const& files_per_dir : files_per_dirs.first) {
         auto const& dir = files_per_dir.first;
         for (auto const& file : files_per_dir.second) {
           std::string sf_path;
-          if (dir.empty()) {
+          if (dir.empty() || cmSystemTools::FileIsFullPath(file)) {
             sf_path = file;
           } else {
             sf_path = cmStrCat(dir, '/', file);
@@ -1764,7 +1753,7 @@ std::pair<Json::Value, Target::FileSetDatabase> Target::DumpFileSets()
   return std::make_pair(fsJson, fsdb);
 }
 
-Json::Value Target::DumpFileSet(cmFileSet const* fs,
+Json::Value Target::DumpFileSet(cmGeneratorFileSet const* fs,
                                 std::vector<std::string> const& directories)
 {
   Json::Value fileSet = Json::objectValue;
@@ -1772,7 +1761,7 @@ Json::Value Target::DumpFileSet(cmFileSet const* fs,
   fileSet["name"] = fs->GetName();
   fileSet["type"] = fs->GetType();
   fileSet["visibility"] =
-    std::string(cmFileSetVisibilityToName(fs->GetVisibility()));
+    std::string(cm::FileSetMetadata::VisibilityToName(fs->GetVisibility()));
 
   Json::Value baseDirs = Json::arrayValue;
   for (auto const& directory : directories) {
@@ -1814,7 +1803,9 @@ Json::Value Target::DumpSource(cmGeneratorTarget::SourceAndKind const& sk,
   }
 
   if (cmSourceGroup* sg = this->GT->LocalGenerator->FindSourceGroup(path)) {
-    source["sourceGroupIndex"] = this->AddSourceGroup(sg, si);
+    Json::ArrayIndex const groupIndex = this->AddSourceGroup(sg);
+    source["sourceGroupIndex"] = groupIndex;
+    this->SourceGroups[groupIndex].SourceIndexes.append(si);
   }
 
   switch (sk.Kind) {
@@ -1836,6 +1827,70 @@ Json::Value Target::DumpSource(cmGeneratorTarget::SourceAndKind const& sk,
     case cmGeneratorTarget::SourceKindXaml:
     case cmGeneratorTarget::SourceKindUnityBatched:
       break;
+  }
+
+  return source;
+}
+
+Json::Value Target::DumpInterfaceSources(FileSetDatabase const& fsdb)
+{
+  Json::Value interfaceSources = Json::arrayValue;
+  auto dumpFile = [this, &interfaceSources, &fsdb](std::string const& file) {
+    std::string path = file;
+    if (!cmSystemTools::FileIsFullPath(path)) {
+      path = cmStrCat(
+        this->GT->GetLocalGenerator()->GetCurrentSourceDirectory(), '/', file);
+    }
+    path = cmSystemTools::CollapseFullPath(path);
+
+    interfaceSources.append(
+      this->DumpInterfaceSource(path, interfaceSources.size(), fsdb));
+  };
+
+  cmValue prop = this->GT->GetProperty("INTERFACE_SOURCES");
+  if (prop) {
+    cmList files{ cmGeneratorExpression::Evaluate(
+      *prop, this->GT->GetLocalGenerator(), this->Config, this->GT) };
+
+    for (std::string const& file : files) {
+      dumpFile(file);
+    }
+  }
+
+  for (auto const& fsIter : fsdb) {
+    Json::ArrayIndex const index = fsIter.second;
+    // FileSetVisibilities was populated by DumpFileSets() and will always
+    // have the same size as the file sets array that index is indexing into
+    if (this->FileSetVisibilities[index] !=
+        cm::FileSetMetadata::Visibility::Private) {
+      dumpFile(fsIter.first);
+    }
+  }
+
+  return interfaceSources;
+}
+
+Json::Value Target::DumpInterfaceSource(std::string path, Json::ArrayIndex si,
+                                        FileSetDatabase const& fsdb)
+{
+  Json::Value source = Json::objectValue;
+
+  cmSourceFile* sf = this->GT->Makefile->GetOrCreateSource(path);
+  path = sf->ResolveFullPath();
+  source["path"] = RelativeIfUnder(this->TopSource, path);
+  if (sf->GetIsGenerated()) {
+    source["isGenerated"] = true;
+  }
+
+  auto fsit = fsdb.find(path);
+  if (fsit != fsdb.end()) {
+    source["fileSetIndex"] = fsit->second;
+  }
+
+  if (cmSourceGroup* sg = this->GT->LocalGenerator->FindSourceGroup(path)) {
+    Json::ArrayIndex const groupIndex = this->AddSourceGroup(sg);
+    source["sourceGroupIndex"] = groupIndex;
+    this->SourceGroups[groupIndex].InterfaceSourceIndexes.append(si);
   }
 
   return source;
@@ -1951,6 +2006,9 @@ Json::Value Target::DumpSourceGroup(SourceGroup& sg)
   Json::Value group = Json::objectValue;
   group["name"] = sg.Name;
   group["sourceIndexes"] = std::move(sg.SourceIndexes);
+  if (!sg.InterfaceSourceIndexes.empty()) {
+    group["interfaceSourceIndexes"] = std::move(sg.InterfaceSourceIndexes);
+  }
   return group;
 }
 
@@ -2046,13 +2104,34 @@ Json::Value Target::DumpArtifacts()
   }
 
   // Add Windows-specific artifacts produced by the linker.
+  // NOTE: HasImportLibrary() only checks if the target SHOULD have an import
+  //       library, not whether it has one set.
   if (this->GT->HasImportLibrary(this->Config)) {
-    Json::Value artifact = Json::objectValue;
-    artifact["path"] =
-      RelativeIfUnder(this->TopBuild,
-                      this->GT->GetFullPath(
-                        this->Config, cmStateEnums::ImportLibraryArtifact));
-    artifacts.append(std::move(artifact)); // NOLINT(*)
+    std::string fullPath;
+    if (this->GT->IsImported()) {
+      // This imported target might not be well-formed. For Windows, it should
+      // have its IMPORTED_IMPLIB property set, and CMP0111's NEW behavior is
+      // intended to catch and report that. But if nothing uses the imported
+      // target, there won't have been any opportunity to detect that property
+      // being missing before here. Therefore, we tell ImportedGetFullPath()
+      // not to raise that CMP0111 error if it sees the problem. We don't want
+      // to trigger an error for a target that nothing uses, as that would be a
+      // regression compared to CMake 4.1 and earlier behavior.
+      fullPath = this->GT->Target->ImportedGetFullPath(
+        this->Config, cmStateEnums::ImportLibraryArtifact,
+        cmTarget::ImportArtifactMissingOk::Yes);
+      if (cmHasLiteralSuffix(fullPath, "-NOTFOUND")) {
+        fullPath.clear();
+      }
+    } else {
+      fullPath = this->GT->NormalGetFullPath(
+        this->Config, cmStateEnums::ImportLibraryArtifact, false);
+    }
+    if (!fullPath.empty()) {
+      Json::Value artifact = Json::objectValue;
+      artifact["path"] = RelativeIfUnder(this->TopBuild, fullPath);
+      artifacts.append(std::move(artifact)); // NOLINT(*)
+    }
   }
   if (this->GT->IsDLLPlatform() &&
       this->GT->GetType() != cmStateEnums::STATIC_LIBRARY) {
@@ -2060,9 +2139,9 @@ Json::Value Target::DumpArtifacts()
       this->GT->GetOutputInfo(this->Config);
     if (output && !output->PdbDir.empty()) {
       Json::Value artifact = Json::objectValue;
-      artifact["path"] = RelativeIfUnder(this->TopBuild,
-                                         output->PdbDir + '/' +
-                                           this->GT->GetPDBName(this->Config));
+      artifact["path"] = RelativeIfUnder(
+        this->TopBuild,
+        cmStrCat(output->PdbDir, '/', this->GT->GetPDBName(this->Config)));
       artifacts.append(std::move(artifact)); // NOLINT(*)
     }
   }

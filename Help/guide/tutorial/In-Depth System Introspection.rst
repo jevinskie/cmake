@@ -49,7 +49,7 @@ Exercise 1 - Check Include File
 A fast and easy check to perform is if a given header file is available on
 a certain platform, for which CMake provides :module:`CheckIncludeFiles`. This
 is most appropriate for system and intrinsic headers, which may not be provided
-by a specific package by are expected to be available in many build environments.
+by a specific package yet are expected to be available in many build environments.
 
 .. code-block:: cmake
 
@@ -380,7 +380,7 @@ The first ``TODO`` is easy, we add another option to our project.
   <details><summary>TODO 6: Click to show/hide answer</summary>
 
 .. literalinclude:: Step7/CMakeLists.txt
-  :caption: TODO 6: MathFunctions/CMakeLists.txt
+  :caption: TODO 6: CMakeLists.txt
   :name: CMakeLists.txt-enable-ipo
   :language: cmake
   :start-at: option(TUTORIAL_ENABLE_IPO

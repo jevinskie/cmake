@@ -19,11 +19,10 @@ public:
   {
     ExportPackageDependencies,
     CxxImportStd,
-    ImportPackageInfo,
-    ExportPackageInfo,
     MappedPackageInfo,
     ExportBuildDatabase,
-    Instrumentation,
+    GenerateSbom,
+    Rust,
 
     Sentinel,
   };

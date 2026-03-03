@@ -10,6 +10,8 @@
 #include <sstream>
 #include <utility>
 
+#include <cmext/string_view>
+
 #include "cmsys/RegularExpression.hxx"
 
 #include "cmGeneratedFileStream.h"
@@ -736,7 +738,7 @@ void cmExtraEclipseCDT4Generator::CreateCProjectFile() const
     // - only if not named the same as an output directory
     if (!cmSystemTools::FileIsDirectory(
           cmStrCat(this->HomeOutputDirectory, '/', p))) {
-      excludeFromOut += p + "/|";
+      excludeFromOut = cmStrCat(std::move(excludeFromOut), p, "/|");
     }
   }
 
@@ -1077,7 +1079,7 @@ std::string cmExtraEclipseCDT4Generator::GetPathBasename(
 std::string cmExtraEclipseCDT4Generator::GenerateProjectName(
   std::string const& name, std::string const& type, std::string const& path)
 {
-  return name + (type.empty() ? "" : "-") + type + "@" + path;
+  return cmStrCat(name, (type.empty() ? ""_s : "-"_s), type, '@', path);
 }
 
 // Helper functions

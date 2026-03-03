@@ -203,8 +203,8 @@ Other Changes
 =============
 
 * The :genex:`$<CONFIG:cfgs>` generator expression, when appearing on an
-  imported target, has been fixed to only match the configuration actually
-  being consumed.  See policy :policy:`CMP0199`.
+  imported target, has been fixed to not match configurations that are not
+  applicable.  See policy :policy:`CMP0199`.
 
 * Selection of configuration and location of imported targets is now more
   consistent.  See policy :policy:`CMP0200`.
@@ -219,3 +219,36 @@ Other Changes
 * For builds targeting the MSVC ABI, all generators now add the ``_WINDLL``
   preprocessor definition when compiling sources in shared libraries.
   See policy :policy:`CMP0203`.
+
+* The :ref:`Visual Studio Generators` now suppress Visual Studio's default
+  flags ``-fp:precise``, ``-Gd``, and ``-GS`` if they are not specified by
+  the project or user.  This makes builds more consistent with other
+  generators, and with what projects and users actually specify.
+
+Updates
+=======
+
+Changes made since CMake 4.2.0 include the following.
+
+4.2.1
+-----
+
+* This version made no changes to documented features or interfaces.
+  Some implementation updates were made to support ecosystem changes
+  and/or fix regressions.
+
+4.2.2
+-----
+
+* Policy :policy:`CMP0199`'s NEW behavior has been partially reverted.
+  In 4.2.0 and 4.2.1, ``$<CONFIG:cfgs>`` only matched the configuration
+  of the consumed target.  This broke existing use cases that rely on
+  matching the configuration of the consuming target, and so has been
+  partially reverted to match either as CMake 4.1 and below did.
+
+4.2.3
+-----
+
+* This version made no changes to documented features or interfaces.
+  Some implementation updates were made to support ecosystem changes
+  and/or fix regressions.

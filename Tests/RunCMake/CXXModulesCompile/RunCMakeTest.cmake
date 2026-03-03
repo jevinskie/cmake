@@ -157,6 +157,10 @@ run_cxx_module_test(scan-with-pch)
 # Tests which use named modules.
 if ("named" IN_LIST CMake_TEST_MODULE_COMPILATION)
   run_cxx_module_test(simple)
+  # FIXME(GCC): `g++ -c "with space.cpp" -M -fdeps-format=p1689r5` fails.
+  if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    run_cxx_module_test(subdir)
+  endif ()
   run_cxx_module_test(file-sets-with-dot)
   run_cxx_module_test(vs-without-flags)
   run_cxx_module_test(library library-static -DBUILD_SHARED_LIBS=OFF)
@@ -176,6 +180,13 @@ if ("named" IN_LIST CMake_TEST_MODULE_COMPILATION)
   run_cxx_module_test(same-src-name)
   run_cxx_module_test(scan_props)
   run_cxx_module_test(target-objects)
+
+  # mixed-bmi-compatibility requires a generator that implements per-importer
+  # BMI generation
+  if ("cxx_std_23" IN_LIST CMAKE_CXX_COMPILE_FEATURES AND
+      RunCMake_GENERATOR MATCHES "Ninja")
+    run_cxx_module_test(mixed-bmi-compatibility)
+  endif()
 
   if ("cxx_std_23" IN_LIST CMAKE_CXX_COMPILE_FEATURES AND
       "import_std23" IN_LIST CMake_TEST_MODULE_COMPILATION)
@@ -251,6 +262,7 @@ endif ()
 # Tests which use named modules in shared libraries.
 if ("shared" IN_LIST CMake_TEST_MODULE_COMPILATION)
   run_cxx_module_test(library library-shared -DBUILD_SHARED_LIBS=ON)
+  run_cxx_module_test(shared-library-symbol-visibility)
 endif ()
 
 # Tests which use partitions.
@@ -285,7 +297,7 @@ if ("export_bmi" IN_LIST CMake_TEST_MODULE_COMPILATION)
   run_cxx_module_test(exp-command-sepdir-build)
   run_cxx_module_test(exp-trans-targets-build)
   run_cxx_module_test(exp-trans-mods1-build)
-  run_cxx_module_test(exp-trans-mods-build exp-trans-mods-build "-DCMAKE_PREFIX_PATH=${RunCMake_BINARY_DIR}/exp-trans-mods1-build-build" )
+  run_cxx_module_test(exp-trans-mods-build exp-trans-mods-build "-DCMAKE_PREFIX_PATH=${RunCMake_BINARY_DIR}/exp-trans-mods1-build-build" "-Dexport_transitive_modules1_cps_DIR=${RunCMake_BINARY_DIR}/exp-trans-mods1-build-build")
   run_cxx_module_test(exp-with-headers-build)
 
   if ("collation" IN_LIST CMake_TEST_MODULE_COMPILATION AND
@@ -327,7 +339,7 @@ if ("install_bmi" IN_LIST CMake_TEST_MODULE_COMPILATION)
     run_cxx_module_test(exp-command-sepdir-install)
     run_cxx_module_test(exp-trans-targets-install)
     run_cxx_module_test(exp-trans-mods1-install)
-    run_cxx_module_test(exp-trans-mods-install exp-trans-mods-install "-DCMAKE_PREFIX_PATH=${RunCMake_BINARY_DIR}/exp-trans-mods1-install-install" )
+    run_cxx_module_test(exp-trans-mods-install exp-trans-mods-install "-DCMAKE_PREFIX_PATH=${RunCMake_BINARY_DIR}/exp-trans-mods1-install-install" "-Dexport_transitive_modules1_cps_DIR=${RunCMake_BINARY_DIR}/exp-trans-mods1-install-install/lib/cmake/export_transitive_modules1_cps")
     run_cxx_module_test(exp-with-headers-install)
 
     if ("collation" IN_LIST CMake_TEST_MODULE_COMPILATION AND

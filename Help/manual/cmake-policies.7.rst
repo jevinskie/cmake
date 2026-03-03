@@ -36,10 +36,10 @@ For example:
 
 .. code-block:: cmake
 
-  cmake_minimum_required(VERSION 3.10...4.2)
+  cmake_minimum_required(VERSION 3.10...4.3)
 
 This uses the ``<min>...<policy_max>`` syntax to enable the ``NEW`` behaviors
-of policies introduced in CMake 4.2 and earlier while only requiring a
+of policies introduced in CMake 4.3 and earlier while only requiring a
 minimum version of CMake 3.10.  The project is expected to work with
 both the ``OLD`` and ``NEW`` behaviors of policies introduced between
 those versions.
@@ -100,6 +100,9 @@ Policies Introduced by CMake 4.3
 .. toctree::
    :maxdepth: 1
 
+   CMP0210: CMAKE_<LANG>_LINK_FLAGS adds link flags to all target types. </policy/CMP0210>
+   CMP0209: Verify interface header sets checks executables without exports. </policy/CMP0209>
+   CMP0208: export(EXPORT) does not allow empty arguments. </policy/CMP0208>
    CMP0207: file(GET_RUNTIME_DEPENDENCIES) normalizes paths before matching. </policy/CMP0207>
    CMP0206: The CPack Archive Generator defaults to UID 0 and GID 0. </policy/CMP0206>
    CMP0205: file(CREATE_LINK) with COPY_ON_ERROR copies directory content. </policy/CMP0205>
@@ -115,7 +118,7 @@ Policies Introduced by CMake 4.2
    CMP0202: PDB file names always include their target's per-config POSTFIX. </policy/CMP0202>
    CMP0201: Python::NumPy does not depend on Python::Development.Module. </policy/CMP0201>
    CMP0200: Location and configuration selection for imported targets is more consistent. </policy/CMP0200>
-   CMP0199: $<CONFIG> only matches the configuration of the consumed target. </policy/CMP0199>
+   CMP0199: $<CONFIG> does not match mapped configurations that are not selected. </policy/CMP0199>
    CMP0198: CMAKE_PARENT_LIST_FILE is not defined in CMakeLists.txt. </policy/CMP0198>
 
 Policies Introduced by CMake 4.1

@@ -2,6 +2,49 @@ cmake_minimum_required(VERSION 3.10)
 
 include(RunCMake)
 
+cmake_policy(SET CMP0140 NEW)
+
+function(version_json_check_python v is_json_ready)
+  if(RunCMake_TEST_FAILED OR NOT Python_EXECUTABLE OR NOT CMake_TEST_JSON_SCHEMA)
+    return()
+  endif()
+  set(json_file "${RunCMake_TEST_BINARY_DIR}/version-v${v}.json")
+  if (NOT is_json_ready)
+    file(WRITE "${json_file}" "${actual_stdout}")
+    set(actual_stdout "" PARENT_SCOPE)
+  endif()
+
+  execute_process(
+    COMMAND ${Python_EXECUTABLE} "${RunCMake_SOURCE_DIR}/version_json_validate_schema.py" "${json_file}"
+    RESULT_VARIABLE result
+    OUTPUT_VARIABLE output
+    ERROR_VARIABLE output
+  )
+  if(NOT result STREQUAL 0)
+    string(REPLACE "\n" "\n  " output "${output}")
+    string(APPEND RunCMake_TEST_FAILED "Failed to validate version ${v} JSON schema for file: ${json_file}\nOutput:\n${output}\n")
+  endif()
+  return(PROPAGATE RunCMake_TEST_FAILED)
+endfunction()
+
+run_cmake_command(versionSingleDash ${CMAKE_COMMAND} -version version.txt)
+run_cmake_command(versionSingleDashJson ${CMAKE_COMMAND} -version=json-v1 version-v1.json)
+run_cmake_command(versionDoubleDash ${CMAKE_COMMAND} --version version.txt)
+run_cmake_command(versionDoubleDashJson ${CMAKE_COMMAND} --version=json-v1 version-v1.json)
+run_cmake_command(versionSlash ${CMAKE_COMMAND} /version version.txt)
+run_cmake_command(versionSlashJson ${CMAKE_COMMAND} /version=json-v1 version-v1.json)
+run_cmake_command(versionV ${CMAKE_COMMAND} /V version.txt)
+run_cmake_command(versionVJson ${CMAKE_COMMAND} /V=json-v1 version-v1.json)
+
+run_cmake_command(versionSingleDashNoArg ${CMAKE_COMMAND} -version)
+run_cmake_command(versionSingleDashJsonNoArg ${CMAKE_COMMAND} -version=json-v1)
+run_cmake_command(versionDoubleDashNoArg ${CMAKE_COMMAND} --version)
+run_cmake_command(versionDoubleDashJsonNoArg ${CMAKE_COMMAND} --version=json-v1)
+run_cmake_command(versionSlashNoArg ${CMAKE_COMMAND} /version)
+run_cmake_command(versionSlashJsonNoArg ${CMAKE_COMMAND} /version=json-v1)
+run_cmake_command(versionVNoArg ${CMAKE_COMMAND} /V)
+run_cmake_command(versionVJsonNoArg ${CMAKE_COMMAND} /V=json-v1)
+
 run_cmake_command(NoArgs ${CMAKE_COMMAND})
 run_cmake_command(InvalidArg1 ${CMAKE_COMMAND} -invalid)
 run_cmake_command(InvalidArg2 ${CMAKE_COMMAND} --invalid)
@@ -610,6 +653,12 @@ run_cmake_command(E_copy-t-argument-target-is-file
   ${CMAKE_COMMAND} -E copy ${in}/f1.txt -t ${out}/f1.txt ${in}/f3.txt)
 run_cmake_command(E_copy-t-argument-no-source-files
   ${CMAKE_COMMAND} -E copy -t ${out})
+run_cmake_command(E_copy_if_different-t-argument
+  ${CMAKE_COMMAND} -E copy_if_different ${in}/f1.txt -t ${out} ${in}/f3.txt)
+run_cmake_command(E_copy_if_different-t-argument-target-is-file
+  ${CMAKE_COMMAND} -E copy_if_different ${in}/f1.txt -t ${out}/f1.txt ${in}/f3.txt)
+run_cmake_command(E_copy_if_different-t-argument-no-source-files
+  ${CMAKE_COMMAND} -E copy_if_different -t ${out})
 run_cmake_command(E_copy_if_different-one-source-directory-target-is-directory
   ${CMAKE_COMMAND} -E copy_if_different ${in}/f1.txt ${out})
 run_cmake_command(E_copy_if_different-three-source-files-target-is-directory
@@ -618,6 +667,12 @@ run_cmake_command(E_copy_if_different-three-source-files-target-is-file
   ${CMAKE_COMMAND} -E copy_if_different ${in}/f1.txt ${in}/f2.txt ${in}/f3.txt ${out}/f1.txt)
 run_cmake_command(E_copy_if_different-nonexistent-source
   ${CMAKE_COMMAND} -E copy_if_different ${in}/nonexistent.txt ${out})
+run_cmake_command(E_copy_if_newer-t-argument
+  ${CMAKE_COMMAND} -E copy_if_newer ${in}/f1.txt -t ${out} ${in}/f3.txt)
+run_cmake_command(E_copy_if_newer-t-argument-target-is-file
+  ${CMAKE_COMMAND} -E copy_if_newer ${in}/f1.txt -t ${out}/f1.txt ${in}/f3.txt)
+run_cmake_command(E_copy_if_newer-t-argument-no-source-files
+  ${CMAKE_COMMAND} -E copy_if_newer -t ${out})
 run_cmake_command(E_copy_if_newer-one-source-directory-target-is-directory
   ${CMAKE_COMMAND} -E copy_if_newer ${in}/f1.txt ${out})
 run_cmake_command(E_copy_if_newer-three-source-files-target-is-directory
@@ -635,8 +690,16 @@ file(REMOVE_RECURSE "${out}")
 file(MAKE_DIRECTORY ${out})
 run_cmake_command(E_copy_directory_if_different
   ${CMAKE_COMMAND} -E copy_directory_if_different ${in} ${out})
+run_cmake_command(E_copy_directory_if_different-t-argument
+  ${CMAKE_COMMAND} -E copy_directory_if_different -t ${out} ${in})
+run_cmake_command(E_copy_directory_if_different-t-argument-no-source-dirs
+  ${CMAKE_COMMAND} -E copy_directory_if_different -t ${out})
 run_cmake_command(E_copy_directory_if_newer
   ${CMAKE_COMMAND} -E copy_directory_if_newer ${in} ${out})
+run_cmake_command(E_copy_directory_if_newer-t-argument
+  ${CMAKE_COMMAND} -E copy_directory_if_newer -t ${out} ${in})
+run_cmake_command(E_copy_directory_if_newer-t-argument-no-source-dirs
+  ${CMAKE_COMMAND} -E copy_directory_if_newer -t ${out})
 run_cmake_command(E_copy_directory_if_newer-nonexistent-source
   ${CMAKE_COMMAND} -E copy_directory_if_newer ${in}/nonexistent ${out}/target)
 unset(in)
@@ -654,6 +717,10 @@ run_cmake_command(E_copy_directory-three-source-files-target-is-file
   ${CMAKE_COMMAND} -E copy_directory ${in}/d1 ${in}/d2 ${in}/d3 ${outfile})
 run_cmake_command(E_copy_directory-three-source-files-target-is-not-exist
   ${CMAKE_COMMAND} -E copy_directory ${in}/d1 ${in}/d2 ${in}/d3 ${out}/not_existing_directory)
+run_cmake_command(E_copy_directory-t-argument
+  ${CMAKE_COMMAND} -E copy_directory -t ${out} ${in}/d1 ${in}/d2 ${in}/d3)
+run_cmake_command(E_copy_directory-t-argument-no-source-dirs
+  ${CMAKE_COMMAND} -E copy_directory -t ${out})
 unset(in)
 unset(out)
 unset(outfile)
@@ -794,7 +861,7 @@ run_cmake_command(E_cat_directory
 file(WRITE "${out}/first_file.txt" "first file to append\n")
 file(WRITE "${out}/second_file.txt" "second file to append\n")
 file(WRITE "${out}/empty_file.txt" "")
-file(WRITE "${out}/unicode_file.txt" "àéùç - 한국어") # Korean in Korean
+file(WRITE "${out}/unicode_file.txt" "àéùç - 한국어") # UTF-8: Korean in Korean
 run_cmake_command(E_cat_good_cat
   ${CMAKE_COMMAND} -E cat "${out}/first_file.txt" "${out}/second_file.txt" "${out}/empty_file.txt" "${out}/unicode_file.txt")
 
@@ -904,6 +971,15 @@ run_cmake_command(E_sha224sum ${CMAKE_COMMAND} -E sha224sum ../dummy)
 run_cmake_command(E_sha256sum ${CMAKE_COMMAND} -E sha256sum ../dummy)
 run_cmake_command(E_sha384sum ${CMAKE_COMMAND} -E sha384sum ../dummy)
 run_cmake_command(E_sha512sum ${CMAKE_COMMAND} -E sha512sum ../dummy)
+block()
+  set(RunCMake-stdin-file ${RunCMake_BINARY_DIR}/dummy)
+  run_cmake_command(E_md5sum-stdin ${CMAKE_COMMAND} -E md5sum -)
+  run_cmake_command(E_sha1sum-stdin ${CMAKE_COMMAND} -E sha1sum -)
+  run_cmake_command(E_sha224sum-stdin ${CMAKE_COMMAND} -E sha224sum -)
+  run_cmake_command(E_sha256sum-stdin ${CMAKE_COMMAND} -E sha256sum -)
+  run_cmake_command(E_sha384sum-stdin ${CMAKE_COMMAND} -E sha384sum -)
+  run_cmake_command(E_sha512sum-stdin ${CMAKE_COMMAND} -E sha512sum -)
+endblock()
 file(REMOVE "${RunCMake_BINARY_DIR}/dummy")
 
 set(RunCMake_DEFAULT_stderr ".")

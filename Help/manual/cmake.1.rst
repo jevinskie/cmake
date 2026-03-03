@@ -1027,6 +1027,78 @@ CMake provides builtin command-line tools through the signature
 
 Available commands are:
 
+.. option:: bin2c [<options>...] [--] [<input-file> [<output-file>]]
+
+  .. versionadded:: 4.3
+
+  Convert a binary file to a C array. If input file is unspecified or ``-``,
+  read from standard input instead of a file. If output file is unspecified or
+  ``-``, write to standard output instead of a file.
+
+  By default, this prints only the bytes. Enclosing text can be added with the
+  ``--template-file`` argument. You can also ``#include`` the bytes from
+  another file, acting as a drop-in replacement for the ``#embed`` directive
+  from C23 and C++26:
+
+  .. code-block:: c
+
+    unsigned char my_bytes[] = {
+    /* #embed "bin2c_input.bin" */
+    #include "bin2c_output.c.txt"
+    };
+
+  .. program:: cmake-E_bin2c
+
+  .. option:: --signed
+
+    Print the bytes as signed integers rather than unsigned.
+
+  .. option:: --decimal
+
+    Print the bytes as decimal rather than hexadecimal.
+
+  .. option:: --trailing-comma
+
+    Append a trailing comma after the last byte (not included by default.)
+
+  .. option:: --template-file <template-file>
+
+    Format from a template file. The template file contains placeholders for
+    the array and optionally the length (which will be a non-negative decimal
+    integer). Such placeholders are enclosed in ``@`` at the beginning and end
+    of the placeholder. This functionality is similar to
+    :command:`configure_file` called with the ``@ONLY`` argument, but only the
+    array and length placeholders will be replaced, and any other placeholders
+    will be left as-is.
+
+    An example of a potential template file:
+
+    .. code-block:: text
+
+      unsigned char my_bytes[] = {@array@};
+
+      size_t length = @length@;
+
+    The array placeholder may occur at most once in the template file. The
+    length placeholder may occur zero or more times after the array
+    placeholder, but not before it.
+
+    Note that the length is the number of elements printed, and may not match
+    the ``sizeof`` the resulting array if a type other than ``unsigned char``
+    is used.
+
+  .. option:: --template-array-placeholder <placeholder-name>
+
+    Specify a name for the array placeholder in the template file. Set to
+    ``array`` by default.
+
+  .. option:: --template-length-placeholder <placeholder-name>
+
+    Specify a name for the length placeholder in the template file. Set to
+    ``length`` by default.
+
+.. program:: cmake-E
+
 .. option:: capabilities
 
   .. versionadded:: 3.7
@@ -1123,6 +1195,10 @@ Available commands are:
 
     ``cat`` can now print the standard input by passing the ``-`` argument.
 
+  .. versionadded:: 4.4
+
+    ``cat`` will print the standard input when no arguments are passed.
+
 .. program:: cmake-E
 
 .. option:: chdir <dir> <cmd> [<arg>...]
@@ -1145,11 +1221,12 @@ Available commands are:
 
 .. program:: cmake-E
 
-.. option:: copy <file>... <destination>, copy -t <destination> <file>...
+.. option:: copy <file>... <destination>,
+            copy -t <destination> <file>...
 
   Copy files to ``<destination>`` (either file or directory).
   If multiple files are specified, or if ``-t`` is specified, the
-  ``<destination>`` must be directory and it must exist. If ``-t`` is not
+  ``<destination>`` must be a directory and it must exist. If ``-t`` is not
   specified, the last argument is assumed to be the ``<destination>``.
   Wildcards are not supported. ``copy`` does follow symlinks. That means it
   does not copy symlinks, but the files or directories it point to.
@@ -1160,10 +1237,13 @@ Available commands are:
   .. versionadded:: 3.26
     Support for ``-t`` argument.
 
-.. option:: copy_directory <dir>... <destination>
+.. option:: copy_directory <dir>... <destination>,
+            copy_directory -t <destination> <dir>...
 
-  Copy content of ``<dir>...`` directories to ``<destination>`` directory.
-  If ``<destination>`` directory does not exist it will be created.
+  Copy content of ``<dir>...`` directories to a ``<destination>`` directory.
+  If the ``<destination>`` directory does not exist it will be created.
+  If ``-t`` is not specified, the last argument is assumed to be the
+  ``<destination>``.
   ``copy_directory`` does follow symlinks.
 
   .. versionadded:: 3.5
@@ -1173,51 +1253,74 @@ Available commands are:
     The command now fails when the source directory does not exist.
     Previously it succeeded by creating an empty destination directory.
 
-.. option:: copy_directory_if_different <dir>... <destination>
+  .. versionadded:: 4.4
+    Support for the ``-t`` argument.
+
+.. option:: copy_directory_if_different <dir>... <destination>,
+            copy_directory_if_different -t <destination> <dir>...
 
   .. versionadded:: 3.26
 
-  Copy changed content of ``<dir>...`` directories to ``<destination>`` directory.
-  If ``<destination>`` directory does not exist it will be created.
+  Copy changed content of ``<dir>...`` directories to a ``<destination>`` directory.
+  If the ``<destination>`` directory does not exist it will be created.
+  If ``-t`` is not specified, the last argument is assumed to be the
+  ``<destination>``.
 
   ``copy_directory_if_different`` does follow symlinks.
   The command fails when the source directory does not exist.
 
-.. option:: copy_directory_if_newer <dir>... <destination>
+  .. versionadded:: 4.4
+    Support for the ``-t`` argument.
+
+.. option:: copy_directory_if_newer <dir>... <destination>,
+            copy_directory_if_newer -t <destination> <dir>...
 
   .. versionadded:: 4.2
 
-  Copy content of ``<dir>...`` directories to ``<destination>`` directory
+  Copy content of ``<dir>...`` directories to a ``<destination>`` directory
   if source files are newer than destination files (based on file timestamps).
-  If ``<destination>`` directory does not exist it will be created.
+  If the ``<destination>`` directory does not exist it will be created.
+  If ``-t`` is not specified, the last argument is assumed to be the
+  ``<destination>``.
 
   ``copy_directory_if_newer`` does follow symlinks.
   The command fails when the source directory does not exist.
   This is faster than ``copy_directory_if_different`` as it only compares
   file timestamps instead of file contents.
 
-.. option:: copy_if_different <file>... <destination>
+  .. versionadded:: 4.4
+    Support for the ``-t`` argument.
+
+.. option:: copy_if_different <file>... <destination>,
+            copy_if_different -t <destination> <file>...
 
   Copy files to ``<destination>`` (either file or directory) if
   they have changed.
-  If multiple files are specified, the ``<destination>`` must be
-  directory and it must exist.
+  If multiple files are specified, or if ``-t`` is specified,
+  the ``<destination>`` must be a directory and it must exist.
   ``copy_if_different`` does follow symlinks.
 
   .. versionadded:: 3.5
     Support for multiple input files.
 
-.. option:: copy_if_newer <file>... <destination>
+  .. versionadded:: 4.4
+    Support for the ``-t`` argument.
+
+.. option:: copy_if_newer <file>... <destination>,
+            copy_if_newer -t <destination> <file>...
 
   .. versionadded:: 4.2
 
   Copy files to ``<destination>`` (either file or directory) if
   source files are newer than destination files (based on file timestamps).
-  If multiple files are specified, the ``<destination>`` must be
-  directory and it must exist.
+  If multiple files are specified, or if ``-t`` is specified,
+  the ``<destination>`` must be a directory and it must exist.
   ``copy_if_newer`` does follow symlinks.
   This is faster than ``copy_if_different`` as it only compares
   file timestamps instead of file contents.
+
+  .. versionadded:: 4.4
+    Support for the ``-t`` argument.
 
 .. option:: create_symlink <old> <new>
 
@@ -1312,6 +1415,9 @@ Available commands are:
      351abe79cd3800b38cdfb25d45015a15  file1.txt
      052f86c15bbde68af55c7f7b340ab639  file2.txt
 
+  .. versionchanged:: 4.3
+    Passing ``-`` reads from standard input.
+
 .. option:: sha1sum <file>...
 
   .. versionadded:: 3.10
@@ -1320,6 +1426,9 @@ Available commands are:
 
      4bb7932a29e6f73c97bb9272f2bdc393122f86e0  file1.txt
      1df4c8f318665f9a5f2ed38f55adadb7ef9f559c  file2.txt
+
+  .. versionchanged:: 4.3
+    Passing ``-`` reads from standard input.
 
 .. option:: sha224sum <file>...
 
@@ -1330,6 +1439,9 @@ Available commands are:
      b9b9346bc8437bbda630b0b7ddfc5ea9ca157546dbbf4c613192f930  file1.txt
      6dfbe55f4d2edc5fe5c9197bca51ceaaf824e48eba0cc453088aee24  file2.txt
 
+  .. versionchanged:: 4.3
+    Passing ``-`` reads from standard input.
+
 .. option:: sha256sum <file>...
 
   .. versionadded:: 3.10
@@ -1338,6 +1450,9 @@ Available commands are:
 
      76713b23615d31680afeb0e9efe94d47d3d4229191198bb46d7485f9cb191acc  file1.txt
      15b682ead6c12dedb1baf91231e1e89cfc7974b3787c1e2e01b986bffadae0ea  file2.txt
+
+  .. versionchanged:: 4.3
+    Passing ``-`` reads from standard input.
 
 .. option:: sha384sum <file>...
 
@@ -1348,6 +1463,9 @@ Available commands are:
      acc049fedc091a22f5f2ce39a43b9057fd93c910e9afd76a6411a28a8f2b8a12c73d7129e292f94fc0329c309df49434  file1.txt
      668ddeb108710d271ee21c0f3acbd6a7517e2b78f9181c6a2ff3b8943af92b0195dcb7cce48aa3e17893173c0a39e23d  file2.txt
 
+  .. versionchanged:: 4.3
+    Passing ``-`` reads from standard input.
+
 .. option:: sha512sum <file>...
 
   .. versionadded:: 3.10
@@ -1356,6 +1474,9 @@ Available commands are:
 
      2a78d7a6c5328cfb1467c63beac8ff21794213901eaadafd48e7800289afbc08e5fb3e86aa31116c945ee3d7bf2a6194489ec6101051083d1108defc8e1dba89  file1.txt
      7a0b54896fe5e70cca6dd643ad6f672614b189bf26f8153061c4d219474b05dad08c4e729af9f4b009f1a1a280cb625454bf587c690f4617c27e3aebdf3b7a2d  file2.txt
+
+  .. versionchanged:: 4.3
+    Passing ``-`` reads from standard input.
 
 .. option:: remove [-f] <file>...
 
@@ -1436,6 +1557,10 @@ Available commands are:
       When extracting selected files or directories, you must provide their exact
       names including the path, as printed by list (``-t``).
 
+    .. versionchanged:: 4.3
+      Archive entries containing path traversal sequences (``..``), or
+      absolute paths, are rejected for security.
+
   .. option:: t
 
     List archive contents.
@@ -1450,7 +1575,7 @@ Available commands are:
 
   .. option:: z
 
-    Compress the resulting archive with gzip.
+    Compress the resulting archive with gzip (Deflate).
 
   .. option:: j
 
@@ -1488,14 +1613,79 @@ Available commands are:
     .. versionadded:: 3.3
 
     Specify the format of the archive to be created.
-    Supported formats are: ``7zip``, ``gnutar``, ``pax``,
-    ``paxr`` (restricted pax, default), and ``zip``.
+    Supported formats are:
+
+    * ``7zip``
+    * ``gnutar``
+    * ``pax``
+    * ``paxr`` (restricted pax, default)
+    * ``raw``
+
+      .. versionadded:: 4.3
+
+      If this format is used, only one file will be compressed
+      with the compression type specified by the
+      :option:`--cmake-tar-compression-method <cmake-E_tar --cmake-tar-compression-method>`.
+
+    * ``zip``
+
+    If the compression method is not specified, the compression method
+    depends on the format:
+
+    * ``7zip`` uses ``LZMA`` compression
+    * ``zip`` uses ``Deflate`` compression
+    * others uses no compression by default
+
+    .. versionadded:: 4.3
+
+      The ``7zip`` and ``zip`` formats support changing the default compression
+      method and compression level.
 
   .. option:: --mtime=<date>
 
     .. versionadded:: 3.1
 
     Specify modification time recorded in tarball entries.
+
+  .. option:: --cmake-tar-compression-method=<compression-method>
+
+    .. versionadded:: 4.3
+
+    The ``<compression-method>`` must be one of the following:
+
+    * ``none`` or ``store`` - no compression is used
+    * ``deflate`` or ``gzip`` - Deflate-based
+    * ``bzip2`` - BZip2-based
+    * ``lzma`` - LZMA-based
+    * ``lzma2`` or ``xz`` - LZMA2-based
+    * ``ppmd`` - PPMd-based
+
+      This compression method is only supported by the ``7zip`` archive format.
+
+    * ``zstd`` - Zstandard-based
+
+    This is the second variant for the compression method selection.
+    It provide more compression methods, that the classic ``tar``-like interface.
+    You can use any of them.
+
+    The default value depends on the :option:`--format <cmake-E_tar --format>`
+    option value and described in the corresponding section.
+
+  .. option:: --cmake-tar-compression-level=<compression-level>
+
+    .. versionadded:: 4.3
+
+    The ``<compression-level>`` should be between ``0`` and ``9``, with the
+    default being ``0``.  The compression algorithm must be selected when
+    the ``--cmake-tar-compression-level`` option is given.
+
+    The ``<compression-level>`` of the ``Zstd`` algorithm can be set
+    between ``0`` and ``19``, except for the ``zip`` format.
+
+    The value ``0`` is used to specify the default compression level.
+    It is selected automatically by the archive library backend and
+    not directly set by CMake itself. The default compression level
+    may vary between archive formats, platforms, etc.
 
   .. option:: --cmake-tar-threads=<number>
 

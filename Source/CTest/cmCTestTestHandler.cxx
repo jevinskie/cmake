@@ -652,6 +652,12 @@ bool cmCTestTestHandler::GenerateXML()
       this->LogFile = nullptr;
       return false;
     }
+
+    // We represent some times as a double-precision floating-point number
+    // of seconds since the epoch.  Print them with microsecond precision.
+    // Representable values differ by hundreds of nanoseconds anyway.
+    xmlfile << std::fixed << std::setprecision(6);
+
     cmXMLWriter xml(xmlfile);
     this->GenerateCTestXML(xml);
   }
@@ -1525,6 +1531,9 @@ void cmCTestTestHandler::WriteTestResultHeader(cmXMLWriter& xml,
   xml.Element("Path", this->CTest->GetShortPathToFile(result.Path));
   xml.Element("FullName", this->CTest->GetShortPathToFile(testPath));
   xml.Element("FullCommandLine", result.FullCommandLine);
+  if (result.StartTestTime) {
+    xml.Element("StartTestTime", *result.StartTestTime);
+  }
 }
 
 void cmCTestTestHandler::WriteTestResultFooter(cmXMLWriter& xml,
@@ -2432,36 +2441,13 @@ bool cmCTestTestHandler::AddTest(std::vector<std::string> const& args)
       this->ExcludeTestsRegularExpression.find(testname)) {
     return true;
   }
-  if (this->MemCheck) {
-    std::vector<std::string>::iterator it;
-    bool found = false;
-    for (it = this->CustomTestsIgnore.begin();
-         it != this->CustomTestsIgnore.end(); ++it) {
-      if (*it == testname) {
-        found = true;
-        break;
-      }
-    }
-    if (found) {
-      cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
-                         "Ignore memcheck: " << *it << std::endl, this->Quiet);
-      return true;
-    }
-  } else {
-    std::vector<std::string>::iterator it;
-    bool found = false;
-    for (it = this->CustomTestsIgnore.begin();
-         it != this->CustomTestsIgnore.end(); ++it) {
-      if (*it == testname) {
-        found = true;
-        break;
-      }
-    }
-    if (found) {
-      cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
-                         "Ignore test: " << *it << std::endl, this->Quiet);
-      return true;
-    }
+
+  if (cm::contains(this->CustomTestsIgnore, testname)) {
+    cmCTestOptionalLog(this->CTest, HANDLER_VERBOSE_OUTPUT,
+                       "Ignore " << (this->MemCheck ? "memcheck" : "test")
+                                 << ": " << testname << std::endl,
+                       this->Quiet);
+    return true;
   }
 
   cmCTestTestProperties test;
@@ -2478,7 +2464,7 @@ bool cmCTestTestHandler::AddTest(std::vector<std::string> const& args)
         this->ExcludeTestsRegularExpression.find(testname)))) {
     test.IsInBasedOnREOptions = false;
   }
-  this->TestList.push_back(test);
+  this->TestList.push_back(std::move(test));
   return true;
 }
 
@@ -2612,7 +2598,7 @@ bool cmCTestTestHandler::WriteJUnitXML()
       // be ok to put it here as a cmake-list.
       xml.Attribute("value", cmList::to_string(result.Properties->Labels));
       // if we export more properties, this should be done the same way,
-      // i.e. prefix the property name with "cmake_", and it it can be
+      // i.e. prefix the property name with "cmake_", and it can be
       // a list, write it cmake-formatted.
       xml.EndElement(); // </property>
     }

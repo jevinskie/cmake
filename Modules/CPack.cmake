@@ -338,6 +338,24 @@ installers.  The most commonly-used variables are:
 
   Other compression methods ignore this value and use only one thread.
 
+.. variable:: CPACK_COMPRESSION_LEVEL
+
+  .. versionadded:: 4.3
+
+  Select the compression level to use when it's applicable,
+  such as compressing the installer package.
+
+  Some compression methods used by CPack generators such as Debian or Archive
+  may take advantage of different compression levels. The accepted values
+  are in the range ``0`` to ``9``. If you select the ``zstd`` compression method,
+  you can select the compression level between ``0`` and ``19``, except the ``zip``
+  archive format.
+
+  By default ``CPACK_COMPRESSION_LEVEL`` is set to ``0``, which selects the default
+  compression level. It is selected automatically by the archive library backend and
+  not directly set by CMake itself. The default compression level
+  may vary between archive formats, platforms, etc.
+
 Variables for Source Package Generators
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -554,16 +572,15 @@ endmacro()
 function(cpack_encode_variables)
   set(commands "")
   get_cmake_property(res VARIABLES)
-  foreach(var ${res})
-    if(var MATCHES "^CPACK")
-      if(CPACK_VERBATIM_VARIABLES)
-        _cpack_escape_for_cmake(value "${${var}}")
-      else()
-        set(value "${${var}}")
-      endif()
-
-      string(APPEND commands "\nset(${var} \"${value}\")")
+  list(FILTER res INCLUDE REGEX "^CPACK")
+  foreach(var IN LISTS res)
+    if(CPACK_VERBATIM_VARIABLES)
+      _cpack_escape_for_cmake(value "${${var}}")
+    else()
+      set(value "${${var}}")
     endif()
+
+    string(APPEND commands "\nset(${var} \"${value}\")")
   endforeach()
 
   set(_CPACK_OTHER_VARIABLES_ "${commands}" PARENT_SCOPE)

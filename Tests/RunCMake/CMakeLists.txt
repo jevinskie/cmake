@@ -310,6 +310,7 @@ if(CMake_TEST_Qt6 AND Qt6Widgets_FOUND)
       "-DCMAKE_PREFIX_PATH:STRING=${base_dir}"
       -DPSEUDO_TIDY=$<TARGET_FILE:pseudo_tidy>
       -DPSEUDO_IWYU=$<TARGET_FILE:pseudo_iwyu>
+      -DPSEUDO_PVS=$<TARGET_FILE:pseudo_pvs>
       -DPSEUDO_CPPLINT=$<TARGET_FILE:pseudo_cpplint>
       -DPSEUDO_CPPCHECK=$<TARGET_FILE:pseudo_cppcheck>
     )
@@ -406,6 +407,7 @@ set_property(TEST RunCMake.CompilerTest APPEND PROPERTY LABELS "CUDA" "HIP" "ISP
 add_RunCMake_test(Configure -DMSVC_IDE=${MSVC_IDE})
 add_RunCMake_test(CpsExportImportBuild)
 add_RunCMake_test(CpsExportImportInstall)
+add_RunCMake_test(CpsMapConfig)
 add_RunCMake_test(DisallowedCommands)
 if("${CMAKE_GENERATOR}" MATCHES "Unix Makefiles|Ninja|FASTBuild")
   add_RunCMake_test(ExportCompileCommands)
@@ -427,7 +429,8 @@ add_RunCMake_test(FileAPI -DPython_EXECUTABLE=${Python_EXECUTABLE}
                           -DCMAKE_CXX_SIMULATE_ID=${CMAKE_CXX_SIMULATE_ID}
                           -DCMake_TEST_JSON_SCHEMA=${CMake_TEST_JSON_SCHEMA})
 if(CMAKE_GENERATOR MATCHES "Make|Ninja|FASTBuild")
-  add_RunCMake_test(Instrumentation)
+  add_RunCMake_test(Instrumentation -DPython_EXECUTABLE=${Python_EXECUTABLE}
+                                    -DCMake_TEST_JSON_SCHEMA=${CMake_TEST_JSON_SCHEMA})
 endif()
 add_RunCMake_test(ConfigDir)
 if(CMake_TEST_FindPython2)
@@ -497,6 +500,12 @@ if(CMake_TEST_FindPython2 OR CMake_TEST_FindPython2_SABIModule OR CMake_TEST_Fin
 endif()
 add_RunCMake_test(FindBoost)
 add_RunCMake_test(FindLua)
+if(CMake_TEST_FindRuby)
+  add_RunCMake_test(FindRuby
+    -DCMake_TEST_FindRuby_RBENV=${CMake_TEST_FindRuby_RBENV}
+    -DCMake_TEST_FindRuby_RVM=${CMake_TEST_FindRuby_RVM}
+    )
+endif()
 add_RunCMake_test(FindOpenGL)
 add_RunCMake_test(InitialFlags)
 if(CMake_TEST_FindOpenSSL)
@@ -521,6 +530,10 @@ add_RunCMake_test(GenEx-LINK_GROUP)
 add_RunCMake_test(GenEx-TARGET_FILE -DLINKER_SUPPORTS_PDB=${LINKER_SUPPORTS_PDB})
 add_RunCMake_test(GenEx-TARGET_IMPORT_FILE)
 add_RunCMake_test(GenEx-GENEX_EVAL)
+add_RunCMake_test(GenEx-SOURCE_EXISTS)
+add_RunCMake_test(GenEx-SOURCE_PROPERTY)
+add_RunCMake_test(GenEx-FILE_SET_EXISTS)
+add_RunCMake_test(GenEx-FILE_SET_PROPERTY)
 add_RunCMake_test(GenEx-TARGET_PROPERTY)
 add_RunCMake_test(GenEx-TARGET_RUNTIME_DLLS)
 add_RunCMake_test(GenEx-STRING)
@@ -587,6 +600,9 @@ if(UNIX AND CMAKE_SHARED_LIBRARY_RUNTIME_C_FLAG)
     -DCMAKE_EXECUTABLE_FORMAT=${CMAKE_EXECUTABLE_FORMAT}
     )
 endif()
+if(CMake_TEST_Rust)
+  add_RunCMake_test(Rust)
+endif()
 add_RunCMake_test(ScriptMode)
 add_RunCMake_test(StandardLinkDirectories)
 add_RunCMake_test(Swift -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
@@ -595,6 +611,7 @@ add_RunCMake_test(Swift -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
 add_RunCMake_test(TargetArtifacts -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME})
 add_RunCMake_test(TargetObjects)
 add_RunCMake_test(TargetProperties)
+add_RunCMake_test(FileSetProperties)
 add_RunCMake_test(ToolchainFile)
 
 if(NOT CMake_TEST_EXTERNAL_CMAKE)
@@ -669,6 +686,9 @@ if(WIN32)
 endif()
 add_RunCMake_test(execute_process)
 add_RunCMake_test(export)
+if(DEFINED CMake_TEST_LOCALE_CHARSET)
+  list(APPEND cmake_host_system_information_ARGS -DCMake_TEST_LOCALE_CHARSET=${CMake_TEST_LOCALE_CHARSET})
+endif()
 if(CMake_TEST_MSYSTEM_PREFIX)
   list(APPEND cmake_host_system_information_ARGS -DCMake_TEST_MSYSTEM_PREFIX=${CMake_TEST_MSYSTEM_PREFIX})
 endif()
@@ -750,6 +770,9 @@ add_RunCMake_test(include_directories)
 add_RunCMake_test(include_guard)
 add_RunCMake_test(list)
 add_RunCMake_test(load_cache)
+if(DEFINED CMake_TEST_MATH_OVERFLOW)
+  list(APPEND math_ARGS -DCMake_TEST_MATH_OVERFLOW=${CMake_TEST_MATH_OVERFLOW})
+endif()
 add_RunCMake_test(math)
 add_RunCMake_test(message)
 add_RunCMake_test(option)
@@ -780,6 +803,7 @@ function(add_RunCMake_test_try_compile)
   foreach(
     var
     IN ITEMS
+      CMAKE_C_COMPILER_ID
       CMAKE_SYSTEM_NAME
       CMake_TEST_CUDA
       CMake_TEST_ISPC
@@ -978,7 +1002,8 @@ endif()
 
 add_RunCMake_test(LinkLibrariesProcessing)
 add_RunCMake_test(LinkLibrariesStrategy)
-add_RunCMake_test(File_Archive)
+add_RunCMake_test(LinkFlags -DCMAKE_C_COMPILER_ID=${CMAKE_C_COMPILER_ID})
+add_RunCMake_test(File_Archive -DPython_EXECUTABLE=${Python_EXECUTABLE})
 add_RunCMake_test(File_Configure)
 add_RunCMake_test(File_Generate)
 add_RunCMake_test(ExportWithoutLanguage)
@@ -1069,8 +1094,13 @@ endif()
 add_executable(pseudo_llvm-rc pseudo_llvm-rc.c)
 add_RunCMake_test(CommandLine -DLLVM_RC=$<TARGET_FILE:pseudo_llvm-rc> -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
                   -DCYGWIN=${CYGWIN} -DMSYS=${MSYS} -DPython_EXECUTABLE=${Python_EXECUTABLE}
+                  -DCMake_TEST_JSON_SCHEMA=${CMake_TEST_JSON_SCHEMA}
                   -DEXIT_CODE_EXE=$<TARGET_FILE:exit_code>
                   -DPRINT_STDIN_EXE=$<TARGET_FILE:print_stdin>)
+if(CMake_TEST_LibArchive_VERSION)
+  list(APPEND CommandLineTar_ARGS -DCMake_TEST_LibArchive_VERSION=${CMake_TEST_LibArchive_VERSION})
+endif()
+list(APPEND CommandLineTar_ARGS -DPython_EXECUTABLE=${Python_EXECUTABLE})
 add_RunCMake_test(CommandLineTar)
 
 if(CMAKE_PLATFORM_NO_VERSIONED_SONAME OR (NOT CMAKE_SHARED_LIBRARY_SONAME_FLAG AND NOT CMAKE_SHARED_LIBRARY_SONAME_C_FLAG))
@@ -1162,6 +1192,13 @@ add_executable(pseudo_tidy pseudo_tidy.c)
 add_executable(pseudo_iwyu pseudo_iwyu.c)
 add_executable(pseudo_cpplint pseudo_cpplint.c)
 add_executable(pseudo_cppcheck pseudo_cppcheck.c)
+add_executable(pseudo_pvs pseudo_pvs.c)
+add_executable(pseudo_plog_converter pseudo_plog_converter.c)
+if (WIN32)
+  set_target_properties(pseudo_plog_converter PROPERTIES OUTPUT_NAME HtmlGenerator)
+else()
+  set_target_properties(pseudo_plog_converter PROPERTIES OUTPUT_NAME plog-converter)
+endif()
 
 if("${CMAKE_GENERATOR}" MATCHES "Make|Ninja|FASTBuild")
   if(UNIX AND NOT CYGWIN)
@@ -1175,11 +1212,13 @@ if("${CMAKE_GENERATOR}" MATCHES "Make|Ninja|FASTBuild")
   endif()
   add_RunCMake_test(ClangTidy -DPSEUDO_TIDY=$<TARGET_FILE:pseudo_tidy>)
   add_RunCMake_test(IncludeWhatYouUse -DPSEUDO_IWYU=$<TARGET_FILE:pseudo_iwyu>)
+  add_RunCMake_test(PVSStudio -DPSEUDO_PVS=$<TARGET_FILE:pseudo_pvs>)
   add_RunCMake_test(Cpplint -DPSEUDO_CPPLINT=$<TARGET_FILE:pseudo_cpplint>)
   add_RunCMake_test(Cppcheck -DPSEUDO_CPPCHECK=$<TARGET_FILE:pseudo_cppcheck>)
   add_RunCMake_test(MultiLint
     -DPSEUDO_TIDY=$<TARGET_FILE:pseudo_tidy>
     -DPSEUDO_IWYU=$<TARGET_FILE:pseudo_iwyu>
+    -DPSEUDO_PVS=$<TARGET_FILE:pseudo_pvs>
     -DPSEUDO_CPPLINT=$<TARGET_FILE:pseudo_cpplint>
     -DPSEUDO_CPPCHECK=$<TARGET_FILE:pseudo_cppcheck>
     )
@@ -1258,12 +1297,26 @@ set(cpack_tests
   RPM.COMPONENT_WITH_SPECIAL_CHARS
 
   7Z
+  7Z_STORE
+  7Z_DEFLATE
+  7Z_BZ2
+  7Z_LZMA
+  7Z_LZMA2
+  7Z_ZSTD
+  7Z_PPMD
   TAR
   TBZ2
   TGZ
   TXZ
   TZ
+  TZST
   ZIP
+  ZIP_STORE
+  ZIP_DEFLATE
+  ZIP_BZ2
+  ZIP_LZMA
+  ZIP_LZMA2
+  ZIP_ZSTD
   STGZ
   External
   )
@@ -1299,15 +1352,41 @@ if(CMAKE_SYSTEM_PROCESSOR STREQUAL "e2k" AND NOT DEFINED CMake_TEST_E2K_BROKEN_L
       RPM.DIST
       RPM.AUTO_SUFFIXES
       7Z
+      7Z_STORE
+      7Z_DEFLATE
+      7Z_BZ2
+      7Z_LZMA
+      7Z_LZMA2
+      7Z_ZSTD
+      7Z_PPMD
       TXZ
+      TZST
       TBZ2
       TGZ
       ZIP
+      ZIP_STORE
+      ZIP_DEFLATE
+      ZIP_BZ2
+      ZIP_LZMA
+      ZIP_LZMA2
+      ZIP_ZSTD
       STGZ
       External
       )
     set(CMake_TEST_E2K_BROKEN_LIBC 1)
   endif()
+endif()
+
+if(CMake_TEST_LibArchive_VERSION AND CMake_TEST_LibArchive_VERSION VERSION_LESS 3.8.0)
+  # Exclude tests, that require libarchive >= 3.8.0
+  # if the version of libarchive is less than required
+  list(REMOVE_ITEM cpack_tests
+    7Z_ZSTD
+    ZIP_BZ2
+    ZIP_LZMA
+    ZIP_LZMA2
+    ZIP_ZSTD
+  )
 endif()
 
 add_RunCMake_test_group(CPack "${cpack_tests}")
@@ -1316,6 +1395,14 @@ if(CMake_TEST_CPACK_APPIMAGE)
   add_RunCMake_test(CPack_AppImage
     -DCMake_TEST_CPACK_APPIMAGE_RUNTIME_FILE=${CMake_TEST_CPACK_APPIMAGE_RUNTIME_FILE}
   )
+endif()
+
+if(CMake_TEST_CPACK_DEB)
+  add_RunCMake_test(CPack_DEB)
+endif()
+
+if(CMake_TEST_CPACK_RPM)
+  add_RunCMake_test(CPack_RPM)
 endif()
 
 if(CMake_TEST_CPACK_WIX3 OR CMake_TEST_CPACK_WIX4)
@@ -1338,8 +1425,11 @@ add_RunCMake_test(AutoExportDll
 
 add_RunCMake_test(AndroidMK)
 add_RunCMake_test(ExportPackageInfo)
+add_RunCMake_test(ExportSbom)
+add_RunCMake_test(EnvSbom)
 add_RunCMake_test(InstallPackageInfo)
 add_RunCMake_test(InstallExportsAsPackageInfo)
+add_RunCMake_test(InstallSbom)
 
 if(CMake_TEST_ANDROID_NDK OR CMake_TEST_ANDROID_STANDALONE_TOOLCHAIN)
   if(NOT "${CMAKE_GENERATOR}" MATCHES "Make|Ninja|Visual Studio 1[456]")
@@ -1461,3 +1551,8 @@ add_RunCMake_test(MsvcCharsetDefines
   -DCMake_TEST_CUDA=${CMake_TEST_CUDA}
 )
 set_property(TEST RunCMake.MsvcCharsetDefines APPEND PROPERTY LABELS "CUDA")
+
+add_RunCMake_test(cmake-E-bin2c -DCMake_TEST_BIN2C_LARGE_FILE=${CMake_TEST_BIN2C_LARGE_FILE})
+if(CMake_TEST_BIN2C_LARGE_FILE)
+  set_property(TEST RunCMake.cmake-E-bin2c PROPERTY TIMEOUT ${CMAKE_LONG_TEST_TIMEOUT})
+endif()

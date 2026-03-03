@@ -4,7 +4,6 @@
 #include "cmCPackAppImageGenerator.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstddef>
 #include <utility>
 #include <vector>
@@ -14,10 +13,12 @@
 #include <sys/types.h>
 
 #include "cmsys/FStream.hxx"
+#include "cmsys/String.h"
 
 #include "cmCPackLog.h"
 #include "cmELF.h"
 #include "cmGeneratedFileStream.h"
+#include "cmStringAlgorithms.h"
 #include "cmSystemTools.h"
 #include "cmValue.h"
 
@@ -182,8 +183,18 @@ int cmCPackAppImageGenerator::PackageFiles()
   }
 
   std::string const appRunFile = this->toplevel + "/AppRun";
-  {
-    // AppRun script will run our application
+  if (cmSystemTools::PathExists(appRunFile)) {
+    // User provided an AppRun file
+    cmCPackLogger(cmCPackLog::LOG_OUTPUT,
+                  cmStrCat("Found AppRun file: \"", appRunFile, '"')
+                    << std::endl);
+  } else {
+    // Generate a default AppRun script that will run our application
+    cmCPackLogger(
+      cmCPackLog::LOG_OUTPUT,
+      cmStrCat("No AppRun found, generating a default one that will run: \"",
+               application, '"')
+        << std::endl);
     cmGeneratedFileStream appRun(appRunFile);
     appRun << R"sh(#! /usr/bin/env bash
 
@@ -329,11 +340,9 @@ namespace {
 // Trim leading and trailing whitespace from a string
 std::string trim(std::string const& str)
 {
-  auto start = std::find_if_not(
-    str.begin(), str.end(), [](unsigned char c) { return std::isspace(c); });
-  auto end = std::find_if_not(str.rbegin(), str.rend(), [](unsigned char c) {
-               return std::isspace(c);
-             }).base();
+  auto start = std::find_if_not(str.begin(), str.end(), cmsysString_isspace);
+  auto end =
+    std::find_if_not(str.rbegin(), str.rend(), cmsysString_isspace).base();
   return (start < end) ? std::string(start, end) : std::string();
 }
 } // namespace

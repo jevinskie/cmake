@@ -6,6 +6,7 @@
 #include <array>
 #include <cassert>
 #include <chrono>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <initializer_list>
@@ -16,7 +17,6 @@
 #include <stdexcept>
 #include <utility>
 
-#include <cm/filesystem>
 #include <cm/memory>
 #include <cm/optional>
 #include <cm/string_view>
@@ -734,10 +734,13 @@ bool cmake::SetCacheArgs(std::vector<std::string> const& args)
           cmSystemTools::Error("No file name specified for -C");
           return false;
         }
-        cmSystemTools::Stdout("loading initial cache file " + value + "\n");
+        cmSystemTools::Stdout(
+          cmStrCat("loading initial cache file ", value, '\n'));
         // Resolve script path specified on command line
         // relative to $PWD.
         auto path = cmSystemTools::ToNormalizedPathOnDisk(value);
+        state->InitializeFileAPI();
+        state->InitializeInstrumentation();
         state->ReadListFile(args, path);
         return true;
       } },
@@ -1986,10 +1989,10 @@ int cmake::AddCMakePaths()
         (cmSystemTools::GetCMakeRoot() + "/Modules/CMake.cmake"))) {
     // couldn't find modules
     cmSystemTools::Error(
-      "Could not find CMAKE_ROOT !!!\n"
-      "CMake has most likely not been installed correctly.\n"
-      "Modules directory not found in\n" +
-      cmSystemTools::GetCMakeRoot());
+      cmStrCat("Could not find CMAKE_ROOT !!!\n"
+               "CMake has most likely not been installed correctly.\n"
+               "Modules directory not found in\n",
+               cmSystemTools::GetCMakeRoot()));
     return 0;
   }
   this->AddCacheEntry("CMAKE_ROOT", cmSystemTools::GetCMakeRoot(),
@@ -2688,13 +2691,9 @@ int cmake::ActualConfigure()
   }
 
 #if !defined(CMAKE_BOOTSTRAP)
-  this->FileAPI = cm::make_unique<cmFileAPI>(this);
+  this->InitializeFileAPI();
   this->FileAPI->ReadQueries();
-
-  this->Instrumentation = cm::make_unique<cmInstrumentation>(
-    this->State->GetBinaryDirectory(),
-    cmInstrumentation::LoadQueriesAfter::No);
-  this->Instrumentation->ClearGeneratedQueries();
+  this->InitializeInstrumentation();
 
   if (!this->GetIsInTryCompile()) {
     this->TruncateOutputLog("CMakeConfigureLog.yaml");
@@ -2952,6 +2951,27 @@ void cmake::StopDebuggerIfNeeded(int exitCode)
 
 #endif
 
+void cmake::InitializeFileAPI()
+{
+#ifndef CMAKE_BOOTSTRAP
+  if (!this->FileAPI) {
+    this->FileAPI = cm::make_unique<cmFileAPI>(this);
+  }
+#endif
+}
+
+void cmake::InitializeInstrumentation()
+{
+#ifndef CMAKE_BOOTSTRAP
+  if (!this->Instrumentation) {
+    this->Instrumentation = cm::make_unique<cmInstrumentation>(
+      this->State->GetBinaryDirectory(),
+      cmInstrumentation::LoadQueriesAfter::No);
+    this->Instrumentation->ClearGeneratedQueries();
+  }
+#endif
+}
+
 // handle a command line invocation
 int cmake::Run(std::vector<std::string> const& args, bool noconfigure)
 {
@@ -3004,10 +3024,9 @@ int cmake::Run(std::vector<std::string> const& args, bool noconfigure)
     if (!this->SarifFileOutput) {
       // If no output file is specified, use the default path
       // Enable parent directory creation for the default path
-      sarifLogFileWriter.SetPath(
-        cm::filesystem::path(this->GetHomeOutputDirectory()) /
-          std::string(cmSarif::PROJECT_DEFAULT_SARIF_FILE),
-        true);
+      sarifLogFileWriter.SetPath(cmStrCat(this->GetHomeOutputDirectory(), '/',
+                                          cmSarif::PROJECT_DEFAULT_SARIF_FILE),
+                                 true);
     }
 #endif
   } else {
@@ -3832,12 +3851,13 @@ std::vector<std::string> cmake::GetDebugConfigs()
   return std::move(configs.data());
 }
 
-int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
-                 std::string config, std::vector<std::string> nativeOptions,
-                 cmBuildOptions& buildOptions, bool verbose,
-                 std::string const& presetName, bool listPresets,
-                 std::vector<std::string> const& args)
+int cmake::Build(cmBuildArgs buildArgs, std::vector<std::string> targets,
+                 std::vector<std::string> nativeOptions,
+                 cmBuildOptions& buildOptions, std::string const& presetName,
+                 bool listPresets, std::vector<std::string> const& args)
 {
+  buildArgs.timeout = cmDuration::zero();
+
 #if !defined(CMAKE_BOOTSTRAP)
   if (!presetName.empty() || listPresets) {
     this->SetHomeDirectory(cmSystemTools::GetLogicalWorkingDirectory());
@@ -3917,17 +3937,23 @@ int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
       return 1;
     }
 
-    if (dir.empty() && !expandedConfigurePreset->BinaryDir.empty()) {
-      dir = expandedConfigurePreset->BinaryDir;
+    if (buildArgs.binaryDir.empty() &&
+        !expandedConfigurePreset->BinaryDir.empty()) {
+      buildArgs.binaryDir = expandedConfigurePreset->BinaryDir;
     }
 
     this->UnprocessedPresetEnvironment = expandedPreset->Environment;
     this->ProcessPresetEnvironment();
 
-    if ((jobs == cmake::DEFAULT_BUILD_PARALLEL_LEVEL ||
-         jobs == cmake::NO_BUILD_PARALLEL_LEVEL) &&
+    if ((buildArgs.jobs == cmake::DEFAULT_BUILD_PARALLEL_LEVEL ||
+         buildArgs.jobs == cmake::NO_BUILD_PARALLEL_LEVEL) &&
         expandedPreset->Jobs) {
-      jobs = *expandedPreset->Jobs;
+      if (*expandedPreset->Jobs > static_cast<unsigned int>(INT_MAX)) {
+        cmSystemTools::Error(
+          "The build preset \"jobs\" value is too large.\n");
+        return 1;
+      }
+      buildArgs.jobs = *expandedPreset->Jobs;
     }
 
     if (targets.empty()) {
@@ -3935,8 +3961,8 @@ int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
                      expandedPreset->Targets.end());
     }
 
-    if (config.empty()) {
-      config = expandedPreset->Configuration;
+    if (buildArgs.config.empty()) {
+      buildArgs.config = expandedPreset->Configuration;
     }
 
     if (!buildOptions.Clean && expandedPreset->CleanFirst) {
@@ -3948,8 +3974,8 @@ int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
       buildOptions.ResolveMode = *expandedPreset->ResolvePackageReferences;
     }
 
-    if (!verbose && expandedPreset->Verbose) {
-      verbose = *expandedPreset->Verbose;
+    if (!buildArgs.verbose && expandedPreset->Verbose) {
+      buildArgs.verbose = *expandedPreset->Verbose;
     }
 
     if (nativeOptions.empty()) {
@@ -3960,12 +3986,12 @@ int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
   }
 #endif
 
-  if (!cmSystemTools::FileIsDirectory(dir)) {
-    std::cerr << "Error: " << dir << " is not a directory\n";
+  if (!cmSystemTools::FileIsDirectory(buildArgs.binaryDir)) {
+    std::cerr << "Error: " << buildArgs.binaryDir << " is not a directory\n";
     return 1;
   }
 
-  std::string cachePath = FindCacheFile(dir);
+  std::string cachePath = FindCacheFile(buildArgs.binaryDir);
   if (!this->LoadCache(cachePath)) {
     std::cerr
       << "Error: not a CMake build directory (missing CMakeCache.txt)\n";
@@ -4010,17 +4036,16 @@ int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
       return 1;
     }
   }
-  std::string projName;
   cmValue cachedProjectName =
     this->State->GetCacheEntryValue("CMAKE_PROJECT_NAME");
   if (!cachedProjectName) {
     std::cerr << "Error: could not find CMAKE_PROJECT_NAME in Cache\n";
     return 1;
   }
-  projName = *cachedProjectName;
+  buildArgs.projectName = *cachedProjectName;
 
   if (this->State->GetCacheEntryValue("CMAKE_VERBOSE_MAKEFILE").IsOn()) {
-    verbose = true;
+    buildArgs.verbose = true;
   }
 
 #ifdef CMAKE_HAVE_VS_GENERATORS
@@ -4028,8 +4053,9 @@ int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
   // actually starting the build. If not done separately from the build
   // itself, there is the risk of building an out-of-date solution file due
   // to limitations of the underlying build system.
-  std::string const stampList = cachePath + "/" + "CMakeFiles/" +
-    cmGlobalVisualStudio14Generator::GetGenerateStampList();
+  std::string const stampList =
+    cmStrCat(cachePath, "/CMakeFiles/",
+             cmGlobalVisualStudio14Generator::GetGenerateStampList());
 
   // Note that the stampList file only exists for VS generators.
   if (cmSystemTools::FileExists(stampList) &&
@@ -4066,7 +4092,7 @@ int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
   }
 
 #if !defined(CMAKE_BOOTSTRAP)
-  cmInstrumentation instrumentation(dir);
+  cmInstrumentation instrumentation(buildArgs.binaryDir);
   if (instrumentation.HasErrors()) {
     return 1;
   }
@@ -4074,18 +4100,17 @@ int cmake::Build(int jobs, std::string dir, std::vector<std::string> targets,
     cmInstrumentationQuery::Hook::PreCMakeBuild);
 #endif
 
-  this->GlobalGenerator->PrintBuildCommandAdvice(std::cerr, jobs);
+  this->GlobalGenerator->PrintBuildCommandAdvice(std::cerr, buildArgs.jobs);
   std::stringstream ostr;
   // `cmGlobalGenerator::Build` logs metadata about what directory and commands
   // are being executed to the `output` parameter. If CMake is verbose, print
   // this out.
-  std::ostream& verbose_ostr = verbose ? std::cout : ostr;
-  auto doBuild = [this, jobs, dir, projName, targets, &verbose_ostr, config,
-                  buildOptions, verbose, nativeOptions]() -> int {
+  std::ostream& verbose_ostr = buildArgs.verbose ? std::cout : ostr;
+  auto doBuild = [this, targets, &verbose_ostr, buildOptions, buildArgs,
+                  nativeOptions]() -> int {
     return this->GlobalGenerator->Build(
-      jobs, "", dir, projName, targets, verbose_ostr, "", config, buildOptions,
-      verbose, cmDuration::zero(), cmSystemTools::OUTPUT_PASSTHROUGH,
-      nativeOptions);
+      buildArgs, targets, verbose_ostr, "", buildArgs.config, buildOptions,
+      buildArgs.timeout, cmSystemTools::OUTPUT_PASSTHROUGH, nativeOptions);
   };
 
 #if !defined(CMAKE_BOOTSTRAP)
@@ -4208,6 +4233,7 @@ std::function<cmUVProcessChain::Status()> buildWorkflowStep(
 int cmake::Workflow(std::string const& presetName,
                     WorkflowListPresets listPresets, WorkflowFresh fresh)
 {
+  int exitStatus = 0;
 #ifndef CMAKE_BOOTSTRAP
   this->SetHomeDirectory(cmSystemTools::GetLogicalWorkingDirectory());
   this->SetHomeOutputDirectory(cmSystemTools::GetLogicalWorkingDirectory());
@@ -4280,11 +4306,12 @@ int cmake::Workflow(std::string const& presetName,
   std::vector<CalculatedStep> steps;
   steps.reserve(expandedPreset->Steps.size());
   int stepNumber = 1;
+  cmCMakePresetsGraph::ConfigurePreset const* configurePreset = {};
   for (auto const& step : expandedPreset->Steps) {
     switch (step.PresetType) {
       case cmCMakePresetsGraph::WorkflowPreset::WorkflowStep::Type::
         Configure: {
-        auto const* configurePreset = this->FindPresetForWorkflow(
+        configurePreset = this->FindPresetForWorkflow(
           "configure"_s, settingsFile.ConfigurePresets, step);
         if (!configurePreset) {
           return 1;
@@ -4345,19 +4372,27 @@ int cmake::Workflow(std::string const& presetName,
               << std::flush;
     cmUVProcessChain::Status const status = step.Action();
     if (status.ExitStatus != 0) {
-      return static_cast<int>(status.ExitStatus);
+      exitStatus = static_cast<int>(status.ExitStatus);
+      break;
     }
     auto const codeReasonPair = status.GetException();
     if (codeReasonPair.first != cmUVProcessChain::ExceptionCode::None) {
       std::cout << "Step command ended abnormally: " << codeReasonPair.second
                 << std::endl;
-      return status.SpawnResult != 0 ? status.SpawnResult : status.TermSignal;
+      exitStatus =
+        status.SpawnResult != 0 ? status.SpawnResult : status.TermSignal;
+      break;
     }
     first = false;
   }
+  if (configurePreset) {
+    cmInstrumentation instrumentation(configurePreset->BinaryDir);
+    instrumentation.CollectTimingData(
+      cmInstrumentationQuery::Hook::PostCMakeWorkflow);
+  }
 #endif
 
-  return 0;
+  return exitStatus;
 }
 
 void cmake::WatchUnusedCli(std::string const& var)

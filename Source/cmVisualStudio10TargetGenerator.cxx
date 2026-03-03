@@ -27,9 +27,10 @@
 #include "cmCryptoHash.h"
 #include "cmCustomCommand.h"
 #include "cmCustomCommandGenerator.h"
-#include "cmFileSet.h"
+#include "cmFileSetMetadata.h"
 #include "cmGeneratedFileStream.h"
 #include "cmGeneratorExpression.h"
+#include "cmGeneratorFileSet.h"
 #include "cmGeneratorOptions.h"
 #include "cmGeneratorTarget.h"
 #include "cmGlobalGenerator.h"
@@ -170,10 +171,16 @@ public:
       std::string const cond =
         this->TargetGenerator->CalcCondition(this->GetConfiguration());
       this->Parent->WritePlatformConfigTag(tag, cond, content);
+    } else if (!this->SuppressStartupBannerCondition.empty() &&
+               tag == "SuppressStartupBanner"_s) {
+      this->Parent->WritePlatformConfigTag(
+        tag, this->SuppressStartupBannerCondition, content);
     } else {
       this->Parent->Element(tag, content);
     }
   }
+
+  std::string SuppressStartupBannerCondition;
 
 private:
   cmVisualStudio10TargetGenerator* const TargetGenerator;
@@ -433,18 +440,20 @@ void cmVisualStudio10TargetGenerator::Generate()
     if (!this->ComputeLibOptions()) {
       return;
     }
-    for (std::string const& config : this->Configurations) {
-      // Default character set if not populated above.
-      this->CharSet.emplace(
-        config,
-        (this->GeneratorTarget->GetPropertyAsBool("VS_WINRT_COMPONENT") ||
-         this->GlobalGenerator->TargetsWindowsPhone() ||
-         this->GlobalGenerator->TargetsWindowsStore() ||
-         this->GeneratorTarget->GetPropertyAsBool("VS_WINRT_EXTENSIONS"))
-          ? MsvcCharSet::Unicode
-          : MsvcCharSet::MultiByte);
-    }
   }
+
+  for (std::string const& config : this->Configurations) {
+    // Default character set if not populated above.
+    this->CharSet.emplace(
+      config,
+      (this->GeneratorTarget->GetPropertyAsBool("VS_WINRT_COMPONENT") ||
+       this->GlobalGenerator->TargetsWindowsPhone() ||
+       this->GlobalGenerator->TargetsWindowsStore() ||
+       this->GeneratorTarget->GetPropertyAsBool("VS_WINRT_EXTENSIONS"))
+        ? MsvcCharSet::Unicode
+        : MsvcCharSet::MultiByte);
+  }
+
   std::string path =
     cmStrCat(this->LocalGenerator->GetCurrentBinaryDirectory(), '/',
              this->Name, ProjectFileExtension);
@@ -1546,12 +1555,9 @@ void cmVisualStudio10TargetGenerator::WriteMSToolConfigurationValues(
     e1.Element("UseOfMfc", useOfMfcValue);
   }
 
-  if ((this->GeneratorTarget->GetType() <= cmStateEnums::OBJECT_LIBRARY &&
-       this->CharSet[config] == MsvcCharSet::Unicode)) {
+  if (this->CharSet[config] == MsvcCharSet::Unicode) {
     e1.Element("CharacterSet", "Unicode");
-  } else if (this->GeneratorTarget->GetType() <=
-               cmStateEnums::OBJECT_LIBRARY &&
-             this->CharSet[config] == MsvcCharSet::SingleByte) {
+  } else if (this->CharSet[config] == MsvcCharSet::SingleByte) {
     e1.Element("CharacterSet", "NotSet");
   } else {
     e1.Element("CharacterSet", "MultiByte");
@@ -2706,13 +2712,13 @@ void cmVisualStudio10TargetGenerator::WriteAllSources(Elem& e0)
       if (si.Kind == cmGeneratorTarget::SourceKindObjectSource ||
           si.Kind == cmGeneratorTarget::SourceKindUnityBatched) {
         this->OutputSourceSpecificFlags(e2, si.Source);
-      } else if (fs && fs->GetType() == "CXX_MODULES"_s) {
+      } else if (fs && fs->GetType() == cm::FileSetMetadata::CXX_MODULES) {
         this->GeneratorTarget->Makefile->IssueMessage(
           MessageType::FATAL_ERROR,
           cmStrCat("Target \"", this->GeneratorTarget->GetName(),
                    "\" has source file\n  ", si.Source->GetFullPath(),
-                   "\nin a \"FILE_SET TYPE CXX_MODULES\" but it is not "
-                   "scheduled for compilation."));
+                   "\nin a \"FILE_SET TYPE ", cm::FileSetMetadata::CXX_MODULES,
+                   "\" but it is not scheduled for compilation."));
       }
       if (si.Source->GetPropertyAsBool("SKIP_PRECOMPILE_HEADERS")) {
         e2.Element("PrecompiledHeader", "NotUsing");
@@ -2729,23 +2735,32 @@ void cmVisualStudio10TargetGenerator::WriteAllSources(Elem& e0)
         customObjectName =
           this->LocalGenerator->GetCustomObjectFileName(*si.Source);
       }
+      if (customObjectName.empty()) {
+        if (this->GeneratorTarget->HasExplicitObjectName(si.Source)) {
+          customObjectName = this->GeneratorTarget->GetObjectName(si.Source);
+        }
+      } else {
+        customObjectName =
+          cmStrCat(std::move(customObjectName),
+                   this->GlobalGenerator->GetLanguageOutputExtension(
+                     si.Source->GetLanguage()));
+      }
       if (!customObjectName.empty()) {
         std::string outputName = "ObjectFileName";
         if (si.Source->GetLanguage() == "CUDA"_s) {
           outputName = "CompileOut";
         }
-        e2.Element(outputName,
-                   cmStrCat("$(IntDir)", customObjectName, ".obj"));
+        e2.Element(outputName, cmStrCat("$(IntDir)", customObjectName));
       }
 
       this->FinishWritingSource(e2, toolSettings);
-    } else if (fs && fs->GetType() == "CXX_MODULES"_s) {
+    } else if (fs && fs->GetType() == cm::FileSetMetadata::CXX_MODULES) {
       this->GeneratorTarget->Makefile->IssueMessage(
         MessageType::FATAL_ERROR,
         cmStrCat("Target \"", this->GeneratorTarget->GetName(),
                  "\" has source file\n  ", si.Source->GetFullPath(),
-                 "\nin a \"FILE_SET TYPE CXX_MODULES\" but it is not "
-                 "scheduled for compilation."));
+                 "\nin a \"FILE_SET TYPE ", cm::FileSetMetadata::CXX_MODULES,
+                 "\" but it is not scheduled for compilation."));
     }
   }
 
@@ -2821,9 +2836,9 @@ void cmVisualStudio10TargetGenerator::OutputSourceSpecificFlags(
   // Force language if the file extension does not match.
   // Note that MSVC treats the upper-case '.C' extension as C and not C++.
   std::string const ext = sf.GetExtension();
-  std::string const extLang = ext == "C"_s
-    ? "C"
-    : this->GlobalGenerator->GetLanguageFromExtension(ext.c_str());
+  cm::string_view const extLang = ext == "C"_s
+    ? "C"_s
+    : this->GlobalGenerator->GetLanguageFromExtension(ext);
   std::string lang = this->LocalGenerator->GetSourceFileLanguage(sf);
   char const* compileAs = nullptr;
   if (lang != extLang) {
@@ -2837,15 +2852,6 @@ void cmVisualStudio10TargetGenerator::OutputSourceSpecificFlags(
   }
 
   bool noWinRT = this->TargetCompileAsWinRT && lang == "C"_s;
-  // for the first time we need a new line if there is something
-  // produced here.
-  if (!objectName.empty()) {
-    if (lang == "CUDA"_s) {
-      e2.Element("CompileOut", cmStrCat("$(IntDir)/", objectName));
-    } else {
-      e2.Element("ObjectFileName", cmStrCat("$(IntDir)/", objectName));
-    }
-  }
 
   if (lang == "ASM_NASM"_s) {
     if (cmValue objectDeps = sf.GetProperty("OBJECT_DEPENDS")) {
@@ -2879,9 +2885,9 @@ void cmVisualStudio10TargetGenerator::OutputSourceSpecificFlags(
     auto const* fs =
       this->GeneratorTarget->GetFileSetForSource(config, source);
     char const* compileAsPerConfig = compileAs;
-    if (fs && fs->GetType() == "CXX_MODULES"_s) {
+    if (fs && fs->GetType() == cm::FileSetMetadata::CXX_MODULES) {
       if (lang == "CXX"_s) {
-        if (fs->GetType() == "CXX_MODULES"_s) {
+        if (fs->GetType() == cm::FileSetMetadata::CXX_MODULES) {
           isCppModule = true;
           if (shouldScanForModules &&
               this->GlobalGenerator->IsScanDependenciesSupported()) {
@@ -3697,6 +3703,13 @@ bool cmVisualStudio10TargetGenerator::ComputeClOptions(
     }
     if (!clOptions.HasFlag("RemoveUnreferencedCodeData")) {
       clOptions.AddFlag("RemoveUnreferencedCodeData", "");
+      // Visual Studio 2019 with toolset v142 versions 14.20 to 14.28.16.9
+      // fails if both RemoveUnreferencedCodeData and SuppressStartupBanner
+      // are empty.  Since the latter is incidental, make it conditional.
+      if (this->GlobalGenerator->GetPlatformToolsetString() == "v142"_s) {
+        clOptions.SuppressStartupBannerCondition =
+          "'$(VCToolsVersion)' >= '14.29'";
+      }
     }
     if (!clOptions.HasFlag("RuntimeLibrary")) {
       clOptions.AddFlag("RuntimeLibrary", "");
@@ -4529,29 +4542,15 @@ bool cmVisualStudio10TargetGenerator::ComputeLinkOptions(
     return false;
   }
 
-  std::string CONFIG = cmSystemTools::UpperCase(config);
-
-  char const* linkType = "SHARED";
-  if (this->GeneratorTarget->GetType() == cmStateEnums::MODULE_LIBRARY) {
-    linkType = "MODULE";
-  }
-  if (this->GeneratorTarget->GetType() == cmStateEnums::EXECUTABLE) {
-    linkType = "EXE";
-  }
   std::string flags;
-  this->LocalGenerator->AddConfigVariableFlags(
-    flags, cmStrCat("CMAKE_", linkType, "_LINKER_FLAGS"),
-    this->GeneratorTarget, cmBuildStep::Link, linkLanguage, config);
-  cmValue targetLinkFlags = this->GeneratorTarget->GetProperty("LINK_FLAGS");
-  if (targetLinkFlags) {
-    flags += ' ';
-    flags += *targetLinkFlags;
-  }
-  std::string flagsProp = cmStrCat("LINK_FLAGS_", CONFIG);
-  if (cmValue flagsConfig = this->GeneratorTarget->GetProperty(flagsProp)) {
-    flags += ' ';
-    flags += *flagsConfig;
-  }
+  this->LocalGenerator->AddTargetTypeLinkerFlags(flags, this->GeneratorTarget,
+                                                 linkLanguage, config);
+
+  this->LocalGenerator->AddPerLanguageLinkFlags(flags, this->GeneratorTarget,
+                                                linkLanguage, config);
+
+  this->LocalGenerator->AddTargetPropertyLinkFlags(
+    flags, this->GeneratorTarget, config);
 
   std::vector<std::string> opts;
   this->GeneratorTarget->GetLinkOptions(opts, config, linkLanguage);
@@ -4611,35 +4610,32 @@ bool cmVisualStudio10TargetGenerator::ComputeLinkOptions(
   }
 
   if (this->MSTools) {
-    if (this->GeneratorTarget->GetType() == cmStateEnums::EXECUTABLE) {
-      // Specify an entry point for executables.
-      if (this->GeneratorTarget->IsWin32Executable(config)) {
-        if (this->GlobalGenerator->TargetsWindowsCE()) {
-          linkOptions.AddFlag("SubSystem", "WindowsCE");
-          if (this->GeneratorTarget->GetType() == cmStateEnums::EXECUTABLE) {
-            if (this->CharSet[config] == MsvcCharSet::Unicode) {
-              linkOptions.AddFlag("EntryPointSymbol", "wWinMainCRTStartup");
-            } else {
-              linkOptions.AddFlag("EntryPointSymbol", "WinMainCRTStartup");
-            }
+    if (this->GeneratorTarget->IsWin32Executable(config)) {
+      if (this->GlobalGenerator->TargetsWindowsCE()) {
+        linkOptions.AddFlag("SubSystem", "WindowsCE");
+        if (this->GeneratorTarget->GetType() == cmStateEnums::EXECUTABLE) {
+          if (this->CharSet[config] == MsvcCharSet::Unicode) {
+            linkOptions.AddFlag("EntryPointSymbol", "wWinMainCRTStartup");
+          } else {
+            linkOptions.AddFlag("EntryPointSymbol", "WinMainCRTStartup");
           }
-        } else {
-          linkOptions.AddFlag("SubSystem", "Windows");
         }
       } else {
-        if (this->GlobalGenerator->TargetsWindowsCE()) {
-          linkOptions.AddFlag("SubSystem", "WindowsCE");
-          if (this->GeneratorTarget->GetType() == cmStateEnums::EXECUTABLE) {
-            if (this->CharSet[config] == MsvcCharSet::Unicode) {
-              linkOptions.AddFlag("EntryPointSymbol", "mainWCRTStartup");
-            } else {
-              linkOptions.AddFlag("EntryPointSymbol", "mainACRTStartup");
-            }
-          }
-        } else {
-          linkOptions.AddFlag("SubSystem", "Console");
-        };
+        linkOptions.AddFlag("SubSystem", "Windows");
       }
+    } else {
+      if (this->GlobalGenerator->TargetsWindowsCE()) {
+        linkOptions.AddFlag("SubSystem", "WindowsCE");
+        if (this->GeneratorTarget->GetType() == cmStateEnums::EXECUTABLE) {
+          if (this->CharSet[config] == MsvcCharSet::Unicode) {
+            linkOptions.AddFlag("EntryPointSymbol", "mainWCRTStartup");
+          } else {
+            linkOptions.AddFlag("EntryPointSymbol", "mainACRTStartup");
+          }
+        }
+      } else {
+        linkOptions.AddFlag("SubSystem", "Console");
+      };
     }
 
     if (cmValue stackVal = this->Makefile->GetDefinition(

@@ -3,6 +3,7 @@
 #include "cmStdIoInit.h"
 
 #include <cerrno>
+#include <clocale>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -93,23 +94,32 @@ public:
 
   Globals();
 
-  static Globals& Get();
-};
-
 #ifdef _WIN32
-Globals::Globals()
-{
-  static auto const ctrlHandler = [](DWORD /*dwCtrlType*/) -> BOOL {
+  static BOOL WINAPI CtrlHandler(DWORD /*dwCtrlType*/)
+  {
     Get().StdErr.Destroy();
     Get().StdOut.Destroy();
     Get().StdIn.Destroy();
     return FALSE;
-  };
-  SetConsoleCtrlHandler(ctrlHandler, TRUE);
-}
-#else
-Globals::Globals() = default;
+  }
 #endif
+
+  static Globals& Get();
+};
+
+Globals::Globals()
+{
+#ifdef _WIN32
+  // On Windows, setlocale offers a ".<code-page>" syntax to select the
+  // user's locale with a specific character set.  We always use UTF-8.
+  std::setlocale(LC_CTYPE, ".UTF-8");
+
+  SetConsoleCtrlHandler(CtrlHandler, TRUE);
+#else
+  // On non-Windows platforms, we select the user's locale.
+  std::setlocale(LC_CTYPE, "");
+#endif
+}
 
 Globals& Globals::Get()
 {

@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <set>
 #include <vector>
 
@@ -12,6 +11,8 @@
 #  include <unordered_map>
 #  include <utility>
 #endif
+
+#include "cmsys/String.h"
 
 #include "cmList.h"
 #include "cmState.h"
@@ -154,44 +155,36 @@ std::string cmOutputConverter::MaybeRelativeToCurBinDir(
 }
 
 std::string cmOutputConverter::ConvertToOutputForExisting(
-  std::string const& remote, OutputFormat format, bool useWatcomQuote) const
+  cm::string_view path, OutputFormat format, bool useWatcomQuote) const
 {
 #ifdef _WIN32
-  // Cache the Short Paths since we only convert the same few paths anyway and
-  // calling `GetShortPathNameW` is really expensive.
+  // Cache the short paths since `GetShortPathNameW` is really expensive.
   static std::unordered_map<std::string, std::string> shortPathCache{};
 
-  // If this is a windows shell, the result has a space, and the path
-  // already exists, we can use a short-path to reference it without a
-  // space.
+  // If this is a windows shell, the path has a space, and the path already
+  // exists, we can use a short-path to reference it without a space.
   if (this->GetState()->UseWindowsShell() &&
-      remote.find_first_of(" #") != std::string::npos &&
-      cmSystemTools::FileExists(remote)) {
-
-    std::string shortPath = [&]() {
-      auto cachedShortPathIt = shortPathCache.find(remote);
-
-      if (cachedShortPathIt != shortPathCache.end()) {
-        return cachedShortPathIt->second;
+      path.find_first_of(" #") != std::string::npos) {
+    auto origPath = std::string(path);
+    if (cmSystemTools::FileExists(origPath)) {
+      auto i = shortPathCache.find(origPath);
+      if (i == shortPathCache.end()) {
+        std::string shortPath;
+        if (!cmSystemTools::GetShortPath(origPath, shortPath)) {
+          // Fallback for cases when Windows refuses to resolve
+          // the short path, like for `C:\Program Files\WindowsApps\...`.
+          shortPath = origPath;
+        }
+        i = shortPathCache.emplace(std::move(origPath), std::move(shortPath))
+              .first;
       }
-
-      std::string tmp{};
-      cmsys::Status status = cmSystemTools::GetShortPath(remote, tmp);
-      if (!status) {
-        // Fallback for cases when Windows refuses to resolve the short path,
-        // like for C:\Program Files\WindowsApps\...
-        tmp = remote;
-      }
-      shortPathCache[remote] = tmp;
-      return tmp;
-    }();
-
-    return this->ConvertToOutputFormat(shortPath, format, useWatcomQuote);
+      path = i->second;
+    }
   }
 #endif
 
   // Otherwise, perform standard conversion.
-  return this->ConvertToOutputFormat(remote, format, useWatcomQuote);
+  return this->ConvertToOutputFormat(path, format, useWatcomQuote);
 }
 
 std::string cmOutputConverter::ConvertToOutputFormat(cm::string_view source,
@@ -425,7 +418,7 @@ static bool Shell_CharNeedsQuotesOnWindows(char c)
 
 static bool Shell_CharIsMakeVariableName(char c)
 {
-  return c && (c == '_' || isalpha((static_cast<int>(c))));
+  return c && (c == '_' || cmsysString_isalpha((static_cast<int>(c))));
 }
 
 bool cmOutputConverter::Shell_CharNeedsQuotes(char c, int flags)

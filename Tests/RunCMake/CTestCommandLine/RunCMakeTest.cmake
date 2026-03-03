@@ -104,6 +104,19 @@ endfunction()
 run_repeat_until_fail_tests(--repeat-until-fail 3)
 run_repeat_until_fail_tests(--repeat until-fail:3)
 
+block()
+  set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/rerun)
+  set(RunCMake_TEST_NO_CLEAN 1)
+  file(REMOVE_RECURSE "${RunCMake_TEST_BINARY_DIR}")
+  file(MAKE_DIRECTORY "${RunCMake_TEST_BINARY_DIR}")
+  file(WRITE "${RunCMake_TEST_BINARY_DIR}/CTestTestfile.cmake" "
+add_test(works \"${CMAKE_COMMAND}\" -E true)
+add_test(fails \"${CMAKE_COMMAND}\" -E false)
+")
+  run_cmake_command(rerun-init ${CMAKE_CTEST_COMMAND})
+  run_cmake_command(rerun-failed ${CMAKE_CTEST_COMMAND} --rerun-failed)
+endblock()
+
 function(run_BadCTestTestfile)
   set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/BadCTestTestfile)
   set(RunCMake_TEST_NO_CLEAN 1)
@@ -410,6 +423,8 @@ add_test(test2 \"${CMAKE_COMMAND}\" -E echo \"not running\")
   run_cmake_command(stop-on-failure ${CMAKE_CTEST_COMMAND} --stop-on-failure)
 endfunction()
 run_stop_on_failure()
+
+run_cmake_command(usage ${CMAKE_CTEST_COMMAND})
 
 function(run_TestAffinity)
   set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/TestAffinity)

@@ -27,9 +27,10 @@
 #include "cmCustomCommand.h"
 #include "cmCustomCommandGenerator.h"
 #include "cmDyndepCollation.h"
-#include "cmFileSet.h"
+#include "cmFileSetMetadata.h"
 #include "cmGeneratedFileStream.h"
 #include "cmGeneratorExpression.h"
+#include "cmGeneratorFileSet.h"
 #include "cmGeneratorOptions.h"
 #include "cmGeneratorTarget.h"
 #include "cmGlobalCommonGenerator.h"
@@ -254,7 +255,7 @@ std::string cmNinjaTargetGenerator::ComputeFlagsForObject(
   }
 
   auto const* fs = this->GeneratorTarget->GetFileSetForSource(config, source);
-  if (fs && fs->GetType() == "CXX_MODULES"_s) {
+  if (fs && fs->GetType() == cm::FileSetMetadata::CXX_MODULES) {
     if (source->GetLanguage() != "CXX"_s) {
       this->GetMakefile()->IssueMessage(
         MessageType::FATAL_ERROR,
@@ -517,6 +518,13 @@ std::string cmNinjaTargetGenerator::GetTargetName() const
   return this->GeneratorTarget->GetName();
 }
 
+std::string cmNinjaTargetGenerator::ConvertToOutputFormatForShell(
+  cm::string_view path) const
+{
+  return this->LocalGenerator->ConvertToOutputFormat(path,
+                                                     cmOutputConverter::SHELL);
+}
+
 bool cmNinjaTargetGenerator::SetMsvcTargetPdbVariable(
   cmNinjaVars& vars, std::string const& config) const
 {
@@ -534,11 +542,10 @@ bool cmNinjaTargetGenerator::SetMsvcTargetPdbVariable(
                          this->GeneratorTarget->GetPDBName(config));
     }
 
-    vars["TARGET_PDB"] = this->GetLocalGenerator()->ConvertToOutputFormat(
-      this->ConvertToNinjaPath(pdbPath), cmOutputConverter::SHELL);
-    vars["TARGET_COMPILE_PDB"] =
-      this->GetLocalGenerator()->ConvertToOutputFormat(
-        this->ConvertToNinjaPath(compilePdbPath), cmOutputConverter::SHELL);
+    vars["TARGET_PDB"] =
+      this->ConvertToOutputFormatForShell(this->ConvertToNinjaPath(pdbPath));
+    vars["TARGET_COMPILE_PDB"] = this->ConvertToOutputFormatForShell(
+      this->ConvertToNinjaPath(compilePdbPath));
 
     this->EnsureParentDirectoryExists(pdbPath);
     this->EnsureParentDirectoryExists(compilePdbPath);
@@ -693,9 +700,8 @@ void cmNinjaTargetGenerator::WriteCompileRule(std::string const& lang,
   auto rulePlaceholderExpander =
     this->GetLocalGenerator()->CreateRulePlaceholderExpander();
 
-  std::string const tdi = this->GetLocalGenerator()->ConvertToOutputFormat(
-    this->ConvertToNinjaPath(this->GetTargetDependInfoPath(lang, config)),
-    cmLocalGenerator::SHELL);
+  std::string const tdi = this->ConvertToOutputFormatForShell(
+    this->ConvertToNinjaPath(this->GetTargetDependInfoPath(lang, config)));
 
   std::string launcher;
   std::string val = this->GetLocalGenerator()->GetRuleLauncher(
@@ -705,8 +711,7 @@ void cmNinjaTargetGenerator::WriteCompileRule(std::string const& lang,
   }
 
   std::string const cmakeCmd =
-    this->GetLocalGenerator()->ConvertToOutputFormat(
-      cmSystemTools::GetCMakeCommand(), cmLocalGenerator::SHELL);
+    this->ConvertToOutputFormatForShell(cmSystemTools::GetCMakeCommand());
 
   if (withScanning == WithScanning::Yes) {
     auto const& scanDepType = this->GetMakefile()->GetSafeDefinition(
@@ -1030,7 +1035,7 @@ void cmNinjaTargetGenerator::WriteObjectBuildStatements(
     std::vector<std::string> ccouts;
     std::vector<std::string> ccouts_private;
     bool usePrivateGeneratedSources = false;
-    if (this->GeneratorTarget->Target->HasFileSets()) {
+    if (this->GeneratorTarget->HasFileSets()) {
       switch (this->GetGeneratorTarget()->GetPolicyStatusCMP0154()) {
         case cmPolicies::WARN:
         case cmPolicies::OLD:
@@ -1052,13 +1057,11 @@ void cmNinjaTargetGenerator::WriteObjectBuildStatements(
         // Skip over outputs that were already detected.
         std::advance(it, nPreviousOutputs);
         while (it != ccouts.end()) {
-          cmFileSet const* fileset =
+          cmGeneratorFileSet const* fileset =
             this->GeneratorTarget->GetFileSetForSource(
               config, this->Makefile->GetOrCreateGeneratedSource(*it));
-          bool isVisible = fileset &&
-            cmFileSetVisibilityIsForInterface(fileset->GetVisibility());
-          bool isIncludeable =
-            !fileset || cmFileSetTypeCanBeIncluded(fileset->GetType());
+          bool isVisible = fileset && fileset->IsForInterface();
+          bool isIncludeable = !fileset || fileset->CanBeIncluded();
           if (fileset && isVisible && isIncludeable) {
             ++it;
             continue;
@@ -1164,12 +1167,12 @@ void cmNinjaTargetGenerator::WriteObjectBuildStatements(
     std::vector<cmSourceFile*> sources;
     this->GeneratorTarget->GetSourceFiles(sources, config);
     for (cmSourceFile const* sf : sources) {
-      cmFileSet const* fs =
+      cmGeneratorFileSet const* fs =
         this->GeneratorTarget->GetFileSetForSource(config, sf);
       if (!fs) {
         continue;
       }
-      if (fs->GetType() != "CXX_MODULES"_s) {
+      if (fs->GetType() != cm::FileSetMetadata::CXX_MODULES) {
         continue;
       }
       if (sf->GetLanguage().empty()) {
@@ -1177,8 +1180,8 @@ void cmNinjaTargetGenerator::WriteObjectBuildStatements(
           MessageType::FATAL_ERROR,
           cmStrCat("Target \"", this->GeneratorTarget->GetName(),
                    "\" has source file\n  ", sf->GetFullPath(),
-                   "\nin a \"FILE_SET TYPE CXX_MODULES\" but it is not "
-                   "scheduled for compilation."));
+                   "\nin a \"FILE_SET TYPE ", cm::FileSetMetadata::CXX_MODULES,
+                   "\" but it is not scheduled for compilation."));
       }
     }
   }
@@ -1227,6 +1230,23 @@ void cmNinjaTargetGenerator::WriteObjectBuildStatements(
     }
 
     this->WriteTargetDependInfo(language, config);
+
+    // Non-imported synthetic targets read module info from their native target
+    // Add as implicit dependency.
+    if (this->GeneratorTarget->IsSynthetic()) {
+      if (cmGeneratorTarget const* native_gt =
+            this->LocalGenerator->FindGeneratorTargetToUse(
+              this->GeneratorTarget->Target->GetTemplateName())) {
+        if (!native_gt->IsImported()) {
+          std::string native_dir = native_gt->GetSupportDirectory();
+          if (this->GetGlobalGenerator()->IsMultiConfig()) {
+            native_dir = cmStrCat(native_dir, '/', config);
+          }
+          build.ImplicitDeps.emplace_back(this->ConvertToNinjaPath(
+            cmStrCat(native_dir, '/', language, "Modules.json")));
+        }
+      }
+    }
 
     auto const linked_directories =
       this->GetLinkedTargetDirectories(language, config);
@@ -1281,8 +1301,7 @@ void cmNinjaTargetGenerator::GenerateSwiftOutputFileMap(
   this->LocalGenerator->AppendFlags(flags, "-output-file-map");
   this->LocalGenerator->AppendFlags(
     flags,
-    this->GetLocalGenerator()->ConvertToOutputFormat(
-      ConvertToNinjaPath(mapFilePath), cmOutputConverter::SHELL));
+    this->ConvertToOutputFormatForShell(ConvertToNinjaPath(mapFilePath)));
 }
 
 namespace {
@@ -1331,11 +1350,13 @@ cmNinjaBuild GetScanBuildStatement(std::string const& ruleName,
 
   // Tell dependency scanner the object file that will result from
   // compiling the source.
-  scanBuild.Variables["OBJ_FILE"] = objectFileName;
+  scanBuild.Variables["OBJ_FILE"] =
+    tg->ConvertToOutputFormatForShell(objectFileName);
 
   // Tell dependency scanner where to store dyndep intermediate results.
   std::string ddiFileName = cmStrCat(objectFileName, ".ddi");
-  scanBuild.Variables["DYNDEP_INTERMEDIATE_FILE"] = ddiFileName;
+  scanBuild.Variables["DYNDEP_INTERMEDIATE_FILE"] =
+    tg->ConvertToOutputFormatForShell(ddiFileName);
   scanBuild.RspFile = cmStrCat(ddiFileName, ".rsp");
 
   // Outputs of the scan/preprocessor build statement.
@@ -1344,7 +1365,8 @@ cmNinjaBuild GetScanBuildStatement(std::string const& ruleName,
     scanBuild.ImplicitOuts.push_back(ddiFileName);
   } else {
     scanBuild.Outputs.push_back(ddiFileName);
-    scanBuild.Variables["PREPROCESSED_OUTPUT_FILE"] = ppFileName;
+    scanBuild.Variables["PREPROCESSED_OUTPUT_FILE"] =
+      tg->ConvertToOutputFormatForShell(ppFileName);
     if (!compilationPreprocesses) {
       // Compilation does not preprocess and we are not compiling an
       // already-preprocessed source.  Make compilation depend on the scan
@@ -1425,8 +1447,8 @@ void cmNinjaTargetGenerator::WriteObjectBuildStatement(
     : this->GetGeneratorTarget()->GetPropertyAsBool("SKIP_LINTING");
 
   if (!skipCodeCheck) {
-    auto const cmakeCmd = this->GetLocalGenerator()->ConvertToOutputFormat(
-      cmSystemTools::GetCMakeCommand(), cmLocalGenerator::SHELL);
+    auto const cmakeCmd =
+      this->ConvertToOutputFormatForShell(cmSystemTools::GetCMakeCommand());
     vars["CODE_CHECK"] =
       this->GenerateCodeCheckRules(*source, compilerLauncher, cmakeCmd, config,
                                    [this](std::string const& path) {
@@ -1630,7 +1652,8 @@ void cmNinjaTargetGenerator::WriteObjectBuildStatement(
       // `cmNinjaTargetGenerator::ExportObjectCompileCommand` to expect the
       // corresponding file path.
       std::string ddModmapFile = cmStrCat(objectFileName, ".modmap");
-      vars["DYNDEP_MODULE_MAP_FILE"] = ddModmapFile;
+      vars["DYNDEP_MODULE_MAP_FILE"] =
+        this->ConvertToOutputFormatForShell(ddModmapFile);
       objBuild.ImplicitDeps.push_back(ddModmapFile);
       scanningFiles.ModuleMapFile = std::move(ddModmapFile);
     }
@@ -1642,13 +1665,10 @@ void cmNinjaTargetGenerator::WriteObjectBuildStatement(
 
   this->EnsureParentDirectoryExists(objectFileName);
 
-  vars["OBJECT_DIR"] = this->GetLocalGenerator()->ConvertToOutputFormat(
-    objectDir, cmOutputConverter::SHELL);
+  vars["OBJECT_DIR"] = this->ConvertToOutputFormatForShell(objectDir);
   vars["TARGET_SUPPORT_DIR"] =
-    this->GetLocalGenerator()->ConvertToOutputFormat(targetSupportDir,
-                                                     cmOutputConverter::SHELL);
-  vars["OBJECT_FILE_DIR"] = this->GetLocalGenerator()->ConvertToOutputFormat(
-    objectFileDir, cmOutputConverter::SHELL);
+    this->ConvertToOutputFormatForShell(targetSupportDir);
+  vars["OBJECT_FILE_DIR"] = this->ConvertToOutputFormatForShell(objectFileDir);
 
   this->addPoolNinjaVariable("JOB_POOL_COMPILE", this->GetGeneratorTarget(),
                              source, vars);
@@ -1707,9 +1727,7 @@ void cmNinjaTargetGenerator::WriteObjectBuildStatement(
       }
     }
 
-    vars["ISPC_HEADER_FILE"] =
-      this->GetLocalGenerator()->ConvertToOutputFormat(
-        ispcHeader, cmOutputConverter::SHELL);
+    vars["ISPC_HEADER_FILE"] = this->ConvertToOutputFormatForShell(ispcHeader);
   } else {
     auto headers = this->GeneratorTarget->GetGeneratedISPCHeaders(config);
     if (!headers.empty()) {
@@ -1862,7 +1880,8 @@ void cmNinjaTargetGenerator::WriteCxxModuleBmiBuildStatement(
 
     if (!modmapFormat.empty()) {
       std::string ddModmapFile = cmStrCat(bmiFileName, ".modmap");
-      vars["DYNDEP_MODULE_MAP_FILE"] = ddModmapFile;
+      vars["DYNDEP_MODULE_MAP_FILE"] =
+        this->ConvertToOutputFormatForShell(ddModmapFile);
       scanningFiles.ModuleMapFile = std::move(ddModmapFile);
     }
 
@@ -1873,13 +1892,10 @@ void cmNinjaTargetGenerator::WriteCxxModuleBmiBuildStatement(
 
   this->EnsureParentDirectoryExists(bmiFileName);
 
-  vars["OBJECT_DIR"] = this->GetLocalGenerator()->ConvertToOutputFormat(
-    bmiDir, cmOutputConverter::SHELL);
+  vars["OBJECT_DIR"] = this->ConvertToOutputFormatForShell(bmiDir);
   vars["TARGET_SUPPORT_DIR"] =
-    this->GetLocalGenerator()->ConvertToOutputFormat(targetSupportDir,
-                                                     cmOutputConverter::SHELL);
-  vars["OBJECT_FILE_DIR"] = this->GetLocalGenerator()->ConvertToOutputFormat(
-    bmiFileDir, cmOutputConverter::SHELL);
+    this->ConvertToOutputFormatForShell(targetSupportDir);
+  vars["OBJECT_FILE_DIR"] = this->ConvertToOutputFormatForShell(bmiFileDir);
 
   this->addPoolNinjaVariable("JOB_POOL_COMPILE", this->GetGeneratorTarget(),
                              source, vars);
@@ -2153,6 +2169,22 @@ void cmNinjaTargetGenerator::WriteTargetDependInfo(std::string const& lang,
     tdi["forward-modules-from-target-dirs"] = Json::arrayValue;
   for (std::string const& l : linked_directories.Forward) {
     tdi_forward_modules_from_target_dirs.append(l);
+  }
+
+  // Record the native target support directory for non-imported synthetic
+  // targets
+  if (this->GeneratorTarget->IsSynthetic()) {
+    if (cmGeneratorTarget* nativeGT =
+          this->LocalGenerator->FindGeneratorTargetToUse(
+            this->GeneratorTarget->Target->GetTemplateName())) {
+      if (!nativeGT->IsImported()) {
+        std::string nativeDir = nativeGT->GetSupportDirectory();
+        if (this->GetGlobalGenerator()->IsMultiConfig()) {
+          nativeDir = cmStrCat(nativeDir, '/', config);
+        }
+        tdi["native-target-dir"] = nativeDir;
+      }
+    }
   }
 
   cmDyndepGeneratorCallbacks cb;
@@ -2497,9 +2529,7 @@ void cmNinjaTargetGenerator::MacOSXContentGeneratorType::operator()(
 void cmNinjaTargetGenerator::AddDepfileBinding(cmNinjaVars& vars,
                                                std::string depfile) const
 {
-  std::string depfileForShell =
-    this->GetLocalGenerator()->ConvertToOutputFormat(depfile,
-                                                     cmOutputConverter::SHELL);
+  std::string depfileForShell = this->ConvertToOutputFormatForShell(depfile);
   if (depfile != depfileForShell) {
     vars["depfile"] = std::move(depfile);
   }

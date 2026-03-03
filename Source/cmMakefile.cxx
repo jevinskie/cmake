@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -28,6 +27,7 @@
 
 #include "cmsys/FStream.hxx"
 #include "cmsys/RegularExpression.hxx"
+#include "cmsys/String.h"
 
 #include "cmCustomCommand.h"
 #include "cmCustomCommandLines.h"
@@ -340,14 +340,15 @@ void cmMakefile::PrintCommandTrace(cmListFileFunction const& lff,
   std::vector<std::string> const& trace_only_this_files =
     this->GetCMakeInstance()->GetTraceSources();
   std::string const& full_path = bt.Top().FilePath;
-  std::string const& only_filename = cmSystemTools::GetFilenameName(full_path);
+  cm::string_view only_filename =
+    cmSystemTools::GetFilenameNameView(full_path);
   bool trace = trace_only_this_files.empty();
   if (!trace) {
     for (std::string const& file : trace_only_this_files) {
       std::string::size_type const pos = full_path.rfind(file);
       trace = (pos != std::string::npos) &&
         ((pos + file.size()) == full_path.size()) &&
-        (only_filename == cmSystemTools::GetFilenameName(file));
+        (only_filename == cmSystemTools::GetFilenameNameView(file));
       if (trace) {
         break;
       }
@@ -1298,8 +1299,8 @@ static void s_RemoveDefineFlag(std::string const& flag, std::string& dflags)
   for (std::string::size_type lpos = dflags.find(flag, 0);
        lpos != std::string::npos; lpos = dflags.find(flag, lpos)) {
     std::string::size_type rpos = lpos + len;
-    if ((lpos <= 0 || cmIsSpace(dflags[lpos - 1])) &&
-        (rpos >= dflags.size() || cmIsSpace(dflags[rpos]))) {
+    if ((lpos <= 0 || cmsysString_isspace(dflags[lpos - 1])) &&
+        (rpos >= dflags.size() || cmsysString_isspace(dflags[rpos]))) {
       dflags.erase(lpos, len);
     } else {
       ++lpos;
@@ -1428,6 +1429,16 @@ void cmMakefile::AddTestGenerator(std::unique_ptr<cmTestGenerator> g)
   if (g) {
     this->TestGenerators.push_back(std::move(g));
   }
+}
+
+bool cmMakefile::ExplicitlyGeneratesSbom() const
+{
+  return this->ExplicitSbomGenerator;
+}
+
+void cmMakefile::SetExplicitlyGeneratesSbom(bool status)
+{
+  this->ExplicitSbomGenerator = status;
 }
 
 void cmMakefile::PushFunctionScope(std::string const& fileName,
@@ -2694,7 +2705,7 @@ MessageType cmMakefile::ExpandVariablesInStringImpl(
             last = next + 1;
           } else if (nextc == ';' && openstack.empty()) {
             // Handled in ExpandListArgument; pass the backslash literally.
-          } else if (isalnum(nextc) || nextc == '\0') {
+          } else if (cmsysString_isalnum(nextc) || nextc == '\0') {
             errorstr += "Invalid character escape '\\";
             if (nextc) {
               errorstr += nextc;
@@ -2762,8 +2773,8 @@ MessageType cmMakefile::ExpandVariablesInStringImpl(
         CM_FALLTHROUGH;
       default: {
         if (!openstack.empty() &&
-            !(isalnum(inc) || inc == '_' || inc == '/' || inc == '.' ||
-              inc == '+' || inc == '-')) {
+            !(cmsysString_isalnum(inc) || inc == '_' || inc == '/' ||
+              inc == '.' || inc == '+' || inc == '-')) {
           errorstr += cmStrCat("Invalid character ('", inc);
           result.append(last, in - last);
           errorstr += cmStrCat("') in a variable name: '",
@@ -3330,7 +3341,7 @@ int cmMakefile::TryCompile(std::string const& srcdir,
 
   // finally call the generator to actually build the resulting project
   int ret = this->GetGlobalGenerator()->TryCompile(
-    jobs, srcdir, bindir, projectName, targetName, fast, output, this);
+    jobs, bindir, projectName, targetName, fast, output, this);
 
   this->IsSourceFileTryCompile = false;
   return ret;
@@ -3359,8 +3370,7 @@ cmGlobalGenerator* cmMakefile::GetGlobalGenerator() const
 #ifndef CMAKE_BOOTSTRAP
 cmVariableWatch* cmMakefile::GetVariableWatch() const
 {
-  if (this->GetCMakeInstance() &&
-      this->GetCMakeInstance()->GetVariableWatch()) {
+  if (this->GetCMakeInstance()) {
     return this->GetCMakeInstance()->GetVariableWatch();
   }
   return nullptr;
@@ -4085,14 +4095,15 @@ bool cmMakefile::SetPolicy(cmPolicies::PolicyID id,
   }
 
   // Deprecate old policies.
-  if (status == cmPolicies::OLD && id <= cmPolicies::CMP0143 &&
+  if (status == cmPolicies::OLD && id <= cmPolicies::CMP0155 &&
       !(this->GetCMakeInstance()->GetIsInTryCompile() &&
         (
           // Policies set by cmCoreTryCompile::TryCompileCode.
           id == cmPolicies::CMP0083 || id == cmPolicies::CMP0091 ||
           id == cmPolicies::CMP0104 || id == cmPolicies::CMP0123 ||
           id == cmPolicies::CMP0126 || id == cmPolicies::CMP0128 ||
-          id == cmPolicies::CMP0136 || id == cmPolicies::CMP0141)) &&
+          id == cmPolicies::CMP0136 || id == cmPolicies::CMP0141 ||
+          id == cmPolicies::CMP0155)) &&
       (!this->IsSet("CMAKE_WARN_DEPRECATED") ||
        this->IsOn("CMAKE_WARN_DEPRECATED"))) {
     this->IssueMessage(MessageType::DEPRECATION_WARNING,

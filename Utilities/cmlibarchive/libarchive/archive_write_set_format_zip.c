@@ -1365,6 +1365,11 @@ archive_write_zip_header(struct archive_write *a, struct archive_entry *entry)
 		int zstd_compression_level = zip->compression_level == 1
 			? ZSTD_minCLevel() // ZSTD_minCLevel is negative !
 			: (zip->compression_level - 1) * ZSTD_maxCLevel() / 8;
+#ifdef _AIX
+		if (zstd_compression_level > 6) {
+			zstd_compression_level = 6;
+		}
+#endif
 		zip->stream.zstd.context = ZSTD_createCStream();
 		size_t zret = ZSTD_initCStream(zip->stream.zstd.context, zstd_compression_level);
 		if (ZSTD_isError(zret)) {
@@ -1386,6 +1391,11 @@ archive_write_zip_header(struct archive_write *a, struct archive_entry *entry)
 		uint32_t lzma_compression_level = zip->compression_level == 9
 			? LZMA_PRESET_EXTREME | zip->compression_level
 			: (uint32_t)zip->compression_level;
+#ifdef _AIX
+		if (lzma_compression_level > 6) {
+			lzma_compression_level = 6;
+		}
+#endif
 		/* Forcibly setting up the encoder to use the LZMA1 variant, as
 		 * it is the one LZMA Alone uses. */
 		lzma_filter filters[2] = {
@@ -1415,6 +1425,11 @@ archive_write_zip_header(struct archive_write *a, struct archive_entry *entry)
 		uint32_t lzma_compression_level = zip->compression_level == 9
 			? LZMA_PRESET_EXTREME | zip->compression_level
 			: (uint32_t)zip->compression_level;
+#ifdef _AIX
+		if (lzma_compression_level > 6) {
+			lzma_compression_level = 6;
+		}
+#endif
 		lzma_ret retval;
 #ifndef HAVE_LZMA_STREAM_ENCODER_MT
 		/* Force the number of threads to one, and thus to a mono-threaded

@@ -593,10 +593,10 @@ class cmMakefile;
   SELECT(POLICY, CMP0198,                                                     \
          "CMAKE_PARENT_LIST_FILE is not defined in CMakeLists.txt.", 4, 2, 0, \
          WARN)                                                                \
-  SELECT(                                                                     \
-    POLICY, CMP0199,                                                          \
-    "$<CONFIG:cfgs> only matches the configuration of the consumed target.",  \
-    4, 2, 0, WARN)                                                            \
+  SELECT(POLICY, CMP0199,                                                     \
+         "$<CONFIG:cfgs> does not match mapped configurations that are not "  \
+         "selected.",                                                         \
+         4, 2, 0, WARN)                                                       \
   SELECT(POLICY, CMP0200,                                                     \
          "Location and configuration selection for imported targets is more " \
          "consistent.",                                                       \
@@ -621,7 +621,15 @@ class cmMakefile;
          WARN)                                                                \
   SELECT(POLICY, CMP0207,                                                     \
          "file(GET_RUNTIME_DEPENDENCIES) normalizes paths before matching.",  \
-         4, 3, 0, WARN)
+         4, 3, 0, WARN)                                                       \
+  SELECT(POLICY, CMP0208, "export(EXPORT) does not allow empty arguments.",   \
+         4, 3, 0, WARN)                                                       \
+  SELECT(POLICY, CMP0209,                                                     \
+         "Verify interface header sets checks executables without exports.",  \
+         4, 3, 0, WARN)                                                       \
+  SELECT(POLICY, CMP0210,                                                     \
+         "CMAKE_<LANG>_LINK_FLAGS adds link flags to all target types.", 4,   \
+         3, 0, WARN)
 
 #define CM_SELECT_ID(F, A1, A2, A3, A4, A5, A6) F(A1)
 #define CM_FOR_EACH_POLICY_ID(POLICY)                                         \
@@ -674,7 +682,9 @@ class cmMakefile;
   F(CMP0200)                                                                  \
   F(CMP0202)                                                                  \
   F(CMP0203)                                                                  \
-  F(CMP0204)
+  F(CMP0204)                                                                  \
+  F(CMP0209)                                                                  \
+  F(CMP0210)
 
 #define CM_FOR_EACH_CUSTOM_COMMAND_POLICY(F)                                  \
   F(CMP0116)                                                                  \

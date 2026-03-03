@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -26,6 +25,7 @@
 #include "cmsys/FStream.hxx"
 #include "cmsys/Glob.hxx"
 #include "cmsys/RegularExpression.hxx"
+#include "cmsys/String.h"
 
 #include "cm_sys_stat.h"
 
@@ -93,8 +93,8 @@ bool HandleWriteImpl(std::vector<std::string> const& args, bool append,
   i++;
 
   if (!status.GetMakefile().CanIWriteThisFile(fileName)) {
-    std::string e =
-      "attempted to write a file: " + fileName + " into a source directory.";
+    std::string e = cmStrCat("attempted to write a file: ", fileName,
+                             " into a source directory.");
     status.SetError(e);
     cmSystemTools::SetFatalErrorOccurred();
     return false;
@@ -519,7 +519,8 @@ bool HandleStringsCommand(std::vector<std::string> const& args,
     }
 
     if (c >= 0 && c <= 0xFF &&
-        (isprint(c) || c == '\t' || (c == '\n' && newline_consume))) {
+        (cmsysString_isprint(static_cast<char>(c)) || c == '\t' ||
+         (c == '\n' && newline_consume))) {
       // This is an ASCII character that may be part of a string.
       // Cast added to avoid compiler warning. Cast is ok because
       // c is guaranteed to fit in char by the above if...
@@ -770,13 +771,13 @@ bool HandleGlobImpl(std::vector<std::string> const& args, bool recurse,
           if (globMessage.type == cmsys::Glob::cyclicRecursion) {
             status.GetMakefile().IssueMessage(
               MessageType::AUTHOR_WARNING,
-              "Cyclic recursion detected while globbing for '" + *i + "':\n" +
-                globMessage.content);
+              cmStrCat("Cyclic recursion detected while globbing for '", *i,
+                       "':\n", globMessage.content));
           } else if (globMessage.type == cmsys::Glob::error) {
             status.GetMakefile().IssueMessage(
               MessageType::FATAL_ERROR,
-              "Error has occurred while globbing for '" + *i + "' - " +
-                globMessage.content);
+              cmStrCat("Error has occurred while globbing for '", *i, "' - ",
+                       globMessage.content));
             shouldExit = true;
           } else if (cm->GetDebugOutput() || cm->GetTrace()) {
             status.GetMakefile().IssueMessage(
@@ -929,8 +930,8 @@ bool HandleTouchImpl(std::vector<std::string> const& args, bool create,
         cmStrCat(status.GetMakefile().GetCurrentSourceDirectory(), '/', arg);
     }
     if (!status.GetMakefile().CanIWriteThisFile(tfile)) {
-      std::string e =
-        "attempted to touch a file: " + tfile + " in a source directory.";
+      std::string e = cmStrCat("attempted to touch a file: ", tfile,
+                               " in a source directory.");
       status.SetError(e);
       cmSystemTools::SetFatalErrorOccurred();
       return false;
@@ -1607,9 +1608,10 @@ bool HandleRemoveImpl(std::vector<std::string> const& args, bool recurse,
   {
     std::string fileName = arg;
     if (fileName.empty()) {
-      std::string const r = recurse ? "REMOVE_RECURSE" : "REMOVE";
+      std::string r = recurse ? "REMOVE_RECURSE" : "REMOVE";
       status.GetMakefile().IssueMessage(
-        MessageType::AUTHOR_WARNING, "Ignoring empty file name in " + r + ".");
+        MessageType::AUTHOR_WARNING,
+        cmStrCat("Ignoring empty file name in ", std::move(r), '.'));
       continue;
     }
     if (!cmsys::SystemTools::FileIsFullPath(fileName)) {
@@ -1696,6 +1698,16 @@ std::string const TLS_VERSION_DEFAULT = "1.2";
 
 // Stuff for curl download/upload
 using cmFileCommandVectorOfChar = std::vector<char>;
+
+std::string CurlCompatFileURL(std::string url)
+{
+  if (cmHasLiteralPrefix(url, "file://")) {
+    // libcurl 7.77 and below accidentally allowed spaces in file:// URLs,
+    // which CMake has long accepted as a result.  Explicitly encode spaces.
+    cmSystemTools::ReplaceString(url, " ", "%20");
+  }
+  return url;
+}
 
 size_t cmWriteToFileCallback(void* ptr, size_t size, size_t nmemb, void* data)
 {
@@ -2138,7 +2150,7 @@ bool HandleDownloadCommand(std::vector<std::string> const& args,
     }
   }
 
-  url = cmCurlFixFileURL(url);
+  url = CurlCompatFileURL(url);
 
   ::CURL* curl;
   cm_curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -2195,8 +2207,9 @@ bool HandleDownloadCommand(std::vector<std::string> const& args,
   }
 
   for (auto const& range : curl_ranges) {
-    std::string curl_range = range.first + '-' +
-      (range.second.has_value() ? range.second.value() : "");
+    std::string curl_range =
+      cmStrCat(range.first, '-',
+               (range.second.has_value() ? range.second.value() : ""));
     res = ::curl_easy_setopt(curl, CURLOPT_RANGE, curl_range.c_str());
     check_curl_result(res, "DOWNLOAD cannot set range: ");
   }
@@ -2539,7 +2552,7 @@ bool HandleUploadCommand(std::vector<std::string> const& args,
 
   unsigned long file_size = cmsys::SystemTools::FileLength(filename);
 
-  url = cmCurlFixFileURL(url);
+  url = CurlCompatFileURL(url);
 
   ::CURL* curl;
   cm_curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -3017,7 +3030,7 @@ bool HandleLockCommand(std::vector<std::string> const& args,
     cmSystemTools::SetFatalErrorOccurred();
     return false;
   }
-  FILE* file = cmsys::SystemTools::Fopen(path, "w");
+  FILE* file = cmsys::SystemTools::Fopen(path, "a");
   if (!file) {
     status.GetMakefile().IssueMessage(
       MessageType::FATAL_ERROR,
@@ -3106,8 +3119,9 @@ bool HandleTimestampCommand(std::vector<std::string> const& args,
     if (args[argsIndex] == "UTC") {
       utcFlag = true;
     } else {
-      std::string e = " TIMESTAMP sub-command does not recognize option " +
-        args[argsIndex] + ".";
+      std::string e =
+        cmStrCat(" TIMESTAMP sub-command does not recognize option ",
+                 args[argsIndex], '.');
       status.SetError(e);
       return false;
     }
@@ -3202,7 +3216,8 @@ bool HandleCreateLinkCommand(std::vector<std::string> const& args,
     parser.Parse(cmMakeRange(args).advance(3), &unconsumedArgs);
 
   if (!unconsumedArgs.empty()) {
-    status.SetError("unknown argument: \"" + unconsumedArgs.front() + '\"');
+    status.SetError(cmStrCat("unknown argument: \"",
+                             std::move(unconsumedArgs.front()), '\"'));
     return false;
   }
 
@@ -3227,7 +3242,8 @@ bool HandleCreateLinkCommand(std::vector<std::string> const& args,
   if (!arguments.Symbolic &&
       (!cmSystemTools::PathExists(fileName) ||
        (cmp0205 != cmPolicies::NEW && !cmSystemTools::FileExists(fileName)))) {
-    result = "Cannot hard link \'" + fileName + "\' as it does not exist.";
+    result =
+      cmStrCat("Cannot hard link \'", fileName, "\' as it does not exist.");
     if (!arguments.Result.empty()) {
       status.GetMakefile().AddDefinition(arguments.Result, result);
       return true;
@@ -3469,7 +3485,7 @@ bool HandleGetRuntimeDependenciesCommand(std::vector<std::string> const& args,
       deps.push_back(firstPath);
       if (!parsedArgs.RPathPrefix.empty()) {
         status.GetMakefile().AddDefinition(
-          parsedArgs.RPathPrefix + "_" + firstPath,
+          cmStrCat(parsedArgs.RPathPrefix, '_', firstPath),
           cmList::to_string(archive.GetRPaths().at(firstPath)));
       }
     } else if (!parsedArgs.ConflictingDependenciesPrefix.empty()) {
@@ -3477,7 +3493,7 @@ bool HandleGetRuntimeDependenciesCommand(std::vector<std::string> const& args,
       std::vector<std::string> paths;
       paths.insert(paths.begin(), val.second.begin(), val.second.end());
       std::string varName =
-        parsedArgs.ConflictingDependenciesPrefix + "_" + val.first;
+        cmStrCat(parsedArgs.ConflictingDependenciesPrefix, '_', val.first);
       std::string pathsStr = cmList::to_string(paths);
       status.GetMakefile().AddDefinition(varName, pathsStr);
     } else {
@@ -3712,25 +3728,18 @@ bool HandleArchiveCreateCommand(std::vector<std::string> const& args,
     return false;
   }
 
-  char const* zipFileFormats[] = { "7zip", "zip" };
-  if (!parsedArgs.Compression.empty() &&
-      cm::contains(zipFileFormats, parsedArgs.Format)) {
-    status.SetError(cmStrCat("archive format ", parsedArgs.Format,
-                             " does not support COMPRESSION arguments"));
-    cmSystemTools::SetFatalErrorOccurred();
-    return false;
-  }
-
   static std::map<std::string, cmSystemTools::cmTarCompression>
     compressionTypeMap = { { "None", cmSystemTools::TarCompressNone },
                            { "BZip2", cmSystemTools::TarCompressBZip2 },
+                           { "Deflate", cmSystemTools::TarCompressGZip },
                            { "GZip", cmSystemTools::TarCompressGZip },
                            { "LZMA", cmSystemTools::TarCompressLZMA },
                            { "LZMA2", cmSystemTools::TarCompressXZ },
+                           { "PPMd", cmSystemTools::TarCompressPPMd },
                            { "XZ", cmSystemTools::TarCompressXZ },
                            { "Zstd", cmSystemTools::TarCompressZstd } };
 
-  cmSystemTools::cmTarCompression compress = cmSystemTools::TarCompressNone;
+  cmSystemTools::cmTarCompression compress = cmSystemTools::TarCompressAuto;
   auto typeIt = compressionTypeMap.find(parsedArgs.Compression);
   if (typeIt != compressionTypeMap.end()) {
     compress = typeIt->second;
@@ -3741,16 +3750,25 @@ bool HandleArchiveCreateCommand(std::vector<std::string> const& args,
     return false;
   }
 
+  if (compress == cmSystemTools::TarCompressPPMd &&
+      parsedArgs.Format != "7zip") {
+    status.SetError(cmStrCat("PPMd compression is not supported for ",
+                             parsedArgs.Format, " format"));
+    cmSystemTools::SetFatalErrorOccurred();
+    return false;
+  }
+
   int compressionLevel = 0;
   constexpr int minCompressionLevel = 0;
   int maxCompressionLevel = 9;
-  if (compress == cmSystemTools::TarCompressZstd) {
+  if (compress == cmSystemTools::TarCompressZstd &&
+      parsedArgs.Format != "zip") {
     maxCompressionLevel = 19;
   }
 
   if (!parsedArgs.CompressionLevel.empty()) {
     if (parsedArgs.CompressionLevel.size() != 1 &&
-        !std::isdigit(parsedArgs.CompressionLevel[0])) {
+        !cmsysString_isdigit(parsedArgs.CompressionLevel[0])) {
       status.SetError(
         cmStrCat("compression level ", parsedArgs.CompressionLevel, " for ",
                  parsedArgs.Compression, " should be in range ",
@@ -3769,9 +3787,10 @@ bool HandleArchiveCreateCommand(std::vector<std::string> const& args,
       return false;
     }
     if (compress == cmSystemTools::TarCompressNone) {
-      status.SetError(cmStrCat("compression level is not supported for "
-                               "compression \"None\"",
-                               parsedArgs.Compression));
+      status.SetError(
+        cmStrCat("compression level is not supported for "
+                 "compression \"None\". Provided compression level: ",
+                 parsedArgs.CompressionLevel));
       cmSystemTools::SetFatalErrorOccurred();
       return false;
     }
@@ -3782,7 +3801,7 @@ bool HandleArchiveCreateCommand(std::vector<std::string> const& args,
   constexpr int minThreads = 0;
   if (!parsedArgs.Threads.empty()) {
     if (parsedArgs.Threads.size() != 1 &&
-        !std::isdigit(parsedArgs.Threads[0])) {
+        !cmsysString_isdigit(parsedArgs.Threads[0])) {
       status.SetError(cmStrCat("number of threads ", parsedArgs.Threads,
                                " should be at least ", minThreads));
       cmSystemTools::SetFatalErrorOccurred();
@@ -3893,7 +3912,7 @@ bool HandleArchiveExtractCommand(std::vector<std::string> const& args,
           parsedArgs.Touch ? cmSystemTools::cmTarExtractTimestamps::No
                            : cmSystemTools::cmTarExtractTimestamps::Yes,
           parsedArgs.Verbose)) {
-      status.SetError(cmStrCat("failed to extract: ", inFile));
+      status.SetError(cmStrCat("failed to extract:\n  ", inFile));
       cmSystemTools::SetFatalErrorOccurred();
       return false;
     }

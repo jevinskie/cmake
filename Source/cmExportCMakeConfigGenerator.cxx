@@ -13,14 +13,16 @@
 #include <cmext/string_view>
 
 #include "cmExportSet.h"
-#include "cmFileSet.h"
+#include "cmFileSetMetadata.h"
 #include "cmFindPackageStack.h"
 #include "cmGeneratedFileStream.h"
+#include "cmGeneratorFileSet.h"
 #include "cmGeneratorTarget.h"
 #include "cmLocalGenerator.h"
 #include "cmMakefile.h"
 #include "cmMessageType.h"
 #include "cmOutputConverter.h"
+#include "cmScriptGenerator.h"
 #include "cmStateTypes.h"
 #include "cmStringAlgorithms.h"
 #include "cmSystemTools.h"
@@ -173,7 +175,7 @@ void cmExportCMakeConfigGenerator::GeneratePolicyHeaderCode(std::ostream& os)
   // Isolate the file policy level.
   // Support CMake versions as far back as the
   // RequiredCMakeVersion{Major,Minor,Patch}, but also support using NEW
-  // policy settings for up to CMake 4.0 (this upper limit may be reviewed
+  // policy settings for up to CMake 4.2 (this upper limit may be reviewed
   // and increased from time to time). This reduces the opportunity for CMake
   // warnings when an older export file is later used with newer CMake
   // versions.
@@ -182,7 +184,7 @@ void cmExportCMakeConfigGenerator::GeneratePolicyHeaderCode(std::ostream& os)
         "cmake_policy(VERSION "
      << this->RequiredCMakeVersionMajor << '.'
      << this->RequiredCMakeVersionMinor << '.'
-     << this->RequiredCMakeVersionPatch << "...4.0)\n";
+     << this->RequiredCMakeVersionPatch << "...4.2)\n";
   /* clang-format on */
 }
 
@@ -471,7 +473,7 @@ void cmExportCMakeConfigGenerator::GenerateFindDependencyCalls(
     if (it.second.Enabled == cmExportSet::PackageDependencyExportEnabled::On) {
       os << "__find_dependency_no_return(" << it.first;
       for (auto const& arg : it.second.ExtraArguments) {
-        os << ' ' << cmOutputConverter::EscapeForCMake(arg);
+        os << ' ' << cmScriptGenerator::Quote(arg);
       }
       os << " ${_cmake_unwind_arg})\n";
       os << "if(NOT " << it.first << "_FOUND)\n"
@@ -607,7 +609,7 @@ void cmExportCMakeConfigGenerator::GenerateTargetFileSets(
        << targetName << '\n';
 
     for (auto const& name : interfaceFileSets) {
-      auto* fileSet = gte->Target->GetFileSet(name);
+      auto const* fileSet = gte->GetFileSet(name);
       if (!fileSet) {
         gte->Makefile->IssueMessage(
           MessageType::FATAL_ERROR,
@@ -618,9 +620,8 @@ void cmExportCMakeConfigGenerator::GenerateTargetFileSets(
       }
 
       os << "    INTERFACE"
-         << "\n      FILE_SET " << cmOutputConverter::EscapeForCMake(name)
-         << "\n      TYPE "
-         << cmOutputConverter::EscapeForCMake(fileSet->GetType())
+         << "\n      FILE_SET " << cmScriptGenerator::Quote(name)
+         << "\n      TYPE " << cmScriptGenerator::Quote(fileSet->GetType())
          << "\n      BASE_DIRS "
          << this->GetFileSetDirectories(gte, fileSet, te) << "\n      FILES "
          << this->GetFileSetFiles(gte, fileSet, te) << '\n';
@@ -629,7 +630,7 @@ void cmExportCMakeConfigGenerator::GenerateTargetFileSets(
     os << "  )\nelse()\n  set_property(TARGET " << targetName
        << "\n    APPEND PROPERTY INTERFACE_INCLUDE_DIRECTORIES";
     for (auto const& name : interfaceFileSets) {
-      auto* fileSet = gte->Target->GetFileSet(name);
+      auto const* fileSet = gte->GetFileSet(name);
       if (!fileSet) {
         gte->Makefile->IssueMessage(
           MessageType::FATAL_ERROR,
@@ -639,7 +640,7 @@ void cmExportCMakeConfigGenerator::GenerateTargetFileSets(
         return;
       }
 
-      if (fileSet->GetType() == "HEADERS"_s) {
+      if (fileSet->GetType() == cm::FileSetMetadata::HEADERS) {
         os << "\n      " << this->GetFileSetDirectories(gte, fileSet, te);
       }
     }

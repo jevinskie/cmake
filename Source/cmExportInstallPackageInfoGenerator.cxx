@@ -19,8 +19,9 @@
 
 #include "cmAlgorithms.h"
 #include "cmExportSet.h"
-#include "cmFileSet.h"
+#include "cmFileSetMetadata.h"
 #include "cmGeneratorExpression.h"
+#include "cmGeneratorFileSet.h"
 #include "cmGeneratorTarget.h"
 #include "cmInstallExportGenerator.h"
 #include "cmInstallFileSetGenerator.h"
@@ -112,7 +113,7 @@ bool cmExportInstallPackageInfoGenerator::GenerateMainFile(std::ostream& os)
 
     // Set configuration-agnostic properties for component.
     this->GenerateInterfaceProperties(*component, gt, properties);
-    if (!this->GenerateFileSetProperties(*component, gt, te)) {
+    if (!this->GenerateFileSetProperties(*component, gt, te, packagePath)) {
       return false;
     }
   }
@@ -143,6 +144,8 @@ void cmExportInstallPackageInfoGenerator::GenerateImportTargetsConfig(
   root["name"] = this->GetPackageName();
   root["configuration"] = (config.empty() ? "noconfig" : config);
 
+  std::string const& packagePath = this->GenerateImportPrefix();
+
   Json::Value& components = root["components"];
 
   for (auto const& te : this->GetExportSet()->GetTargetExports()) {
@@ -158,7 +161,8 @@ void cmExportInstallPackageInfoGenerator::GenerateImportTargetsConfig(
 
     Json::Value component =
       this->GenerateInterfaceConfigProperties(suffix, properties);
-    this->GenerateFileSetProperties(component, te->Target, te.get(), config);
+    this->GenerateFileSetProperties(component, te->Target, te.get(),
+                                    packagePath, config);
 
     if (!component.empty()) {
       components[te->Target->GetExportName()] = std::move(component);
@@ -212,16 +216,13 @@ std::string cmExportInstallPackageInfoGenerator::InstallNameDir(
 
 std::string cmExportInstallPackageInfoGenerator::GetCxxModulesDirectory() const
 {
-  // TODO: Implement a not-CMake-specific mechanism for providing module
-  // information.
-  // return IEGen->GetCxxModuleDirectory();
-  return {};
+  return IEGen->GetCxxModuleDirectory();
 }
 
 cm::optional<std::string>
 cmExportInstallPackageInfoGenerator::GetFileSetDirectory(
-  cmGeneratorTarget* gte, cmTargetExport const* te, cmFileSet* fileSet,
-  cm::optional<std::string> const& config)
+  cmGeneratorTarget* gte, cmTargetExport const* te,
+  cmGeneratorFileSet const* fileSet, cm::optional<std::string> const& config)
 {
   cmGeneratorExpression ge(*gte->Makefile->GetCMakeInstance());
   auto cge =
@@ -240,7 +241,7 @@ cmExportInstallPackageInfoGenerator::GetFileSetDirectory(
   }
 
   std::string const& type = fileSet->GetType();
-  if (config && (type == "CXX_MODULES"_s)) {
+  if (config && (type == cm::FileSetMetadata::CXX_MODULES)) {
     // C++ modules do not support interface file sets which are dependent
     // upon the configuration.
     cmMakefile* mf = gte->LocalGenerator->GetMakefile();
@@ -265,11 +266,12 @@ cmExportInstallPackageInfoGenerator::GetFileSetDirectory(
 
 bool cmExportInstallPackageInfoGenerator::GenerateFileSetProperties(
   Json::Value& component, cmGeneratorTarget* gte, cmTargetExport const* te,
-  cm::optional<std::string> config)
+  std::string const& packagePath, cm::optional<std::string> config)
 {
+  bool hasModules = false;
   std::set<std::string> seenIncludeDirectories;
   for (auto const& name : gte->Target->GetAllInterfaceFileSets()) {
-    cmFileSet* fileSet = gte->Target->GetFileSet(name);
+    cmGeneratorFileSet const* fileSet = gte->GetFileSet(name);
 
     if (!fileSet) {
       gte->Makefile->IssueMessage(
@@ -283,16 +285,25 @@ bool cmExportInstallPackageInfoGenerator::GenerateFileSetProperties(
     cm::optional<std::string> const& fileSetDirectory =
       this->GetFileSetDirectory(gte, te, fileSet, config);
 
-    if (fileSet->GetType() == "HEADERS"_s) {
+    if (fileSet->GetType() == cm::FileSetMetadata::HEADERS) {
       if (fileSetDirectory &&
           !cm::contains(seenIncludeDirectories, *fileSetDirectory)) {
         component["includes"].append(*fileSetDirectory);
         seenIncludeDirectories.insert(*fileSetDirectory);
       }
-    } else if (fileSet->GetType() == "CXX_MODULES"_s) {
-      /* TODO: Handle the CXX_MODULE directory */
+    } else if (fileSet->GetType() == cm::FileSetMetadata::CXX_MODULES) {
+      hasModules = true;
+      this->RequiresConfigFiles = true;
     }
   }
 
+  if (hasModules && config) {
+    std::string const manifestPath =
+      this->GenerateCxxModules(component, gte, packagePath, *config);
+    if (!manifestPath.empty()) {
+      this->ConfigCxxModuleFiles[*config] =
+        cmStrCat(this->FileDir, '/', manifestPath);
+    }
+  }
   return true;
 }

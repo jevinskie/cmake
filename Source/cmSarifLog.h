@@ -9,7 +9,6 @@
 #include <utility>
 #include <vector>
 
-#include <cm/filesystem>
 #include <cm/optional>
 
 #include <cm3p/json/value.h>
@@ -198,7 +197,7 @@ private:
 
   // Mapping of rule IDs to rule indices in the log.
   // In SARIF, rule metadata is typically only included if the rule is
-  // referenced. The indices are unique to one log output and and vary
+  // referenced. The indices are unique to one log output and vary
   // depending on when the rule was first encountered.
   mutable std::unordered_map<std::string, std::size_t> RuleToIndex;
 
@@ -269,8 +268,7 @@ public:
   ///
   /// The settings will apply when the log file is written. If the output
   /// file should be checked earlier, use `CheckFileValidity`.
-  void SetPath(cm::filesystem::path const& path,
-               bool createParentDirectories = false)
+  void SetPath(std::string const& path, bool createParentDirectories = false)
   {
     this->FilePath = path;
     this->CreateDirectories = createParentDirectories;
@@ -279,7 +277,7 @@ public:
 private:
   ResultsLog const& Log;
   std::function<bool()> WriteCondition;
-  cm::filesystem::path FilePath;
+  std::string FilePath;
   bool CreateDirectories = false;
   bool FileWritten = false;
 };

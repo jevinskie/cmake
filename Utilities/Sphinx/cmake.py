@@ -62,6 +62,9 @@ from pygments.token import (Comment, Name, Number, Operator, Punctuation,
 #   be present.
 
 CMakeLexer.tokens["root"] = [
+  # [[string]]
+  (r'\[\[(?:\W[\w\W]*?)?\]\]', String.Multiline),
+  (r'\[(?P<level>=+)\[[\w\W]*?\](?P=level)\]', String.Multiline),
   # fctn(
   (r'\b(\w+)([ \t]*)(\()',
    bygroups(Name.Function, Text, Name.Function), '#push'),
@@ -101,8 +104,12 @@ CMakeLexer.tokens["root"] = [
   (r'(?s)"(\\"|[^"])*"', String),
   (r'\.\.\.', Name.Variable),
   # <..|..> is different from <expr>
-  (r'<', Operator, '#push'),
-  (r'>', Operator, '#pop'),
+  # TODO: <..|..> should be {..|..}; remove when all instances are converted?
+  (r'<', Punctuation, '#push'),
+  (r'>', Punctuation, '#pop'),
+  # {..|..}
+  (r'\{', Punctuation, '#push'),
+  (r'\}', Punctuation, '#pop'),
   (r'\n', Whitespace),
   (r'[ \t]+', Whitespace),
   (r'#.*\n', Comment),
@@ -218,6 +225,7 @@ _cmake_index_objs = {
     'policy':     _cmake_index_entry('policy'),
     'prop_cache': _cmake_index_entry('cache property'),
     'prop_dir':   _cmake_index_entry('directory property'),
+    'prop_fs':    _cmake_index_entry('file set property'),
     'prop_gbl':   _cmake_index_entry('global property'),
     'prop_inst':  _cmake_index_entry('installed file property'),
     'prop_sf':    _cmake_index_entry('source file property'),
@@ -643,6 +651,7 @@ class CMakeDomain(Domain):
         'policy':     ObjType('policy',     'policy'),
         'prop_cache': ObjType('prop_cache', 'prop_cache'),
         'prop_dir':   ObjType('prop_dir',   'prop_dir'),
+        'prop_fs':    ObjType('prop_fs',    'prop_fs'),
         'prop_gbl':   ObjType('prop_gbl',   'prop_gbl'),
         'prop_inst':  ObjType('prop_inst',  'prop_inst'),
         'prop_sf':    ObjType('prop_sf',    'prop_sf'),
@@ -671,6 +680,7 @@ class CMakeDomain(Domain):
         'policy':     CMakeXRefRole(),
         'prop_cache': CMakeXRefRole(),
         'prop_dir':   CMakeXRefRole(),
+        'prop_fs':    CMakeXRefRole(),
         'prop_gbl':   CMakeXRefRole(),
         'prop_inst':  CMakeXRefRole(),
         'prop_sf':    CMakeXRefRole(),

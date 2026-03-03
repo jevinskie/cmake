@@ -18,7 +18,9 @@ target_sources(library
       BASE_DIRS
         "${CMAKE_CURRENT_SOURCE_DIR}"
       FILES
-        importable.cxx)
+        importable.ixx
+  PRIVATE
+    importable.cxx)
 target_compile_features(library PUBLIC cxx_std_20)
 
 add_executable(exe)

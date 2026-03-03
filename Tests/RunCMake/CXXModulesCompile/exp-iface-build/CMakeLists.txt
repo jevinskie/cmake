@@ -32,6 +32,9 @@ export(EXPORT CXXModules
   NAMESPACE CXXModules::
   FILE "${CMAKE_CURRENT_BINARY_DIR}/export_interfaces-targets.cmake"
   CXX_MODULES_DIRECTORY "export_interfaces-cxx-modules")
+export(PACKAGE_INFO export_interfaces_cps
+  EXPORT CXXModules
+  CXX_MODULES_DIRECTORY "export_interfaces-cxx-modules-cps")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/export_interfaces-config.cmake"
   "include(\"\${CMAKE_CURRENT_LIST_DIR}/export_interfaces-targets.cmake\")
 set(\${CMAKE_FIND_PACKAGE_NAME}_FOUND 1)
@@ -54,6 +57,7 @@ add_test(NAME export_interfaces_build
     "-Dexpected_source_dir=${CMAKE_CURRENT_SOURCE_DIR}"
     "-Dexpected_binary_dir=${CMAKE_CURRENT_BINARY_DIR}"
     "-Dexport_interfaces_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+    "-Dexport_interfaces_cps_DIR=${CMAKE_CURRENT_BINARY_DIR}"
     ${generator}
     -S "${CMAKE_CURRENT_SOURCE_DIR}/test"
     -B "${CMAKE_CURRENT_BINARY_DIR}/test")

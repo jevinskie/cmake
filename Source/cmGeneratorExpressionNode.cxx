@@ -34,6 +34,7 @@
 #include "cmGeneratorExpression.h"
 #include "cmGeneratorExpressionDAGChecker.h"
 #include "cmGeneratorExpressionEvaluator.h"
+#include "cmGeneratorFileSet.h"
 #include "cmGeneratorTarget.h"
 #include "cmGlobalGenerator.h"
 #include "cmLinkItem.h"
@@ -45,6 +46,7 @@
 #include "cmOutputConverter.h"
 #include "cmPolicies.h"
 #include "cmRange.h"
+#include "cmSourceFile.h"
 #include "cmStandardLevelResolver.h"
 #include "cmState.h"
 #include "cmStateSnapshot.h"
@@ -581,7 +583,7 @@ protected:
   {
     if (eval->HeadTarget) {
       cmGeneratorExpressionDAGChecker dagChecker{
-        eval->HeadTarget, genexOperator + ":" + expression,
+        eval->HeadTarget, cmStrCat(genexOperator, ':', expression),
         content,          dagCheckerParent,
         eval->Context,    eval->Backtrace,
       };
@@ -2646,7 +2648,7 @@ struct CompilerFrontendVariantNode : public cmGeneratorExpressionNode
   {
     std::string const& compilerFrontendVariant =
       eval->Context.LG->GetMakefile()->GetSafeDefinition(
-        "CMAKE_" + lang + "_COMPILER_FRONTEND_VARIANT");
+        cmStrCat("CMAKE_", lang, "_COMPILER_FRONTEND_VARIANT"));
     if (parameters.empty()) {
       return compilerFrontendVariant;
     }
@@ -2836,57 +2838,26 @@ static const struct ConfigurationTestNode : public cmGeneratorExpressionNode
       firstParam = false;
     }
 
-    // Determine the context(s) in which the expression should be evaluated. If
-    // CMPxxxx is NEW, the context is exactly one of the imported target's
-    // selected configuration, if applicable, or the consuming target's
-    // configuration, otherwise.
+    // Partially determine the context(s) in which the expression should be
+    // evaluated.
     //
-    // If CMPxxxx is OLD, we evaluate first in the context of the consuming
-    // target, then, if the consumed target is imported, we evaluate based on
-    // the mapped configurations (this logic is... problematic; see comment
-    // below), then finally based on the selected configuration of the imported
-    // target.
+    // If CMPxxxx is NEW, the context is exactly one of the imported target's
+    // selected configuration, if applicable and if the target was imported
+    // from CPS, or the consuming target's configuration otherwise. Here, we
+    // determine if we are in that 'otherwise' branch.
+    //
+    // Longer term, we need a way for non-CPS users to match the selected
+    // configuration of the imported target. At that time, CPS should switch
+    // to that mechanism and the CPS-specific logic here should be dropped.
+    // (We can do that because CPS doesn't use generator expressions directly;
+    // rather, CMake generates them on import.)
     bool const targetIsImported =
       (eval->CurrentTarget && eval->CurrentTarget->IsImported());
-    bool const oldPolicy = [&] {
-      if (!targetIsImported) {
-        // For non-imported targets, there is no behavior difference between
-        // the OLD and NEW policy.
-        return false;
-      }
-      cmTarget const* const t = eval->CurrentTarget->Target;
-      if (t->GetOrigin() == cmTarget::Origin::Cps) {
-        // Generator expressions appearing on targets imported from CPS should
-        // always be evaluated according to the selected configuration of the
-        // imported target, i.e. the NEW policy.
-        return false;
-      }
-      switch (eval->HeadTarget->GetPolicyStatusCMP0199()) {
-        case cmPolicies::WARN:
-          if (eval->Context.LG->GetMakefile()->PolicyOptionalWarningEnabled(
-                "CMAKE_POLICY_WARNING_CMP0199")) {
-            std::string const err =
-              cmStrCat(cmPolicies::GetPolicyWarning(cmPolicies::CMP0199),
-                       "\nEvaluation of $<CONFIG> for imported target  \"",
-                       eval->CurrentTarget->GetName(), "\", used by \"",
-                       eval->HeadTarget->GetName(),
-                       "\", may match multiple configurations.\n");
-            eval->Context.LG->GetCMakeInstance()->IssueMessage(
-              MessageType ::AUTHOR_WARNING, err, eval->Backtrace);
-          }
-          CM_FALLTHROUGH;
-        case cmPolicies::OLD:
-          return true;
-        case cmPolicies::NEW:
-          return false;
-      }
+    bool const useConsumerConfig =
+      (targetIsImported &&
+       eval->CurrentTarget->Target->GetOrigin() != cmTarget::Origin::Cps);
 
-      // Should be unreachable
-      assert(false);
-      return false;
-    }();
-
-    if (!targetIsImported || oldPolicy) {
+    if (!targetIsImported || useConsumerConfig) {
       // Does the consuming target's configuration match any of the arguments?
       for (auto const& param : parameters) {
         if (eval->Context.Config.empty()) {
@@ -2906,13 +2877,55 @@ static const struct ConfigurationTestNode : public cmGeneratorExpressionNode
       std::string suffix;
       if (eval->CurrentTarget->Target->GetMappedConfig(eval->Context.Config,
                                                        loc, imp, suffix)) {
+        // Finish determine the context(s) in which the expression should be
+        // evaluated. Note that we use the consumer's policy, so that end users
+        // can override the imported target's policy. This may be needed if
+        // upstream has changed their policy version without realizing that
+        // consumers were depending on the OLD behavior.
+        bool const oldPolicy = [&] {
+          if (!useConsumerConfig) {
+            // Targets imported from CPS shall use only the selected
+            // configuration of the imported target.
+            return false;
+          }
+          cmLocalGenerator const* const lg = eval->Context.LG;
+          switch (eval->HeadTarget->GetPolicyStatusCMP0199()) {
+            case cmPolicies::WARN:
+              if (lg->GetMakefile()->PolicyOptionalWarningEnabled(
+                    "CMAKE_POLICY_WARNING_CMP0199")) {
+                std::string const err =
+                  cmStrCat(cmPolicies::GetPolicyWarning(cmPolicies::CMP0199),
+                           "\nEvaluation of $<CONFIG> for imported target  \"",
+                           eval->CurrentTarget->GetName(), "\", used by \"",
+                           eval->HeadTarget->GetName(),
+                           "\", may match multiple configurations.\n");
+                lg->GetCMakeInstance()->IssueMessage(
+                  MessageType ::AUTHOR_WARNING, err, eval->Backtrace);
+              }
+              CM_FALLTHROUGH;
+            case cmPolicies::OLD:
+              return true;
+            case cmPolicies::NEW:
+              return false;
+          }
+
+          // Should be unreachable
+          assert(false);
+          return false;
+        }();
+
         if (oldPolicy) {
+          // If CMPxxxx is OLD (and we aren't dealing with a target imported
+          // form CPS), we already evaluated in the context of the consuming
+          // target. Next, for imported targets, we will evaluate based on the
+          // mapped configurations.
+          //
           // If the target has a MAP_IMPORTED_CONFIG_<CONFIG> property for the
-          // consumer's <CONFIG>, match *any* config in that list, regardless
-          // of whether it's valid or of what GetMappedConfig actually picked.
-          // This will result in $<CONFIG> producing '1' for multiple configs,
-          // and is almost certainly wrong, but it's what CMake did for a very
-          // long time, and... Hyrum's Law.
+          // consumer's <CONFIG>, we will match *any* config in that list,
+          // regardless of whether it's valid or of what GetMappedConfig
+          // actually picked. This will result in $<CONFIG> producing '1' for
+          // multiple configs, and is almost certainly wrong, but it's what
+          // CMake did for a very long time, and... Hyrum's Law.
           cmList mappedConfigs;
           std::string mapProp =
             cmStrCat("MAP_IMPORTED_CONFIG_",
@@ -2931,11 +2944,13 @@ static const struct ConfigurationTestNode : public cmGeneratorExpressionNode
           }
         }
 
-        // This imported target has an appropriate location for this (possibly
-        // mapped) config.
+        // Finally, check if we selected (possibly via mapping) a configuration
+        // for this imported target, and if we should evaluate the expression
+        // in the context of the same.
+        //
+        // For targets imported from CPS, this is the only context we evaluate
+        // the expression.
         if (!suffix.empty()) {
-          // Use the (possibly mapped) configuration of the imported location
-          // that was selected.
           for (auto const& param : parameters) {
             if (cmStrCat('_', cmSystemTools::UpperCase(param)) == suffix) {
               return "1";
@@ -3564,6 +3579,323 @@ static const struct DeviceLinkNode : public cmGeneratorExpressionNode
   }
 } deviceLinkNode;
 
+namespace {
+bool GetFileSet(std::vector<std::string> const& parameters,
+                cm::GenEx::Evaluation* eval,
+                GeneratorExpressionContent const* content,
+                cmGeneratorTarget const*& target,
+                cmGeneratorFileSet const*& fileSet)
+{
+  auto const& fileSetName = parameters[0];
+  auto targetName = parameters[1];
+  fileSet = nullptr;
+
+  auto const TARGET = "TARGET:"_s;
+
+  if (cmHasPrefix(targetName, TARGET)) {
+    targetName = targetName.substr(TARGET.length());
+    if (targetName.empty()) {
+      reportError(eval, content->GetOriginalExpression(),
+                  cmStrCat("No value provided for the ", TARGET, " option."));
+      return false;
+    }
+
+    cmLocalGenerator const* lg = eval->CurrentTarget
+      ? eval->CurrentTarget->GetLocalGenerator()
+      : eval->Context.LG;
+    target = lg->FindGeneratorTargetToUse(targetName);
+    if (!target) {
+      reportError(eval, content->GetOriginalExpression(),
+                  cmStrCat("Non-existent target: ", targetName));
+      return false;
+    }
+    fileSet = target->GetFileSet(fileSetName);
+  } else {
+    reportError(eval, content->GetOriginalExpression(),
+                cmStrCat("Invalid option. ", TARGET, " expected."));
+    return false;
+  }
+  return true;
+}
+}
+
+static const struct FileSetExistsNode : public cmGeneratorExpressionNode
+{
+  FileSetExistsNode() {} // NOLINT(modernize-use-equals-default)
+
+  // This node handles errors on parameter count itself.
+  int NumExpectedParameters() const override { return 2; }
+
+  std::string Evaluate(
+    std::vector<std::string> const& parameters, cm::GenEx::Evaluation* eval,
+    GeneratorExpressionContent const* content,
+    cmGeneratorExpressionDAGChecker* /*dagCheckerParent*/) const override
+  {
+    if (parameters[0].empty()) {
+      reportError(
+        eval, content->GetOriginalExpression(),
+        "$<FILE_SET_EXISTS:fileset,TARGET:tgt> expression requires a "
+        "non-empty FILE_SET name.");
+      return std::string{};
+    }
+
+    cmGeneratorTarget const* target = nullptr;
+    cmGeneratorFileSet const* fileSet = nullptr;
+    if (!GetFileSet(parameters, eval, content, target, fileSet)) {
+      return std::string{};
+    }
+
+    return fileSet ? "1" : "0";
+  }
+} fileSetExistsNode;
+
+static const struct FileSetPropertyNode : public cmGeneratorExpressionNode
+{
+  FileSetPropertyNode() {} // NOLINT(modernize-use-equals-default)
+
+  // This node handles errors on parameter count itself.
+  int NumExpectedParameters() const override { return 3; }
+
+  std::string Evaluate(
+    std::vector<std::string> const& parameters, cm::GenEx::Evaluation* eval,
+    GeneratorExpressionContent const* content,
+    cmGeneratorExpressionDAGChecker* dagCheckerParent) const override
+  {
+    static cmsys::RegularExpression propertyNameValidator("^[A-Za-z0-9_]+$");
+
+    std::string const& fileSetName = parameters.front();
+    std::string const& propertyName = parameters.back();
+
+    if (fileSetName.empty() && propertyName.empty()) {
+      reportError(eval, content->GetOriginalExpression(),
+                  "$<FILE_SET_PROPERTY:fileset,TARGET:tgt,prop> expression "
+                  "requires a non-empty FILE_SET name and property name.");
+      return std::string{};
+    }
+    if (fileSetName.empty()) {
+      reportError(
+        eval, content->GetOriginalExpression(),
+        "$<FILE_SET_PROPERTY:fileset,TARGET:tgt,prop> expression requires a "
+        "non-empty FILE_SET name.");
+      return std::string{};
+    }
+    if (propertyName.empty()) {
+      reportError(
+        eval, content->GetOriginalExpression(),
+        "$<FILE_SET_PROPERTY:fileset,TARGET:tgt,prop> expression requires a "
+        "non-empty property name.");
+      return std::string{};
+    }
+    if (!propertyNameValidator.find(propertyName)) {
+      reportError(eval, content->GetOriginalExpression(),
+                  "Property name not supported.");
+      return std::string{};
+    }
+
+    cmGeneratorTarget const* target = nullptr;
+    cmGeneratorFileSet const* fileSet = nullptr;
+    if (!GetFileSet(parameters, eval, content, target, fileSet)) {
+      return std::string{};
+    }
+    if (!fileSet) {
+      reportError(
+        eval, content->GetOriginalExpression(),
+        cmStrCat("FILE_SET \"", fileSetName, "\" is not known from CMake."));
+      return std::string{};
+    }
+
+    auto result = fileSet->GetProperty(propertyName);
+
+    if (propertyName == "BASE_DIRS"_s || propertyName == "SOURCES"_s ||
+        propertyName == "INTERFACE_SOURCES"_s) {
+      cmGeneratorExpressionDAGChecker dagChecker{
+        target,           propertyName,  content,
+        dagCheckerParent, eval->Context, eval->Backtrace,
+      };
+      switch (dagChecker.Check()) {
+        case cmGeneratorExpressionDAGChecker::SELF_REFERENCE:
+          dagChecker.ReportError(eval, content->GetOriginalExpression());
+          return std::string{};
+        case cmGeneratorExpressionDAGChecker::CYCLIC_REFERENCE:
+          // No error. We just skip cyclic references.
+          return std::string{};
+        case cmGeneratorExpressionDAGChecker::ALREADY_SEEN:
+        case cmGeneratorExpressionDAGChecker::DAG:
+          break;
+      }
+
+      return cmGeneratorExpression::StripEmptyListElements(
+        this->EvaluateDependentExpression(result, eval, target, &dagChecker,
+                                          target));
+    }
+
+    return result;
+  }
+} fileSetPropertyNode;
+
+namespace {
+bool GetSourceFile(
+  cmRange<std::vector<std::string>::const_iterator> parameters,
+  cm::GenEx::Evaluation* eval, GeneratorExpressionContent const* content,
+  cmSourceFile*& sourceFile)
+{
+  auto sourceName = *parameters.begin();
+  auto* makefile = eval->Context.LG->GetMakefile();
+  sourceFile = nullptr;
+
+  if (parameters.size() == 2) {
+    auto const& option = *parameters.advance(1).begin();
+    auto const DIRECTORY = "DIRECTORY:"_s;
+    auto const TARGET_DIRECTORY = "TARGET_DIRECTORY:"_s;
+    if (cmHasPrefix(option, DIRECTORY)) {
+      auto dir = option.substr(DIRECTORY.length());
+      if (dir.empty()) {
+        reportError(
+          eval, content->GetOriginalExpression(),
+          cmStrCat("No value provided for the ", DIRECTORY, " option."));
+        return false;
+      }
+      dir = cmSystemTools::CollapseFullPath(
+        dir, makefile->GetCurrentSourceDirectory());
+      makefile = makefile->GetGlobalGenerator()->FindMakefile(dir);
+      if (!makefile) {
+        reportError(
+          eval, content->GetOriginalExpression(),
+          cmStrCat("Directory \"", dir, "\" is not known from CMake."));
+        return false;
+      }
+    } else if (cmHasPrefix(option, TARGET_DIRECTORY)) {
+      auto targetName = option.substr(TARGET_DIRECTORY.length());
+      if (targetName.empty()) {
+        reportError(eval, content->GetOriginalExpression(),
+                    cmStrCat("No value provided for the ", TARGET_DIRECTORY,
+                             " option."));
+        return false;
+      }
+      auto* target = makefile->FindTargetToUse(targetName);
+      if (!target) {
+        reportError(eval, content->GetOriginalExpression(),
+                    cmStrCat("Non-existent target: ", targetName));
+        return false;
+      }
+      makefile = makefile->GetGlobalGenerator()->FindMakefile(
+        target->GetProperty("BINARY_DIR"));
+    } else {
+      reportError(eval, content->GetOriginalExpression(),
+                  cmStrCat("Invalid option. ", DIRECTORY, " or ",
+                           TARGET_DIRECTORY, " expected."));
+      return false;
+    }
+
+    sourceName = cmSystemTools::CollapseFullPath(
+      sourceName,
+      eval->Context.LG->GetMakefile()->GetCurrentSourceDirectory());
+  }
+
+  sourceFile = makefile->GetSource(sourceName);
+  return true;
+}
+}
+
+static const struct SourceExistsNode : public cmGeneratorExpressionNode
+{
+  SourceExistsNode() {} // NOLINT(modernize-use-equals-default)
+
+  // This node handles errors on parameter count itself.
+  int NumExpectedParameters() const override { return OneOrMoreParameters; }
+
+  std::string Evaluate(
+    std::vector<std::string> const& parameters, cm::GenEx::Evaluation* eval,
+    GeneratorExpressionContent const* content,
+    cmGeneratorExpressionDAGChecker* /*dagCheckerParent*/) const override
+  {
+    if (parameters.size() > 2) {
+      reportError(eval, content->GetOriginalExpression(),
+                  "$<SOURCE_EXISTS:...> expression requires at most two "
+                  "parameters.");
+      return std::string{};
+    }
+
+    if (parameters[0].empty()) {
+      reportError(eval, content->GetOriginalExpression(),
+                  "$<SOURCE_EXISTS:src> expression requires a "
+                  "non-empty source name.");
+      return std::string{};
+    }
+
+    cmSourceFile* sourceFile = nullptr;
+    if (!GetSourceFile(cmMakeRange(parameters), eval, content, sourceFile)) {
+      return std::string{};
+    }
+
+    return sourceFile ? "1" : "0";
+  }
+} sourceExistsNode;
+
+static const struct SourcePropertyNode : public cmGeneratorExpressionNode
+{
+  SourcePropertyNode() {} // NOLINT(modernize-use-equals-default)
+
+  // This node handles errors on parameter count itself.
+  int NumExpectedParameters() const override { return TwoOrMoreParameters; }
+
+  std::string Evaluate(
+    std::vector<std::string> const& parameters, cm::GenEx::Evaluation* eval,
+    GeneratorExpressionContent const* content,
+    cmGeneratorExpressionDAGChecker* /*dagCheckerParent*/) const override
+  {
+    static cmsys::RegularExpression propertyNameValidator("^[A-Za-z0-9_]+$");
+
+    if (parameters.size() > 3) {
+      reportError(eval, content->GetOriginalExpression(),
+                  "$<SOURCE_PROPERTY:...> expression requires at most three "
+                  "parameters.");
+      return std::string{};
+    }
+
+    std::string sourceName = parameters.front();
+    std::string const& propertyName = parameters.back();
+
+    if (sourceName.empty() && propertyName.empty()) {
+      reportError(eval, content->GetOriginalExpression(),
+                  "$<SOURCE_PROPERTY:src,prop> expression requires a "
+                  "non-empty source name and property name.");
+      return std::string{};
+    }
+    if (sourceName.empty()) {
+      reportError(eval, content->GetOriginalExpression(),
+                  "$<SOURCE_PROPERTY:src,prop> expression requires a "
+                  "non-empty source name.");
+      return std::string{};
+    }
+    if (propertyName.empty()) {
+      reportError(eval, content->GetOriginalExpression(),
+                  "$<SOURCE_PROPERTY:src,prop> expression requires a "
+                  "non-empty property name.");
+      return std::string{};
+    }
+    if (!propertyNameValidator.find(propertyName)) {
+      reportError(eval, content->GetOriginalExpression(),
+                  "Property name not supported.");
+      return std::string{};
+    }
+
+    cmSourceFile* sourceFile = nullptr;
+    if (!GetSourceFile(cmMakeRange(parameters).retreat(1), eval, content,
+                       sourceFile)) {
+      return std::string{};
+    }
+    if (!sourceFile) {
+      reportError(
+        eval, content->GetOriginalExpression(),
+        cmStrCat("Source file \"", sourceName, "\" is not known from CMake."));
+      return std::string{};
+    }
+
+    return sourceFile->GetPropertyForUser(propertyName);
+  }
+} sourcePropertyNode;
+
 static std::string getLinkedTargetsContent(
   cmGeneratorTarget const* target, std::string const& prop,
   cm::GenEx::Evaluation* eval, cmGeneratorExpressionDAGChecker* dagChecker,
@@ -4177,7 +4509,7 @@ static const struct CompileFeaturesNode : public cmGeneratorExpressionNode
       std::vector<std::string> const& langAvailable =
         availableFeatures[lit.first];
       cmValue standardDefault = eval->Context.LG->GetMakefile()->GetDefinition(
-        "CMAKE_" + lit.first + "_STANDARD_DEFAULT");
+        cmStrCat("CMAKE_", lit.first, "_STANDARD_DEFAULT"));
       for (std::string const& it : lit.second) {
         if (!cm::contains(langAvailable, it)) {
           return "0";
@@ -4502,7 +4834,8 @@ struct TargetFilesystemArtifactResultCreator<ArtifactPdbTag>
 
     std::string language = target->GetLinkerLanguage(eval->Context.Config);
 
-    std::string pdbSupportVar = "CMAKE_" + language + "_LINKER_SUPPORTS_PDB";
+    std::string pdbSupportVar =
+      cmStrCat("CMAKE_", language, "_LINKER_SUPPORTS_PDB");
 
     if (!eval->Context.LG->GetMakefile()->IsOn(pdbSupportVar)) {
       ::reportError(eval, content->GetOriginalExpression(),
@@ -4764,14 +5097,14 @@ protected:
       eval->Context.LG->FindGeneratorTargetToUse(name);
     if (!target) {
       ::reportError(eval, content->GetOriginalExpression(),
-                    "No target \"" + name + "\"");
+                    cmStrCat("No target \"", name, '"'));
       return nullptr;
     }
     if (target->GetType() >= cmStateEnums::OBJECT_LIBRARY &&
         target->GetType() != cmStateEnums::UNKNOWN_LIBRARY) {
-      ::reportError(eval, content->GetOriginalExpression(),
-                    "Target \"" + name +
-                      "\" is not an executable or library.");
+      ::reportError(
+        eval, content->GetOriginalExpression(),
+        cmStrCat("Target \"", name, "\" is not an executable or library."));
       return nullptr;
     }
     if (dagChecker &&
@@ -5021,7 +5354,8 @@ struct TargetOutputNameArtifactResultGetter<ArtifactPdbTag>
 
     std::string language = target->GetLinkerLanguage(eval->Context.Config);
 
-    std::string pdbSupportVar = "CMAKE_" + language + "_LINKER_SUPPORTS_PDB";
+    std::string pdbSupportVar =
+      cmStrCat("CMAKE_", language, "_LINKER_SUPPORTS_PDB");
 
     if (!eval->Context.LG->GetMakefile()->IsOn(pdbSupportVar)) {
       ::reportError(
@@ -5398,7 +5732,7 @@ static const struct ShellPathNode : public cmGeneratorExpressionNode
     for (auto const& in : list_in) {
       if (!cmSystemTools::FileIsFullPath(in)) {
         reportError(eval, content->GetOriginalExpression(),
-                    "\"" + in + "\" is not an absolute path.");
+                    cmStrCat('"', in, "\" is not an absolute path."));
         return std::string();
       }
       list_out.emplace_back(converter.ConvertDirectorySeparatorsForShell(in));
@@ -5520,6 +5854,10 @@ cmGeneratorExpressionNode const* cmGeneratorExpressionNode::GetNode(
     { "COMMA", &commaNode },
     { "SEMICOLON", &semicolonNode },
     { "QUOTE", &quoteNode },
+    { "SOURCE_EXISTS", &sourceExistsNode },
+    { "SOURCE_PROPERTY", &sourcePropertyNode },
+    { "FILE_SET_EXISTS", &fileSetExistsNode },
+    { "FILE_SET_PROPERTY", &fileSetPropertyNode },
     { "TARGET_PROPERTY", &targetPropertyNode },
     { "TARGET_INTERMEDIATE_DIR", &targetIntermediateDirNode },
     { "TARGET_NAME", &targetNameNode },
