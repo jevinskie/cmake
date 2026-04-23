@@ -70,6 +70,7 @@ public:
   int CollectTimingData(cmInstrumentationQuery::Hook hook);
   int SpawnBuildDaemon();
   bool LockBuildDaemon();
+  bool LockIndexing();
   int CollectTimingAfterBuild(int ppid);
   void AddHook(cmInstrumentationQuery::Hook hook);
   void AddOption(cmInstrumentationQuery::Option option);
@@ -87,6 +88,8 @@ public:
 
 private:
   Json::Value ReadJsonSnippet(std::string const& file_name);
+  bool AcquireLock(std::string const& lock_file, cmFileLock& lock,
+                   unsigned long timeout);
   void WriteInstrumentationJson(Json::Value& index,
                                 std::string const& directory,
                                 std::string const& file_name);
@@ -111,6 +114,7 @@ private:
                               Json::Value const& snippetData);
   size_t AssignTargetToTraceThread(std::vector<uint64_t>& workers,
                                    uint64_t timeStart, uint64_t duration);
+  void ResetQueries();
   std::string binaryDir;
   std::string timingDirv1;
   std::string userTimingDirv1;
@@ -127,12 +131,12 @@ private:
   bool ranSystemChecks = false;
   bool ranOSCheck = false;
   Json::Value customContent = Json::objectValue;
-  Json::Value configureSnippetData;
-  std::string configureSnippetName;
+  std::map<std::string, Json::Value> configureSnippetData;
 #ifndef CMAKE_BOOTSTRAP
   std::unique_ptr<cmsys::SystemInformation> systemInformation;
   cmsys::SystemInformation& GetSystemInformation();
 #endif
   int writtenJsonQueries = 0;
-  cmFileLock lock;
+  cmFileLock buildLock; // non-blocking
+  cmFileLock indexLock; // never held alongside buildLock
 };

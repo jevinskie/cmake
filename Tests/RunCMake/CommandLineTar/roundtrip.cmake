@@ -11,7 +11,7 @@ function(run_tar WORKING_DIRECTORY)
   )
 
   if(NOT result STREQUAL "0")
-    message(FATAL_ERROR "tar failed with arguments [${ARGN}] result [${result}]")
+    message(FATAL_ERROR "tar failed with arguments:\n  ${ARGN}\nresult:\n  ${result}")
   endif()
 endfunction()
 
@@ -31,20 +31,39 @@ set(CHECK_FILES
   "d_4/f1.txt"
   "d-4/f1.txt"
   "My Special Directory/f1.txt"
+  ${COMPRESSION_ADDITIONAL_FILE_NAMES}
 )
 
 foreach(file ${CHECK_FILES})
   configure_file(${CMAKE_CURRENT_LIST_FILE} ${FULL_COMPRESS_DIR}/${file} COPYONLY)
 endforeach()
 
-if(UNIX)
-  execute_process(COMMAND ln -sf f1.txt ${FULL_COMPRESS_DIR}/d1/f2.txt)
+# Test a (file) symlink inside the archive on platforms which support it.
+execute_process(
+  COMMAND ${CMAKE_COMMAND} -E create_symlink f1.txt ${FULL_COMPRESS_DIR}/d1/f2.txt
+  OUTPUT_VARIABLE create_symlink_stdout
+  ERROR_VARIABLE create_symlink_stderr
+  RESULT_VARIABLE create_symlink_result
+)
+if(create_symlink_result EQUAL 0 AND EXISTS "${FULL_COMPRESS_DIR}/d1/f2.txt")
   list(APPEND CHECK_FILES "d1/f2.txt")
 endif()
 
 file(REMOVE ${FULL_OUTPUT_NAME})
 file(REMOVE_RECURSE ${FULL_DECOMPRESS_DIR})
-file(MAKE_DIRECTORY ${FULL_DECOMPRESS_DIR})
+if(DESTINATION_SYMLINK)
+  # If specified, test extraction to a directory symlink on platforms which
+  # support it, but fall back to a plain directory otherwise.
+  cmake_policy(SET CMP0205 NEW)
+  file(MAKE_DIRECTORY ${FULL_DECOMPRESS_DIR}-dir)
+  file(CREATE_LINK
+    ${FULL_DECOMPRESS_DIR}-dir ${FULL_DECOMPRESS_DIR}
+    COPY_ON_ERROR
+    SYMBOLIC
+  )
+else()
+  file(MAKE_DIRECTORY ${FULL_DECOMPRESS_DIR})
+endif()
 
 run_tar(${CMAKE_CURRENT_BINARY_DIR} ${COMPRESSION_FLAGS} ${FULL_OUTPUT_NAME} ${COMPRESSION_OPTIONS} ${COMPRESS_DIR})
 run_tar(${FULL_DECOMPRESS_DIR} ${DECOMPRESSION_FLAGS} ${FULL_OUTPUT_NAME} ${DECOMPRESSION_OPTIONS} -- ${DECOMPRESSION_PATHNAMES})
@@ -58,18 +77,25 @@ foreach(file ${CHECK_FILES})
   set(output ${FULL_DECOMPRESS_DIR}/${COMPRESS_DIR}/${file})
 
   if(NOT EXISTS ${input})
-     message(SEND_ERROR "Cannot find input file ${output}")
+    message(SEND_ERROR "Cannot find input file:\n  \"${output}\"")
   endif()
 
   if(NOT EXISTS ${output})
-     message(SEND_ERROR "Cannot find output file ${output}")
+    message(SEND_ERROR "Cannot find output file:\n  \"${output}\"")
   endif()
 
   file(MD5 ${input} input_md5)
   file(MD5 ${output} output_md5)
 
   if(NOT input_md5 STREQUAL output_md5)
-    message(SEND_ERROR "Files \"${input}\" and \"${output}\" are different")
+    message(SEND_ERROR
+      "Files:\n"
+      "  \"${input}\"\n"
+      "and\n"
+      "  \"${output}\"\n"
+      "are different"
+    )
+
   endif()
 endforeach()
 
@@ -77,7 +103,7 @@ foreach(file ${NOT_EXISTING_FILES_CHECK})
   set(output ${FULL_DECOMPRESS_DIR}/${COMPRESS_DIR}/${file})
 
   if(EXISTS ${output})
-     message(SEND_ERROR "File ${output} exists but it shouldn't")
+    message(SEND_ERROR "File exists but it shouldn't:\n  \"${output}\"")
   endif()
 endforeach()
 

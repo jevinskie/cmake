@@ -17,6 +17,7 @@ These commands are always available.
 
    /command/block
    /command/break
+   /command/cmake_diagnostic
    /command/cmake_host_system_information
    /command/cmake_language
    /command/cmake_minimum_required
@@ -93,6 +94,7 @@ These commands are available only in CMake projects.
    /command/cmake_instrumentation
    /command/create_test_sourcelist
    /command/define_property
+   /command/discover_tests
    /command/enable_language
    /command/enable_testing
    /command/export

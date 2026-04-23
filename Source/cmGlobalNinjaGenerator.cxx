@@ -26,6 +26,7 @@
 
 #include "cmCustomCommand.h"
 #include "cmCxxModuleMapper.h"
+#include "cmDiagnostics.h"
 #include "cmDyndepCollation.h"
 #include "cmFortranParser.h"
 #include "cmGeneratedFileStream.h"
@@ -1383,17 +1384,18 @@ void cmGlobalNinjaGenerator::AppendTargetDepends(
                                  std::string const& targetConfig) {
       if (depTarget->CanCompileSources()) {
         auto headers = depTarget->GetGeneratedISPCHeaders(targetConfig);
+        auto const mapToNinjaPath = gg->MapToNinjaPath();
         if (!headers.empty()) {
           std::transform(headers.begin(), headers.end(), headers.begin(),
-                         gg->MapToNinjaPath());
+                         mapToNinjaPath);
           outputDeps.insert(outputDeps.end(), headers.begin(), headers.end());
         }
         auto objs = depTarget->GetGeneratedISPCObjects(targetConfig);
-        if (!objs.empty()) {
-          std::transform(objs.begin(), objs.end(), objs.begin(),
-                         gg->MapToNinjaPath());
-          outputDeps.insert(outputDeps.end(), objs.begin(), objs.end());
-        }
+        std::transform(
+          objs.begin(), objs.end(), std::back_inserter(outputDeps),
+          [&mapToNinjaPath](
+            std::pair<cmSourceFile const*, std::string> const& obj)
+            -> std::string { return mapToNinjaPath(obj.second); });
       }
     };
 
@@ -1926,8 +1928,8 @@ void cmGlobalNinjaGenerator::WriteTargetRebuildManifest(std::ostream& os)
         << "\n";
     msg << "Any pre-check scripts, such as those generated for file(GLOB "
            "CONFIGURE_DEPENDS), will not be run by Ninja.";
-    this->GetCMakeInstance()->IssueMessage(MessageType::AUTHOR_WARNING,
-                                           msg.str());
+    this->GetCMakeInstance()->IssueDiagnostic(cmDiagnostics::CMD_AUTHOR,
+                                              msg.str());
   }
 
   std::sort(reBuild.ImplicitDeps.begin(), reBuild.ImplicitDeps.end());

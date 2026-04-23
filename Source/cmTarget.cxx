@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <set>
@@ -20,6 +21,7 @@
 
 #include "cmAlgorithms.h"
 #include "cmCustomCommand.h"
+#include "cmDiagnostics.h"
 #include "cmFileSet.h"
 #include "cmFileSetMetadata.h"
 #include "cmFindPackageStack.h"
@@ -379,6 +381,9 @@ TargetProperty const StaticTargetProperties[] = {
   { "Swift_LANGUAGE_VERSION"_s, IC::CanCompileSources },
   { "Swift_MODULE_DIRECTORY"_s, IC::CanCompileSources },
   { "Swift_COMPILATION_MODE"_s, IC::CanCompileSources },
+  // ---- Rust
+  { "Rust_EDITION"_s, IC::CanCompileSources },
+  { "Rust_MAIN_CRATE_ROOT"_s, IC::CanCompileSources },
   // ---- moc
   { "AUTOMOC"_s, IC::CanCompileSources },
   { "AUTOMOC_COMPILER_PREDEFINES"_s, IC::CanCompileSources },
@@ -710,6 +715,12 @@ cmTargetInternals::cmTargetInternals()
                       "Header"_s, "The default header set"_s, "Header set"_s,
                       FileSetEntries{ "HEADER_SETS"_s },
                       FileSetEntries{ "INTERFACE_HEADER_SETS"_s } } },
+                  { cm::FileSetMetadata::SOURCES,
+                    { cm::FileSetMetadata::SOURCES, "SOURCE_DIRS"_s,
+                      "SOURCE_SET"_s, "SOURCE_DIRS_"_s, "SOURCE_SET_"_s,
+                      "Source"_s, "The default source set"_s, "Source set"_s,
+                      FileSetEntries{ "SOURCE_SETS"_s },
+                      FileSetEntries{ "INTERFACE_SOURCE_SETS"_s } } },
                   { cm::FileSetMetadata::CXX_MODULES,
                     { cm::FileSetMetadata::CXX_MODULES, "CXX_MODULE_DIRS"_s,
                       "CXX_MODULE_SET"_s, "CXX_MODULE_DIRS_"_s,
@@ -2049,8 +2060,8 @@ struct ReadOnlyProperty
     } else {
       switch (target->GetPolicyStatus(*this->Policy)) {
         case cmPolicies::WARN:
-          context->IssueMessage(
-            MessageType::AUTHOR_WARNING,
+          context->IssueDiagnostic(
+            cmDiagnostics::CMD_AUTHOR,
             cmPolicies::GetPolicyWarning(cmPolicies::CMP0160) + "\n" +
               this->message(prop, target));
           CM_FALLTHROUGH;
@@ -3125,8 +3136,8 @@ std::string cmTarget::ImportedGetFullPath(
 
       switch (this->GetPolicyStatus(cmPolicies::CMP0111)) {
         case cmPolicies::WARN:
-          this->impl->Makefile->IssueMessage(
-            MessageType::AUTHOR_WARNING,
+          this->impl->Makefile->IssueDiagnostic(
+            cmDiagnostics::CMD_AUTHOR,
             cmPolicies::GetPolicyWarning(cmPolicies::CMP0111) + "\n" +
               message());
           CM_FALLTHROUGH;
@@ -3202,7 +3213,12 @@ std::vector<std::string> cmTarget::GetAllFileSetNames() const
   return result;
 }
 
-std::vector<std::string> cmTarget::GetAllInterfaceFileSets() const
+namespace {
+std::vector<std::string> RetrieveFileSetNames(
+  std::unordered_map<cm::string_view, FileSetType> const& fileSetTypes,
+  std::function<
+    std::vector<BT<std::string>> const&(FileSetType const& fileSetType)>
+    GetFileSets)
 {
   std::vector<std::string> result;
   auto inserter = std::back_inserter(result);
@@ -3214,11 +3230,30 @@ std::vector<std::string> cmTarget::GetAllInterfaceFileSets() const
     }
   };
 
-  for (auto const& fileSetType : this->impl->FileSetTypes) {
-    appendEntries(fileSetType.second.InterfaceEntries.Entries);
+  for (auto const& fileSetType : fileSetTypes) {
+    appendEntries(GetFileSets(fileSetType.second));
   }
 
   return result;
+}
+}
+
+std::vector<std::string> cmTarget::GetAllPrivateFileSets() const
+{
+  return RetrieveFileSetNames(
+    this->impl->FileSetTypes,
+    [](FileSetType const& fileSetType) -> std::vector<BT<std::string>> const& {
+      return fileSetType.SelfEntries.Entries;
+    });
+}
+
+std::vector<std::string> cmTarget::GetAllInterfaceFileSets() const
+{
+  return RetrieveFileSetNames(
+    this->impl->FileSetTypes,
+    [](FileSetType const& fileSetType) -> std::vector<BT<std::string>> const& {
+      return fileSetType.InterfaceEntries.Entries;
+    });
 }
 
 bool cmTarget::HasFileSets() const
@@ -3292,7 +3327,7 @@ bool cmTarget::GetMappedConfig(std::string const& desiredConfig, cmValue& loc,
         "\nConfiguration selection for imported target \"", this->GetName(),
         "\" failed, but would select configuration \"", newConfig,
         "\" under the NEW policy.\n");
-      this->GetMakefile()->IssueMessage(MessageType::AUTHOR_WARNING, err);
+      this->GetMakefile()->IssueDiagnostic(cmDiagnostics::CMD_AUTHOR, err);
     }
 
     return false;
@@ -3306,7 +3341,7 @@ bool cmTarget::GetMappedConfig(std::string const& desiredConfig, cmValue& loc,
                "\nConfiguration selection for imported target \"",
                this->GetName(), "\" selected configuration \"", oldConfig,
                "\", but would fail under the NEW policy.\n");
-    this->GetMakefile()->IssueMessage(MessageType::AUTHOR_WARNING, err);
+    this->GetMakefile()->IssueDiagnostic(cmDiagnostics::CMD_AUTHOR, err);
   } else if (suffix != newSuffix) {
     // OLD and NEW policies found different configurations.
     cm::string_view newConfig = configFromSuffix(newSuffix);
@@ -3316,7 +3351,7 @@ bool cmTarget::GetMappedConfig(std::string const& desiredConfig, cmValue& loc,
                this->GetName(), "\" selected configuration \"", oldConfig,
                "\", but would select configuration \"", newConfig,
                "\" under the NEW policy.\n");
-    this->GetMakefile()->IssueMessage(MessageType::AUTHOR_WARNING, err);
+    this->GetMakefile()->IssueDiagnostic(cmDiagnostics::CMD_AUTHOR, err);
   }
 
   return true;

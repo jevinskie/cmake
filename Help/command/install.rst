@@ -201,6 +201,8 @@ Signatures
       - DLLs (these go to ``RUNTIME``, see below),
       - on macOS when marked as ``FRAMEWORK`` (see below).
 
+    * *Module libraries*
+
   ``RUNTIME``
     Target artifacts of this kind include:
 
@@ -243,7 +245,10 @@ Signatures
 
     File sets are defined by the :command:`target_sources(FILE_SET)` command.
     If the file set ``<set-name>`` exists and is ``PUBLIC`` or ``INTERFACE``,
-    any files in the set are installed under the destination (see below).
+    any files in the set of type ``HEADERS`` are installed under
+    the destination (see below). Other types do not have any default
+    destination, so ``DESTINATION`` option must be specified for each
+    ``FILE_SET``.
     The directory structure relative to the file set's base directories is
     preserved. For example, a file added to the file set as
     ``/blah/include/myproj/here.h`` with a base directory ``/blah/include``
@@ -263,12 +268,13 @@ Signatures
   ``DESTINATION`` is omitted, a default destination will be taken from the
   appropriate variable from :module:`GNUInstallDirs`, or set to a built-in
   default value if that variable is not defined.  The same is true for file
-  sets, and the public and private headers associated with the installed
-  targets through the :prop_tgt:`PUBLIC_HEADER` and :prop_tgt:`PRIVATE_HEADER`
-  target properties. A destination must always be provided for module libraries,
-  Apple bundles and frameworks.  A destination can be omitted for interface and
-  object libraries, but they are handled differently (see the discussion of this
-  topic toward the end of this section).
+  sets of type ``HEADERS``, and the public and private headers associated with
+  the installed targets through the :prop_tgt:`PUBLIC_HEADER` and
+  :prop_tgt:`PRIVATE_HEADER` target properties. A destination must always be
+  provided for module libraries, Apple bundles and frameworks.  A destination
+  can be omitted for interface and object libraries, but they are handled
+  differently (see the discussion of this topic toward the end of this
+  section).
 
   For shared libraries on DLL platforms, if neither ``RUNTIME`` nor ``ARCHIVE``
   destinations are specified, both the ``RUNTIME`` and ``ARCHIVE`` components are
@@ -1081,7 +1087,7 @@ Signatures
 
     An informational canonical home URL for the project.
 
-  By default, if the specified ``<sbom-name>`` matches the current CMake
+  By default, if the specified ``<package-name>`` matches the current CMake
   :variable:`PROJECT_NAME`, package metadata will be inherited from the
   project.  The ``PROJECT <project-name>`` option may be used to specify a
   different project from which to inherit metadata.  If ``NO_PROJECT_METADATA``
@@ -1264,7 +1270,7 @@ Signatures
     An informational description of the project.  It is recommended that this
     description is a relatively short string, usually no more than a few words.
 
-  By default, if the specified ``<package-name>`` matches the current CMake
+  By default, if the specified ``<sbom-name>`` matches the current CMake
   :variable:`PROJECT_NAME`, sbom metadata will be inherited from the
   project.  The ``PROJECT <project-name>`` option may be used to specify a
   different project from which to inherit metadata.  If ``NO_PROJECT_METADATA``

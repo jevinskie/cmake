@@ -145,6 +145,7 @@ public:
     SourceKindCustomCommand,
     SourceKindExternalObject,
     SourceKindCxxModuleSource,
+    SourceKindRustMainCrateRoot,
     SourceKindExtra,
     SourceKindHeader,
     SourceKindIDL,
@@ -223,6 +224,9 @@ public:
                          std::string const& config) const;
   void GetManifests(std::vector<cmSourceFile const*>&,
                     std::string const& config) const;
+
+  void GetRustMainCrateRoot(std::vector<cmSourceFile const*>&,
+                            std::string const& config) const;
 
   std::set<cmLinkItem> const& GetUtilityItems() const;
 
@@ -313,9 +317,16 @@ public:
       its object file directory for the build.  */
   void GetTargetObjectNames(std::string const& config,
                             std::vector<std::string>& objects) const;
+  void GetTargetObjectNames(std::string const& config,
+                            std::function<bool(cmSourceFile const&)> filter,
+                            std::vector<std::string>& objects) const;
   /** Get the build and install locations of objects for a given context. */
   void GetTargetObjectLocations(
     std::string const& config,
+    std::function<void(cmObjectLocation const&, cmObjectLocation const&)> cb)
+    const;
+  void GetTargetObjectLocations(
+    std::string const& config, std::function<bool(cmSourceFile const&)> filter,
     std::function<void(cmObjectLocation const&, cmObjectLocation const&)> cb)
     const;
 
@@ -614,6 +625,8 @@ public:
                                std::string& flags) const;
 
   void AddISPCTargetFlags(std::string& flags) const;
+
+  void AddRustTargetFlags(std::string& flags) const;
 
   std::string GetFeatureSpecificLinkRuleVariable(
     std::string const& var, std::string const& lang,
@@ -1102,18 +1115,27 @@ public:
   std::vector<std::string> GetGeneratedISPCHeaders(
     std::string const& config) const;
 
-  void AddISPCGeneratedObject(std::vector<std::string>&& objs,
-                              std::string const& config);
-  std::vector<std::string> GetGeneratedISPCObjects(
-    std::string const& config) const;
+  void AddISPCGeneratedObject(
+    std::vector<std::pair<cmSourceFile const*, std::string>>&& objs,
+    std::string const& config);
+  std::vector<std::pair<cmSourceFile const*, std::string>>
+  GetGeneratedISPCObjects(std::string const& config) const;
 
   void AddSystemIncludeDirectory(std::string const& inc,
                                  std::string const& lang);
   bool AddHeaderSetVerification();
-  std::string GenerateHeaderSetVerificationFile(
+  cm::optional<std::string> GenerateHeaderSetVerificationFile(
     cmSourceFile& source, std::string const& dir,
     std::string const& verifyTargetName,
-    cm::optional<std::set<std::string>>& languages) const;
+    cm::optional<cm::optional<std::string>>& defaultLanguage) const;
+
+  cm::optional<std::string> ResolveHeaderLanguage(
+    cmSourceFile& source,
+    cm::optional<cm::optional<std::string>>& defaultLanguage) const;
+
+  cm::optional<std::string> GenerateStubForLanguage(
+    std::string const& language, std::string const& headerFilename,
+    std::string const& verifyTargetName, cmSourceFile& source) const;
 
   std::string GetImportedXcFrameworkPath(std::string const& config) const;
 
@@ -1362,7 +1384,8 @@ private:
 
   std::unordered_map<std::string, std::vector<std::string>>
     ISPCGeneratedHeaders;
-  std::unordered_map<std::string, std::vector<std::string>>
+  std::unordered_map<std::string,
+                     std::vector<std::pair<cmSourceFile const*, std::string>>>
     ISPCGeneratedObjects;
 
   enum class LinkInterfaceField
@@ -1502,6 +1525,10 @@ public:
   // File sets support queries
 
   bool HasFileSets() const;
+  cmGeneratorFileSets const* GetGeneratorFileSets() const
+  {
+    return this->FileSets.get();
+  }
   std::vector<cmGeneratorFileSet const*> const& GetAllFileSets() const;
   std::vector<cmGeneratorFileSet const*> const& GetFileSets(
     cm::string_view type) const;
@@ -1519,6 +1546,7 @@ public:
    * This will inspect the target itself to see if C++20 module
    * support is expected to work based on its sources.
    */
+  bool HaveInterfaceCxx20ModuleSources() const;
   bool HaveCxx20ModuleSources() const;
 
   enum class Cxx20SupportLevel

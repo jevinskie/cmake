@@ -29,6 +29,7 @@
 #include "cmCMakePath.h"
 #include "cmCMakeString.hxx"
 #include "cmComputeLinkInformation.h"
+#include "cmDiagnostics.h"
 #include "cmGenExContext.h"
 #include "cmGenExEvaluation.h"
 #include "cmGeneratorExpression.h"
@@ -414,7 +415,8 @@ static const struct InListNode : public cmGeneratorExpressionNode
     cmList values;
     cmList checkValues;
     bool check = false;
-    switch (eval->Context.LG->GetPolicyStatus(cmPolicies::CMP0085)) {
+    cmLocalGenerator const* const lg = eval->Context.LG;
+    switch (lg->GetPolicyStatus(cmPolicies::CMP0085)) {
       case cmPolicies::WARN:
         if (parameters.front().empty()) {
           check = true;
@@ -424,12 +426,11 @@ static const struct InListNode : public cmGeneratorExpressionNode
       case cmPolicies::OLD:
         values.assign(parameters[1]);
         if (check && values != checkValues) {
-          std::ostringstream e;
-          e << cmPolicies::GetPolicyWarning(cmPolicies::CMP0085)
-            << "\nSearch Item:\n  \"" << parameters.front()
-            << "\"\nList:\n  \"" << parameters[1] << "\"\n";
-          eval->Context.LG->GetCMakeInstance()->IssueMessage(
-            MessageType ::AUTHOR_WARNING, e.str(), eval->Backtrace);
+          std::string const err =
+            cmStrCat(cmPolicies::GetPolicyWarning(cmPolicies::CMP0085),
+                     "\nSearch Item:\n  \""_s, parameters.front(),
+                     "\"\nList:\n  \""_s, parameters[1], "\"\n"_s);
+          lg->IssueDiagnostic(cmDiagnostics::CMD_AUTHOR, err, eval->Backtrace);
           return "0";
         }
         if (values.empty()) {
@@ -2899,8 +2900,8 @@ static const struct ConfigurationTestNode : public cmGeneratorExpressionNode
                            eval->CurrentTarget->GetName(), "\", used by \"",
                            eval->HeadTarget->GetName(),
                            "\", may match multiple configurations.\n");
-                lg->GetCMakeInstance()->IssueMessage(
-                  MessageType ::AUTHOR_WARNING, err, eval->Backtrace);
+                lg->IssueDiagnostic(cmDiagnostics::CMD_AUTHOR, err,
+                                    eval->Backtrace);
               }
               CM_FALLTHROUGH;
             case cmPolicies::OLD:
@@ -4335,6 +4336,55 @@ static const struct TargetObjectsNode : public cmGeneratorExpressionNode
       return std::string();
     }
 
+    std::vector<std::string> sourceFilePaths;
+    for (auto const& arg : cmMakeRange(parameters).advance(1)) {
+      if (cmHasLiteralPrefix(arg, "SOURCE_FILES:")) {
+        cm::string_view listView{ arg.c_str() + cmStrLen("SOURCE_FILES:") };
+        std::size_t semicolon;
+        std::size_t start = 0;
+        do {
+          semicolon = listView.find(';', start);
+          sourceFilePaths.push_back(
+            std::string{ listView.substr(start, semicolon - start) });
+          start = semicolon + 1;
+        } while (semicolon != cm::string_view::npos);
+      } else {
+        reportError(eval, content->GetOriginalExpression(),
+                    cmStrCat("Unrecognized argument:\n  ", arg));
+        return std::string();
+      }
+    }
+
+    if (gt->IsImported() && !sourceFilePaths.empty()) {
+      reportError(
+        eval, content->GetOriginalExpression(),
+        cmStrCat("Cannot use SOURCE_FILES argument on imported target \"",
+                 tgtName, '"'));
+      return std::string();
+    }
+    std::set<cmSourceFile const*> sourceFiles;
+    for (auto const& sf : gt->GetSourceFiles(eval->Context.Config)) {
+      sourceFiles.insert(sf.Value);
+    }
+    std::set<cmSourceFile const*> filteredSourceFiles;
+    for (auto const& path : sourceFilePaths) {
+      if (!cmSystemTools::FileIsFullPath(path)) {
+        reportError(
+          eval, content->GetOriginalExpression(),
+          cmStrCat("Source file:\n  ", path, "\nis not an absolute path"));
+        return std::string();
+      }
+
+      auto const* sf = gt->Makefile->GetSource(path);
+      if (!sf || !sourceFiles.count(sf)) {
+        reportError(eval, content->GetOriginalExpression(),
+                    cmStrCat("Source file:\n  ", path,
+                             "\ndoes not exist for target \"", tgtName, '"'));
+        return std::string();
+      }
+      filteredSourceFiles.insert(sf);
+    }
+
     cmList objects;
 
     if (gt->IsImported()) {
@@ -4347,7 +4397,11 @@ static const struct TargetObjectsNode : public cmGeneratorExpressionNode
       }
       eval->HadContextSensitiveCondition = true;
     } else {
-      gt->GetTargetObjectNames(eval->Context.Config, objects);
+      auto const filter =
+        [&filteredSourceFiles](cmSourceFile const& sf) -> bool {
+        return filteredSourceFiles.empty() || filteredSourceFiles.count(&sf);
+      };
+      gt->GetTargetObjectNames(eval->Context.Config, filter, objects);
 
       std::string obj_dir;
       if (eval->EvaluateForBuildsystem && !gg->SupportsCrossConfigs()) {
@@ -4373,6 +4427,8 @@ static const struct TargetObjectsNode : public cmGeneratorExpressionNode
 
     return objects.to_string();
   }
+
+  int NumExpectedParameters() const override { return OneOrMoreParameters; }
 } targetObjectsNode;
 
 struct TargetRuntimeDllsBaseNode : public cmGeneratorExpressionNode
@@ -4607,8 +4663,8 @@ static const struct TargetPolicyNode : public cmGeneratorExpressionNode
         cmLocalGenerator* lg = eval->HeadTarget->GetLocalGenerator();
         switch (statusForTarget(eval->HeadTarget, policy)) {
           case cmPolicies::WARN:
-            lg->IssueMessage(
-              MessageType::AUTHOR_WARNING,
+            lg->IssueDiagnostic(
+              cmDiagnostics::CMD_AUTHOR,
               cmPolicies::GetPolicyWarning(policyForString(policy)));
             CM_FALLTHROUGH;
           case cmPolicies::OLD:
@@ -4688,17 +4744,16 @@ struct TargetFilesystemArtifactDependencyCMP0112
                             cm::GenEx::Evaluation* eval)
   {
     eval->AllTargets.insert(target);
-    cmLocalGenerator const* lg = eval->Context.LG;
+    cmLocalGenerator const* const lg = eval->Context.LG;
     switch (target->GetPolicyStatusCMP0112()) {
       case cmPolicies::WARN:
         if (lg->GetMakefile()->PolicyOptionalWarningEnabled(
               "CMAKE_POLICY_WARNING_CMP0112")) {
-          std::string err =
+          std::string const err =
             cmStrCat(cmPolicies::GetPolicyWarning(cmPolicies::CMP0112),
                      "\nDependency being added to target:\n  \"",
                      target->GetName(), "\"\n");
-          lg->GetCMakeInstance()->IssueMessage(MessageType ::AUTHOR_WARNING,
-                                               err, eval->Backtrace);
+          lg->IssueDiagnostic(cmDiagnostics::CMD_AUTHOR, err, eval->Backtrace);
         }
         CM_FALLTHROUGH;
       case cmPolicies::OLD:
@@ -5352,12 +5407,14 @@ struct TargetOutputNameArtifactResultGetter<ArtifactPdbTag>
       return std::string();
     }
 
+    cmLocalGenerator const* const lg = eval->Context.LG;
+
     std::string language = target->GetLinkerLanguage(eval->Context.Config);
 
     std::string pdbSupportVar =
       cmStrCat("CMAKE_", language, "_LINKER_SUPPORTS_PDB");
 
-    if (!eval->Context.LG->GetMakefile()->IsOn(pdbSupportVar)) {
+    if (!lg->GetMakefile()->IsOn(pdbSupportVar)) {
       ::reportError(
         eval, content->GetOriginalExpression(),
         "TARGET_PDB_FILE_BASE_NAME is not supported by the target linker.");
@@ -5385,8 +5442,8 @@ struct TargetOutputNameArtifactResultGetter<ArtifactPdbTag>
 
     if (target->GetPolicyStatusCMP0202() == cmPolicies::WARN &&
         postfix != Postfix::Unspecified) {
-      eval->Context.LG->GetCMakeInstance()->IssueMessage(
-        MessageType::AUTHOR_WARNING,
+      lg->IssueDiagnostic(
+        cmDiagnostics::CMD_AUTHOR,
         cmStrCat(cmPolicies::GetPolicyWarning(cmPolicies::CMP0202),
                  "\n"
                  "\"POSTFIX\" option is recognized only when the policy is "

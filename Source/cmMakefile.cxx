@@ -51,7 +51,6 @@
 #include "cmSourceFile.h"
 #include "cmSourceFileLocation.h"
 #include "cmSourceGroup.h"
-#include "cmStack.h"
 #include "cmState.h"
 #include "cmStateDirectory.h"
 #include "cmStateTypes.h"
@@ -175,8 +174,9 @@ cmMakefile::cmMakefile(cmGlobalGenerator* globalGenerator,
     this->StateSnapshot.GetState()->CreatePolicyScopeSnapshot(
       this->StateSnapshot);
 
-  // Enter a policy level for this directory.
+  // Enter a policy and diagnostic level for this directory.
   this->PushPolicy();
+  this->PushDiagnostic();
 
   // push empty loop block
   this->PushLoopBlockBarrier();
@@ -213,7 +213,8 @@ cmDirectoryId cmMakefile::GetDirectoryId() const
   return std::string(buf);
 }
 
-void cmMakefile::IssueMessage(MessageType t, std::string const& text) const
+void cmMakefile::IssueMessage(MessageType t, std::string const& text,
+                              cmListFileBacktrace const& bt) const
 {
   if (!this->ExecutionStatusStack.empty()) {
     if ((t == MessageType::FATAL_ERROR) ||
@@ -221,7 +222,21 @@ void cmMakefile::IssueMessage(MessageType t, std::string const& text) const
       this->ExecutionStatusStack.back()->SetNestedError();
     }
   }
-  this->GetCMakeInstance()->IssueMessage(t, text, this->Backtrace);
+  this->GetCMakeInstance()->IssueMessage(t, text, bt);
+}
+
+void cmMakefile::IssueDiagnostic(cmDiagnosticCategory category,
+                                 std::string const& text,
+                                 cmListFileBacktrace const& bt) const
+{
+  if (!this->ExecutionStatusStack.empty()) {
+    cmDiagnosticAction const action = this->GetDiagnosticAction(category);
+    if (action >= cmDiagnosticAction::SendError) {
+      this->ExecutionStatusStack.back()->SetNestedError();
+    }
+  }
+  this->GetCMakeInstance()->IssueDiagnostic(category, text,
+                                            this->GetStateSnapshot(), bt);
 }
 
 Message::LogLevel cmMakefile::GetCurrentLogLevel() const
@@ -273,7 +288,7 @@ void cmMakefile::MaybeWarnCMP0074(std::string const& rootVar, cmValue rootDef,
                     *rootEnv, '\n');
     }
     e += "For compatibility, CMake is ignoring the variable.";
-    this->IssueMessage(MessageType::AUTHOR_WARNING, e);
+    this->IssueDiagnostic(cmDiagnostics::CMD_AUTHOR, e);
   }
 }
 
@@ -293,7 +308,7 @@ void cmMakefile::MaybeWarnCMP0144(std::string const& rootVar, cmValue rootDef,
     }
     e += "For compatibility, find_package is ignoring the variable, but "
          "code in a .cmake module might still use it.";
-    this->IssueMessage(MessageType::AUTHOR_WARNING, e);
+    this->IssueDiagnostic(cmDiagnostics::CMD_AUTHOR, e);
   }
 }
 
@@ -620,7 +635,8 @@ class cmMakefile::IncludeScope : public FileScopeBase
 {
 public:
   IncludeScope(cmMakefile* mf, std::string const& filenametoread,
-               bool noPolicyScope);
+               cm::PolicyScope policyScope,
+               cm::DiagnosticScope diagnosticScope);
   ~IncludeScope();
   void Quiet() { this->ReportError = false; }
 
@@ -628,15 +644,18 @@ public:
   IncludeScope& operator=(IncludeScope const&) = delete;
 
 private:
-  bool NoPolicyScope;
+  cm::PolicyScope PolicyScope;
+  cm::DiagnosticScope DiagnosticScope;
   bool ReportError = true;
 };
 
 cmMakefile::IncludeScope::IncludeScope(cmMakefile* mf,
                                        std::string const& filenametoread,
-                                       bool noPolicyScope)
+                                       cm::PolicyScope policyScope,
+                                       cm::DiagnosticScope diagnosticScope)
   : FileScopeBase(mf)
-  , NoPolicyScope(noPolicyScope)
+  , PolicyScope(policyScope)
+  , DiagnosticScope(diagnosticScope)
 {
   this->Makefile->Backtrace = this->Makefile->Backtrace.Push(
     cmListFileContext::FromListFilePath(filenametoread));
@@ -646,8 +665,11 @@ cmMakefile::IncludeScope::IncludeScope(cmMakefile* mf,
   this->Makefile->StateSnapshot =
     this->Makefile->GetState()->CreateIncludeFileSnapshot(
       this->Makefile->StateSnapshot, filenametoread);
-  if (!this->NoPolicyScope) {
+  if (this->PolicyScope == cm::PolicyScope::Local) {
     this->Makefile->PushPolicy();
+  }
+  if (this->DiagnosticScope == cm::DiagnosticScope::Local) {
+    this->Makefile->PushDiagnostic();
   }
   this->PushListFileVars(filenametoread);
 }
@@ -655,7 +677,11 @@ cmMakefile::IncludeScope::IncludeScope(cmMakefile* mf,
 cmMakefile::IncludeScope::~IncludeScope()
 {
   this->PopListFileVars();
-  if (!this->NoPolicyScope) {
+  if (this->DiagnosticScope == cm::DiagnosticScope::Local) {
+    // Pop the scope we pushed for the script.
+    this->Makefile->PopDiagnostic();
+  }
+  if (this->PolicyScope == cm::PolicyScope::Local) {
     // Pop the scope we pushed for the script.
     this->Makefile->PopPolicy();
   }
@@ -667,12 +693,13 @@ cmMakefile::IncludeScope::~IncludeScope()
 }
 
 bool cmMakefile::ReadDependentFile(std::string const& filename,
-                                   bool noPolicyScope)
+                                   cm::PolicyScope policyScope,
+                                   cm::DiagnosticScope diagnosticScope)
 {
   std::string filenametoread = cmSystemTools::CollapseFullPath(
     filename, this->GetCurrentSourceDirectory());
 
-  IncludeScope incScope(this, filenametoread, noPolicyScope);
+  IncludeScope incScope(this, filenametoread, policyScope, diagnosticScope);
 
 #ifdef CMake_ENABLE_DEBUGGER
   if (this->GetCMakeInstance()->GetDebugAdapter()) {
@@ -682,8 +709,7 @@ bool cmMakefile::ReadDependentFile(std::string const& filename,
 #endif
 
   cmListFile listFile;
-  if (!listFile.ParseFile(filenametoread.c_str(), this->GetMessenger(),
-                          this->Backtrace)) {
+  if (!listFile.ParseFile(filenametoread, this, this->Backtrace)) {
 #ifdef CMake_ENABLE_DEBUGGER
     if (this->GetCMakeInstance()->GetDebugAdapter()) {
       this->GetCMakeInstance()->GetDebugAdapter()->OnEndFileParse();
@@ -805,8 +831,7 @@ bool cmMakefile::ReadListFile(std::string const& filename)
 #endif
 
   cmListFile listFile;
-  if (!listFile.ParseFile(filenametoread.c_str(), this->GetMessenger(),
-                          this->Backtrace)) {
+  if (!listFile.ParseFile(filenametoread, this, this->Backtrace)) {
 #ifdef CMake_ENABLE_DEBUGGER
     if (this->GetCMakeInstance()->GetDebugAdapter()) {
       this->GetCMakeInstance()->GetDebugAdapter()->OnEndFileParse();
@@ -840,8 +865,7 @@ bool cmMakefile::ReadListFileAsString(std::string const& content,
   ListFileScope scope(this, filenametoread);
 
   cmListFile listFile;
-  if (!listFile.ParseString(content, virtualFileName.c_str(),
-                            this->GetMessenger(), this->Backtrace)) {
+  if (!listFile.ParseString(content, virtualFileName, this, this->Backtrace)) {
     return false;
   }
 
@@ -1442,7 +1466,8 @@ void cmMakefile::SetExplicitlyGeneratesSbom(bool status)
 }
 
 void cmMakefile::PushFunctionScope(std::string const& fileName,
-                                   cmPolicies::PolicyMap const& pm)
+                                   cmPolicies::PolicyMap const& pm,
+                                   cmDiagnostics::DiagnosticMap dm)
 {
   this->StateSnapshot = this->GetState()->CreateFunctionCallSnapshot(
     this->StateSnapshot, fileName);
@@ -1457,10 +1482,12 @@ void cmMakefile::PushFunctionScope(std::string const& fileName,
   this->PushFunctionBlockerBarrier();
 
   this->PushPolicy(true, pm);
+  this->PushDiagnostic(true, dm);
 }
 
 void cmMakefile::PopFunctionScope(bool reportError)
 {
+  this->PopDiagnostic();
   this->PopPolicy();
 
   this->PopSnapshot(reportError);
@@ -1475,7 +1502,8 @@ void cmMakefile::PopFunctionScope(bool reportError)
 }
 
 void cmMakefile::PushMacroScope(std::string const& fileName,
-                                cmPolicies::PolicyMap const& pm)
+                                cmPolicies::PolicyMap const& pm,
+                                cmDiagnostics::DiagnosticMap dm)
 {
   this->StateSnapshot =
     this->GetState()->CreateMacroCallSnapshot(this->StateSnapshot, fileName);
@@ -1484,10 +1512,12 @@ void cmMakefile::PushMacroScope(std::string const& fileName,
   this->PushFunctionBlockerBarrier();
 
   this->PushPolicy(true, pm);
+  this->PushDiagnostic(true, dm);
 }
 
 void cmMakefile::PopMacroScope(bool reportError)
 {
+  this->PopDiagnostic();
   this->PopPolicy();
   this->PopSnapshot(reportError);
 
@@ -1594,8 +1624,7 @@ void cmMakefile::Configure()
 #endif
 
   cmListFile listFile;
-  if (!listFile.ParseFile(currentStart.c_str(), this->GetMessenger(),
-                          this->Backtrace)) {
+  if (!listFile.ParseFile(currentStart, this, this->Backtrace)) {
 #ifdef CMake_ENABLE_DEBUGGER
     if (this->GetCMakeInstance()->GetDebugAdapter()) {
       this->GetCMakeInstance()->GetDebugAdapter()->OnEndFileParse();
@@ -1671,16 +1700,15 @@ void cmMakefile::Configure()
     }
     // if no project command is found, add one
     if (!hasProject) {
-      this->GetCMakeInstance()->IssueMessage(
-        MessageType::AUTHOR_WARNING,
+      this->IssueDiagnostic(
+        cmDiagnostics::CMD_AUTHOR,
         "No project() command is present.  The top-level CMakeLists.txt "
         "file must contain a literal, direct call to the project() command.  "
         "Add a line of code such as\n"
         "  project(ProjectName)\n"
         "near the top of the file, but after cmake_minimum_required().\n"
         "CMake is pretending there is a \"project(Project)\" command on "
-        "the first line.",
-        this->Backtrace);
+        "the first line.");
       cmListFileFunction project{
         "project", 0, 0, { { "Project", cmListFileArgument::Unquoted, 0 } }
       };
@@ -1903,8 +1931,8 @@ void cmMakefile::AddCacheDefinition(std::string const& name, cmValue value,
     case cmPolicies::WARN:
       if (this->PolicyOptionalWarningEnabled("CMAKE_POLICY_WARNING_CMP0126") &&
           this->IsNormalDefinitionSet(name)) {
-        this->IssueMessage(
-          MessageType::AUTHOR_WARNING,
+        this->IssueDiagnostic(
+          cmDiagnostics::CMD_AUTHOR,
           cmStrCat(cmPolicies::GetPolicyWarning(cmPolicies::CMP0126),
                    "\nFor compatibility with older versions of CMake, normal "
                    "variable \"",
@@ -1936,12 +1964,15 @@ void cmMakefile::MaybeWarnUninitialized(std::string const& variable,
   // check to see if we need to print a warning
   // if strict mode is on and the variable has
   // not been "cleared"/initialized with a set(foo ) call
-  if (this->GetCMakeInstance()->GetWarnUninitialized() &&
+  cmDiagnosticAction const action =
+    this->GetDiagnosticAction(cmDiagnostics::CMD_UNINITIALIZED);
+  if (action != cmDiagnostics::Ignore &&
       !this->VariableInitialized(variable)) {
     if (this->CheckSystemVars ||
         (sourceFilename && this->IsProjectFile(sourceFilename))) {
-      this->IssueMessage(MessageType::AUTHOR_WARNING,
-                         cmStrCat("uninitialized variable '", variable, '\''));
+      this->IssueDiagnostic(
+        cmDiagnostics::CMD_UNINITIALIZED,
+        cmStrCat("uninitialized variable '", variable, '\''));
     }
   }
 }
@@ -3178,8 +3209,8 @@ void cmMakefile::EnableLanguage(std::vector<std::string> const& languages,
     }
     if (!duplicate_languages.empty()) {
       auto quantity = duplicate_languages.size() == 1 ? " has"_s : "s have"_s;
-      this->IssueMessage(
-        MessageType::AUTHOR_WARNING,
+      this->IssueDiagnostic(
+        cmDiagnostics::CMD_AUTHOR,
         cmStrCat("Languages to be enabled may not be specified more "
                  "than once at the same time. The following language",
                  quantity, " been specified multiple times: ",
@@ -3288,7 +3319,7 @@ int cmMakefile::TryCompile(std::string const& srcdir,
   if (cmakeArgs) {
     // FIXME: Workaround to ignore unused CLI variables in try-compile.
     //
-    // Ideally we should use SetArgs for options like --no-warn-unused-cli.
+    // Ideally we should use SetArgs for options like -Wno-unused-cli.
     // However, there is a subtle problem when certain arguments are passed to
     // a macro wrapping around try_compile or try_run that does not escape
     // semicolons in its parameters but just passes ${ARGV} or ${ARGN}.  In
@@ -3307,8 +3338,9 @@ int cmMakefile::TryCompile(std::string const& srcdir,
     // the value VAR=a is sufficient for the try_compile or try_run to get the
     // correct result.  Calling SetArgs here would break such projects that
     // previously built.  Instead we work around the issue by never reporting
-    // unused arguments and ignoring options such as --no-warn-unused-cli.
-    cm.SetWarnUnusedCli(false);
+    // unused arguments and ignoring options such as -Wno-unused-cli.
+    cm.GetCurrentSnapshot().SetDiagnostic(cmDiagnostics::CMD_UNUSED_CLI,
+                                          cmDiagnostics::Ignore, true);
     // cm.SetArgs(*cmakeArgs, true);
 
     cm.SetCacheArgs(*cmakeArgs);
@@ -3316,12 +3348,12 @@ int cmMakefile::TryCompile(std::string const& srcdir,
   // to save time we pass the EnableLanguage info directly
   cm.GetGlobalGenerator()->EnableLanguagesFromGenerator(
     this->GetGlobalGenerator(), this);
-  if (this->IsOn("CMAKE_SUPPRESS_DEVELOPER_WARNINGS")) {
-    cm.AddCacheEntry("CMAKE_SUPPRESS_DEVELOPER_WARNINGS", "TRUE", "",
-                     cmStateEnums::INTERNAL);
-  } else {
-    cm.AddCacheEntry("CMAKE_SUPPRESS_DEVELOPER_WARNINGS", "FALSE", "",
-                     cmStateEnums::INTERNAL);
+  for (unsigned dc = 1; dc < cmDiagnostics::CategoryCount; ++dc) {
+    auto const category = static_cast<cmDiagnosticCategory>(dc);
+    if (this->GetDiagnosticAction(category) == cmDiagnostics::Ignore) {
+      cm.GetCurrentSnapshot().SetDiagnostic(category, cmDiagnostics::Ignore,
+                                            false);
+    }
   }
   if (cm.Configure() != 0) {
     this->IssueMessage(MessageType::FATAL_ERROR,
@@ -3806,8 +3838,8 @@ void cmMakefile::RaiseScope(std::string const& var, char const* varDef)
   }
 
   if (!this->StateSnapshot.RaiseScope(var, varDef)) {
-    this->IssueMessage(
-      MessageType::AUTHOR_WARNING,
+    this->IssueDiagnostic(
+      cmDiagnostics::CMD_AUTHOR,
       cmStrCat("Cannot set \"", var, "\": current scope has no parent."));
     return;
   }
@@ -4103,11 +4135,9 @@ bool cmMakefile::SetPolicy(cmPolicies::PolicyID id,
           id == cmPolicies::CMP0104 || id == cmPolicies::CMP0123 ||
           id == cmPolicies::CMP0126 || id == cmPolicies::CMP0128 ||
           id == cmPolicies::CMP0136 || id == cmPolicies::CMP0141 ||
-          id == cmPolicies::CMP0155)) &&
-      (!this->IsSet("CMAKE_WARN_DEPRECATED") ||
-       this->IsOn("CMAKE_WARN_DEPRECATED"))) {
-    this->IssueMessage(MessageType::DEPRECATION_WARNING,
-                       cmPolicies::GetPolicyDeprecatedWarning(id));
+          id == cmPolicies::CMP0155))) {
+    this->IssueDiagnostic(cmDiagnostics::CMD_DEPRECATED,
+                          cmPolicies::GetPolicyDeprecatedWarning(id));
   }
 
   this->StateSnapshot.SetPolicy(id, status);
@@ -4146,18 +4176,80 @@ void cmMakefile::PopPolicy()
   }
 }
 
+cmDiagnosticAction cmMakefile::GetDiagnosticAction(
+  cmDiagnosticCategory category) const
+{
+  return this->StateSnapshot.GetDiagnostic(category);
+}
+
+bool cmMakefile::SetDiagnostic(cmDiagnosticCategory category,
+                               cmDiagnosticAction action, bool recursive)
+{
+  this->StateSnapshot.SetDiagnostic(category, action, recursive);
+  return true;
+}
+
+bool cmMakefile::PromoteDiagnostic(cmDiagnosticCategory category,
+                                   cmDiagnosticAction action, bool recursive)
+{
+  this->StateSnapshot.PromoteDiagnostic(category, action, recursive);
+  return true;
+}
+
+bool cmMakefile::DemoteDiagnostic(cmDiagnosticCategory category,
+                                  cmDiagnosticAction action, bool recursive)
+{
+  this->StateSnapshot.DemoteDiagnostic(category, action, recursive);
+  return true;
+}
+
+cmMakefile::DiagnosticPushPop::DiagnosticPushPop(cmMakefile* m)
+  : Makefile(m)
+{
+  this->Makefile->PushDiagnostic();
+}
+
+cmMakefile::DiagnosticPushPop::~DiagnosticPushPop()
+{
+  this->Makefile->PopDiagnostic();
+}
+
+void cmMakefile::PushDiagnostic(bool weak, cmDiagnostics::DiagnosticMap dm)
+{
+  this->StateSnapshot.PushDiagnostic(dm, weak);
+}
+
+void cmMakefile::PopDiagnostic()
+{
+  if (!this->StateSnapshot.PopDiagnostic()) {
+    this->IssueMessage(MessageType::FATAL_ERROR,
+                       "cmake_diagnostic POP without matching PUSH");
+  }
+}
+
 void cmMakefile::PopSnapshot(bool reportError)
 {
-  // cmStateSnapshot manages nested policy scopes within it.
+  // cmStateSnapshot manages nested policy/diagnostic scopes within it.
   // Since the scope corresponding to the snapshot is closing,
-  // reject any still-open nested policy scopes with an error.
-  while (this->StateSnapshot.CanPopPolicyScope()) {
-    if (reportError) {
-      this->IssueMessage(MessageType::FATAL_ERROR,
-                         "cmake_policy PUSH without matching POP");
-      reportError = false;
+  // reject any still-open nested policy/diagnostic scopes with an error.
+  for (;;) {
+    if (this->StateSnapshot.CanPopPolicyScope()) {
+      if (reportError) {
+        this->IssueMessage(MessageType::FATAL_ERROR,
+                           "cmake_policy PUSH without matching POP");
+        reportError = false;
+      }
+      this->PopPolicy();
+    } else if (this->StateSnapshot.CanPopDiagnosticScope()) {
+      if (reportError) {
+        this->IssueMessage(MessageType::FATAL_ERROR,
+                           "cmake_diagnostic PUSH without matching POP");
+        reportError = false;
+      }
+      this->PopDiagnostic();
+    } else {
+      break;
     }
-    this->PopPolicy();
   }
 
   this->StateSnapshot = this->GetState()->Pop(this->StateSnapshot);
@@ -4209,12 +4301,22 @@ void cmMakefile::RecordPolicies(cmPolicies::PolicyMap& pm) const
   }
 }
 
+void cmMakefile::RecordDiagnostics(cmDiagnostics::DiagnosticMap& dm) const
+{
+  /* Record the setting of every diagnostic category.  */
+  for (unsigned n = 0; n < cmDiagnostics::CategoryCount; ++n) {
+    cmDiagnosticCategory const dc = static_cast<cmDiagnosticCategory>(n);
+    dm[dc] = this->GetDiagnosticAction(dc);
+  }
+}
+
 cmMakefile::FunctionPushPop::FunctionPushPop(cmMakefile* mf,
                                              std::string const& fileName,
-                                             cmPolicies::PolicyMap const& pm)
+                                             cmPolicies::PolicyMap const& pm,
+                                             cmDiagnostics::DiagnosticMap dm)
   : Makefile(mf)
 {
-  this->Makefile->PushFunctionScope(fileName, pm);
+  this->Makefile->PushFunctionScope(fileName, pm, dm);
 }
 
 cmMakefile::FunctionPushPop::~FunctionPushPop()
@@ -4224,10 +4326,11 @@ cmMakefile::FunctionPushPop::~FunctionPushPop()
 
 cmMakefile::MacroPushPop::MacroPushPop(cmMakefile* mf,
                                        std::string const& fileName,
-                                       cmPolicies::PolicyMap const& pm)
+                                       cmPolicies::PolicyMap const& pm,
+                                       cmDiagnostics::DiagnosticMap dm)
   : Makefile(mf)
 {
-  this->Makefile->PushMacroScope(fileName, pm);
+  this->Makefile->PushMacroScope(fileName, pm, dm);
 }
 
 cmMakefile::MacroPushPop::~MacroPushPop()
@@ -4235,47 +4338,45 @@ cmMakefile::MacroPushPop::~MacroPushPop()
   this->Makefile->PopMacroScope(this->ReportError);
 }
 
-cmFindPackageStackRAII::cmFindPackageStackRAII(cmMakefile* mf,
-                                               std::string const& name)
+cmMakefile::FindPackageStackRAII::FindPackageStackRAII(
+  cmMakefile* mf, std::string const& name,
+  std::shared_ptr<cmPackageInformation const> pkgInfo)
   : Makefile(mf)
 {
   this->Makefile->FindPackageStack =
     this->Makefile->FindPackageStack.Push(cmFindPackageCall{
       name,
-      cmPackageInformation(),
+      std::move(pkgInfo),
       this->Makefile->FindPackageStackNextIndex,
     });
   this->Makefile->FindPackageStackNextIndex++;
 }
 
-void cmFindPackageStackRAII::BindTop(cmPackageInformation*& value)
+cmMakefile::FindPackageStackRAII::~FindPackageStackRAII()
 {
-  if (this->Value) {
-    *this->Value = nullptr;
-  }
-  this->Value = &value;
-  value = &this->Makefile->FindPackageStack.cmStack::Top().PackageInfo;
-}
-
-cmFindPackageStackRAII::~cmFindPackageStackRAII()
-{
-  if (this->Value) {
-    *this->Value = nullptr;
-  }
-
   this->Makefile->FindPackageStackNextIndex =
     this->Makefile->FindPackageStack.Top().Index + 1;
   this->Makefile->FindPackageStack = this->Makefile->FindPackageStack.Pop();
 
   if (!this->Makefile->FindPackageStack.Empty()) {
-    auto top = this->Makefile->FindPackageStack.Top();
+    // We have just finished an inner package found as a dependency of an
+    // outer package.  Targets created in the outer package after this
+    // point may depend on the inner package, so if they are exported,
+    // their find_dependency call for the outer package should be
+    // ordered after the find_dependency call for the inner package.
+    //
+    // Any targets created by the outer package before the inner package
+    // was loaded will have already saved a copy of the outer package
+    // stack with its original index.  Replace the top entry with a new
+    // one representing the same outer package with a new index.
+    cmFindPackageCall outer = this->Makefile->FindPackageStack.Top();
     this->Makefile->FindPackageStack = this->Makefile->FindPackageStack.Pop();
 
-    top.Index = this->Makefile->FindPackageStackNextIndex;
+    outer.Index = this->Makefile->FindPackageStackNextIndex;
     this->Makefile->FindPackageStackNextIndex++;
 
     this->Makefile->FindPackageStack =
-      this->Makefile->FindPackageStack.Push(top);
+      this->Makefile->FindPackageStack.Push(outer);
   }
 }
 

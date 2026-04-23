@@ -113,6 +113,12 @@ run_cmake_command(P_P_in_arbitrary_args ${CMAKE_COMMAND} -P "${RunCMake_SOURCE_D
 run_cmake_command(P_P_in_arbitrary_args_2 ${CMAKE_COMMAND} -P "${RunCMake_SOURCE_DIR}/P_arbitrary_args.cmake" -- -P -o)
 run_cmake_command(P_fresh ${CMAKE_COMMAND} -P "${RunCMake_SOURCE_DIR}/P_fresh.cmake" --fresh)
 
+if(CMAKE_HOST_WIN32)
+  run_cmake_command(P_PathOnDisk ${CMAKE_COMMAND} -P "${RunCMake_SOURCE_DIR}/../CommandLine/P_pathondisk.cmake")
+else()
+  run_cmake_command(P_PathOnDisk ${CMAKE_COMMAND} -P "${RunCMake_SOURCE_DIR}/../CommandLine/P_PathOnDisk.cmake")
+endif()
+
 run_cmake_command(build-no-dir
   ${CMAKE_COMMAND} --build)
 run_cmake_command(build-no-dir2
@@ -147,6 +153,15 @@ run_cmake_command(install-unknown-command-long
 run_cmake_command(install-options-to-vars
   ${CMAKE_COMMAND} --install ${RunCMake_SOURCE_DIR}/dir-install-options-to-vars
   --strip --prefix /var/test --config sample --component pack)
+run_cmake_command(install-no-component-value
+  ${CMAKE_COMMAND} --install ${RunCMake_SOURCE_DIR}/dir-install-options-to-vars
+  --component)
+run_cmake_command(install-multi-component-1
+  ${CMAKE_COMMAND} --install ${RunCMake_SOURCE_DIR}/dir-install-options-to-vars
+  --component comp1 comp2)
+run_cmake_command(install-multi-component-2
+  ${CMAKE_COMMAND} --install ${RunCMake_SOURCE_DIR}/dir-install-options-to-vars
+  --component comp1 --component comp2)
 run_cmake_command(install-default-dir-permissions-all
   ${CMAKE_COMMAND} --install ${RunCMake_SOURCE_DIR}/dir-permissions-install-options-to-vars
   --default-directory-permissions u=rwx,g=rx,o=rx)
@@ -1031,37 +1046,39 @@ set(RunCMake_TEST_OPTIONS
   "-DFOO:STRING=-DBAR:BOOL=BAZ")
 run_cmake(D_typed_nested_cache)
 
-set(RunCMake_TEST_OPTIONS -Wno-dev)
-run_cmake(Wno-dev)
-unset(RunCMake_TEST_OPTIONS)
-
+# -Wdev is a deprecated synonym for -Wauthor
 set(RunCMake_TEST_OPTIONS -Wdev)
 run_cmake(Wdev)
 unset(RunCMake_TEST_OPTIONS)
 
-set(RunCMake_TEST_OPTIONS -Werror=dev)
-run_cmake(Werror_dev)
+set(RunCMake_TEST_OPTIONS -Wno-author)
+run_cmake(Wno-author)
 unset(RunCMake_TEST_OPTIONS)
 
-set(RunCMake_TEST_OPTIONS -Wno-error=dev)
-run_cmake(Wno-error_deprecated)
+set(RunCMake_TEST_OPTIONS -Wauthor)
+run_cmake(Wauthor)
 unset(RunCMake_TEST_OPTIONS)
 
-# -Wdev should not override deprecated options if specified
-set(RunCMake_TEST_OPTIONS -Wdev -Wno-deprecated)
+set(RunCMake_TEST_OPTIONS -Werror=author)
+run_cmake(Werror_author)
+unset(RunCMake_TEST_OPTIONS)
+
+set(RunCMake_TEST_OPTIONS -Wno-error=author)
+run_cmake(Wno-error_author)
+unset(RunCMake_TEST_OPTIONS)
+
+# -Wauthor should not override deprecated options if specified
+set(RunCMake_TEST_OPTIONS -Wauthor -Wno-deprecated)
 run_cmake(Wno-deprecated)
 unset(RunCMake_TEST_OPTIONS)
-set(RunCMake_TEST_OPTIONS -Wno-deprecated -Wdev)
-run_cmake(Wno-deprecated)
-unset(RunCMake_TEST_OPTIONS)
 
-# -Wdev should enable deprecated warnings as well
-set(RunCMake_TEST_OPTIONS -Wdev)
+# -Wauthor should enable deprecated warnings as well
+set(RunCMake_TEST_OPTIONS -Wauthor)
 run_cmake(Wdeprecated)
 unset(RunCMake_TEST_OPTIONS)
 
-# -Werror=dev should enable deprecated errors as well
-set(RunCMake_TEST_OPTIONS -Werror=dev)
+# -Werror=author should enable deprecated errors as well
+set(RunCMake_TEST_OPTIONS -Werror=author)
 run_cmake(Werror_deprecated)
 unset(RunCMake_TEST_OPTIONS)
 
@@ -1085,23 +1102,28 @@ set(RunCMake_TEST_OPTIONS -Werror=deprecated -Wno-error=deprecated)
 run_cmake(Wno-error_deprecated)
 unset(RunCMake_TEST_OPTIONS)
 
-# Dev warnings should be on by default
-run_cmake(Wdev)
+# Author warnings should be on by default
+run_cmake(Wauthor)
 
 # Deprecated warnings should be on by default
 run_cmake(Wdeprecated)
 
 # Conflicting -W options should honor the last value
-set(RunCMake_TEST_OPTIONS -Wno-dev -Wdev)
-run_cmake(Wdev)
+set(RunCMake_TEST_OPTIONS -Wno-author -Wauthor)
+run_cmake(Wauthor)
 unset(RunCMake_TEST_OPTIONS)
-set(RunCMake_TEST_OPTIONS -Wdev -Wno-dev)
-run_cmake(Wno-dev)
+set(RunCMake_TEST_OPTIONS -Wauthor -Wno-author)
+run_cmake(Wno-author)
+unset(RunCMake_TEST_OPTIONS)
+
+set(RunCMake_TEST_OPTIONS -Wno-deprecated -Wuninitialized)
+run_cmake(Wuninitialized)
 unset(RunCMake_TEST_OPTIONS)
 
 run_cmake_command(W_bad-arg1 ${CMAKE_COMMAND} -B DummyBuildDir -W)
 run_cmake_command(W_bad-arg2 ${CMAKE_COMMAND} -B DummyBuildDir -Wno-)
 run_cmake_command(W_bad-arg3 ${CMAKE_COMMAND} -B DummyBuildDir -Werror=)
+run_cmake_command(W_bad-arg4 ${CMAKE_COMMAND} -B DummyBuildDir -Wimaginary)
 
 set(RunCMake_TEST_OPTIONS --debug-output)
 run_cmake(debug-output)
@@ -1116,7 +1138,7 @@ set(RunCMake_TEST_OPTIONS --trace-expand)
 run_cmake(trace-expand)
 unset(RunCMake_TEST_OPTIONS)
 
-set(RunCMake_TEST_OPTIONS --trace-expand --warn-uninitialized)
+set(RunCMake_TEST_OPTIONS --trace-expand -Wuninitialized)
 run_cmake(trace-expand-warn-uninitialized)
 unset(RunCMake_TEST_OPTIONS)
 
@@ -1135,10 +1157,6 @@ unset(RunCMake_TEST_OPTIONS)
 
 set(RunCMake_TEST_OPTIONS --trace-expand --trace-format=json-v1 --trace-redirect=${RunCMake_BINARY_DIR}/json-v1-expand.trace)
 run_cmake(trace-json-v1-expand)
-unset(RunCMake_TEST_OPTIONS)
-
-set(RunCMake_TEST_OPTIONS -Wno-deprecated --warn-uninitialized)
-run_cmake(warn-uninitialized)
 unset(RunCMake_TEST_OPTIONS)
 
 set(RunCMake_TEST_OPTIONS --trace-source=trace-only-this-file.cmake)

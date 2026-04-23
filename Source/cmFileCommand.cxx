@@ -33,6 +33,7 @@
 #include "cmArgumentParserTypes.h"
 #include "cmCMakePath.h"
 #include "cmCryptoHash.h"
+#include "cmDiagnostics.h"
 #include "cmELF.h"
 #include "cmExecutionStatus.h"
 #include "cmFSPermissions.h"
@@ -415,8 +416,8 @@ bool HandleStringsCommand(std::vector<std::string> const& args,
         case cmPolicies::WARN:
           if (status.GetMakefile().PolicyOptionalWarningEnabled(
                 "CMAKE_POLICY_WARNING_CMP0159")) {
-            status.GetMakefile().IssueMessage(
-              MessageType::AUTHOR_WARNING,
+            status.GetMakefile().IssueDiagnostic(
+              cmDiagnostics::CMD_AUTHOR,
               cmStrCat(cmPolicies::GetPolicyWarning(cmPolicies::CMP0159),
                        "\n"
                        "For compatibility, CMake is leaving CMAKE_MATCH_<n> "
@@ -732,8 +733,8 @@ bool HandleGlobImpl(std::vector<std::string> const& args, bool recurse,
     } else if (*i == "CONFIGURE_DEPENDS") {
       // Generated build system depends on glob results
       if (!configureDepends && warnConfigureLate) {
-        status.GetMakefile().IssueMessage(
-          MessageType::AUTHOR_WARNING,
+        status.GetMakefile().IssueDiagnostic(
+          cmDiagnostics::CMD_AUTHOR,
           "CONFIGURE_DEPENDS flag was given after a glob expression was "
           "already evaluated.");
       }
@@ -769,8 +770,8 @@ bool HandleGlobImpl(std::vector<std::string> const& args, bool recurse,
         bool shouldExit = false;
         for (cmsys::Glob::Message const& globMessage : globMessages) {
           if (globMessage.type == cmsys::Glob::cyclicRecursion) {
-            status.GetMakefile().IssueMessage(
-              MessageType::AUTHOR_WARNING,
+            status.GetMakefile().IssueDiagnostic(
+              cmDiagnostics::CMD_AUTHOR,
               cmStrCat("Cyclic recursion detected while globbing for '", *i,
                        "':\n", globMessage.content));
           } else if (globMessage.type == cmsys::Glob::error) {
@@ -1375,8 +1376,8 @@ bool HandleRealPathCommand(std::vector<std::string> const& args,
     if (warnAbout152) {
       computeNewPath(input, realPath);
       if (oldPolicyPath != realPath) {
-        status.GetMakefile().IssueMessage(
-          MessageType::AUTHOR_WARNING,
+        status.GetMakefile().IssueDiagnostic(
+          cmDiagnostics::CMD_AUTHOR,
           cmStrCat(cmPolicies::GetPolicyWarning(cmPolicies::CMP0152),
                    "\n"
                    "From input path:\n  ",
@@ -1392,8 +1393,8 @@ bool HandleRealPathCommand(std::vector<std::string> const& args,
   }
 
   if (!cmSystemTools::FileExists(realPath)) {
-    status.GetMakefile().IssueMessage(
-      MessageType::AUTHOR_WARNING,
+    status.GetMakefile().IssueDiagnostic(
+      cmDiagnostics::CMD_AUTHOR,
       cmStrCat("Given path:\n  ", input,
                "\ndoes not refer to an existing path on disk."));
   }
@@ -1609,8 +1610,8 @@ bool HandleRemoveImpl(std::vector<std::string> const& args, bool recurse,
     std::string fileName = arg;
     if (fileName.empty()) {
       std::string r = recurse ? "REMOVE_RECURSE" : "REMOVE";
-      status.GetMakefile().IssueMessage(
-        MessageType::AUTHOR_WARNING,
+      status.GetMakefile().IssueDiagnostic(
+        cmDiagnostics::CMD_AUTHOR,
         cmStrCat("Ignoring empty file name in ", std::move(r), '.'));
       continue;
     }
@@ -2060,8 +2061,8 @@ bool HandleDownloadCommand(std::vector<std::string> const& args,
       file = *i;
     } else {
       // Do not return error for compatibility reason.
-      std::string err = cmStrCat("Unexpected argument: ", *i);
-      status.GetMakefile().IssueMessage(MessageType::AUTHOR_WARNING, err);
+      status.GetMakefile().IssueDiagnostic(
+        cmDiagnostics::CMD_AUTHOR, cmStrCat("Unexpected argument: ", *i));
     }
     ++i;
   }
@@ -2499,8 +2500,8 @@ bool HandleUploadCommand(std::vector<std::string> const& args,
       curl_headers.push_back(*i);
     } else {
       // Do not return error for compatibility reason.
-      std::string err = cmStrCat("Unexpected argument: ", *i);
-      status.GetMakefile().IssueMessage(MessageType::AUTHOR_WARNING, err);
+      status.GetMakefile().IssueDiagnostic(
+        cmDiagnostics::CMD_AUTHOR, cmStrCat("Unexpected argument: ", *i));
     }
 
     ++i;
@@ -3165,7 +3166,7 @@ bool HandleSizeCommand(std::vector<std::string> const& args,
 bool HandleReadSymlinkCommand(std::vector<std::string> const& args,
                               cmExecutionStatus& status)
 {
-  if (args.size() != 3) {
+  if (args.size() < 3) {
     status.SetError(
       cmStrCat(args[0], " requires a file name and output variable"));
     return false;
@@ -3174,14 +3175,39 @@ bool HandleReadSymlinkCommand(std::vector<std::string> const& args,
   std::string const& filename = args[1];
   std::string const& outputVariable = args[2];
 
+  struct Arguments
+  {
+    std::string Result;
+  };
+
+  static auto const parser =
+    cmArgumentParser<Arguments>{}.Bind("RESULT"_s, &Arguments::Result);
+
+  std::vector<std::string> unconsumedArgs;
+  Arguments const arguments =
+    parser.Parse(cmMakeRange(args).advance(3), &unconsumedArgs);
+  if (!unconsumedArgs.empty()) {
+    status.SetError(
+      cmStrCat("READ_SYMLINK unknown argument:\n  ", unconsumedArgs.front()));
+    return false;
+  }
+
   std::string result;
   if (!cmSystemTools::ReadSymlink(filename, result)) {
-    status.SetError(cmStrCat(
-      "READ_SYMLINK requested of path that is not a symlink:\n  ", filename));
+    std::string const error = cmStrCat(
+      "READ_SYMLINK requested of path that is not a symlink:\n  ", filename);
+    if (!arguments.Result.empty()) {
+      status.GetMakefile().AddDefinition(arguments.Result, error);
+      return true;
+    }
+    status.SetError(error);
     return false;
   }
 
   status.GetMakefile().AddDefinition(outputVariable, result);
+  if (!arguments.Result.empty()) {
+    status.GetMakefile().AddDefinition(arguments.Result, "0");
+  }
 
   return true;
 }
@@ -3255,8 +3281,9 @@ bool HandleCreateLinkCommand(std::vector<std::string> const& args,
   // Check if the new file already exists and remove it.
   if (cmSystemTools::PathExists(newFileName)) {
     cmsys::Status rmStatus;
-    if (cmp0205 == cmPolicies::NEW &&
-        cmSystemTools::FileIsDirectory(newFileName)) {
+    if (cmp0205 == cmPolicies::NEW && arguments.CopyOnError &&
+        cmSystemTools::FileIsDirectory(newFileName) &&
+        !cmSystemTools::FileIsSymlink(newFileName)) {
       rmStatus = cmSystemTools::RepeatedRemoveDirectory(newFileName);
     } else {
       rmStatus = cmSystemTools::RemoveFile(newFileName);
@@ -3295,12 +3322,12 @@ bool HandleCreateLinkCommand(std::vector<std::string> const& args,
     if (sourceIsDirectory) {
       if (cmp0205 == cmPolicies::NEW) {
         needToTry = false;
-      } else if (cmp0205 == cmPolicies::WARN) {
-        status.GetMakefile().IssueMessage(
-          MessageType::AUTHOR_WARNING,
+      } else if (cmp0205 == cmPolicies::WARN && arguments.CopyOnError) {
+        status.GetMakefile().IssueDiagnostic(
+          cmDiagnostics::CMD_AUTHOR,
           cmStrCat("Path\n  ", fileName,
-                   "\nis directory. Hardlinks creation is not supported for "
-                   "directories.\n",
+                   "\nis a directory. Hard link creation is not supported "
+                   "for directories.\n",
                    cmPolicies::GetPolicyWarning(cmPolicies::CMP0205)));
       }
     }
@@ -3320,13 +3347,13 @@ bool HandleCreateLinkCommand(std::vector<std::string> const& args,
     }
   }
 
-  if (arguments.CopyOnError && cmp0205 == cmPolicies::WARN &&
+  if (cmp0205 == cmPolicies::WARN && arguments.CopyOnError &&
       sourceIsDirectory) {
-    status.GetMakefile().IssueMessage(
-      MessageType::AUTHOR_WARNING,
+    status.GetMakefile().IssueDiagnostic(
+      cmDiagnostics::CMD_AUTHOR,
       cmStrCat("Path\n  ", fileName,
-               "\nis directory. It will be copied recursively when NEW policy "
-               "behavior applies for CMP0205.\n",
+               "\nis a directory. It will be copied "
+               "recursively when CMP0205 is set to NEW.\n",
                cmPolicies::GetPolicyWarning(cmPolicies::CMP0205)));
   }
 
@@ -3377,8 +3404,8 @@ bool HandleGetRuntimeDependenciesCommand(std::vector<std::string> const& args,
   }
 
   if (status.GetMakefile().GetState()->GetRole() == cmState::Role::Project) {
-    status.GetMakefile().IssueMessage(
-      MessageType::AUTHOR_WARNING,
+    status.GetMakefile().IssueDiagnostic(
+      cmDiagnostics::CMD_AUTHOR,
       "You have used file(GET_RUNTIME_DEPENDENCIES)"
       " in project mode. This is probably not what "
       "you intended to do. Instead, please consider"
@@ -3678,6 +3705,7 @@ bool HandleArchiveCreateCommand(std::vector<std::string> const& args,
     std::string Format;
     std::string Compression;
     std::string CompressionLevel;
+    std::string Encoding;
     // "MTIME" should require one value, but it has long been accidentally
     // accepted without one and treated as if an empty value were given.
     // Fixing this would require a policy.
@@ -3695,6 +3723,7 @@ bool HandleArchiveCreateCommand(std::vector<std::string> const& args,
       .Bind("FORMAT"_s, &Arguments::Format)
       .Bind("COMPRESSION"_s, &Arguments::Compression)
       .Bind("COMPRESSION_LEVEL"_s, &Arguments::CompressionLevel)
+      .Bind("ENCODING"_s, &Arguments::Encoding)
       .Bind("MTIME"_s, &Arguments::MTime)
       .Bind("THREADS"_s, &Arguments::Threads)
       .Bind("WORKING_DIRECTORY"_s, &Arguments::WorkingDirectory)
@@ -3822,10 +3851,19 @@ bool HandleArchiveCreateCommand(std::vector<std::string> const& args,
     return false;
   }
 
+  if (parsedArgs.Encoding.empty()) {
+    if (status.GetMakefile().GetPolicyStatus(cmPolicies::CMP0213) ==
+        cmPolicies::NEW) {
+      parsedArgs.Encoding = "UTF-8";
+    } else {
+      parsedArgs.Encoding = "OEM";
+    }
+  }
+
   if (!cmSystemTools::CreateTar(
         parsedArgs.Output, parsedArgs.Paths, parsedArgs.WorkingDirectory,
-        compress, parsedArgs.Verbose, parsedArgs.MTime, parsedArgs.Format,
-        compressionLevel, threads)) {
+        compress, parsedArgs.Encoding, parsedArgs.Verbose, parsedArgs.MTime,
+        parsedArgs.Format, compressionLevel, threads)) {
     status.SetError(cmStrCat("failed to compress: ", parsedArgs.Output));
     cmSystemTools::SetFatalErrorOccurred();
     return false;
@@ -3840,6 +3878,7 @@ bool HandleArchiveExtractCommand(std::vector<std::string> const& args,
   struct Arguments : public ArgumentParser::ParseResult
   {
     std::string Input;
+    std::string Encoding;
     bool Verbose = false;
     bool ListOnly = false;
     std::string Destination;
@@ -3849,6 +3888,7 @@ bool HandleArchiveExtractCommand(std::vector<std::string> const& args,
 
   static auto const parser = cmArgumentParser<Arguments>{}
                                .Bind("INPUT"_s, &Arguments::Input)
+                               .Bind("ENCODING"_s, &Arguments::Encoding)
                                .Bind("VERBOSE"_s, &Arguments::Verbose)
                                .Bind("LIST_ONLY"_s, &Arguments::ListOnly)
                                .Bind("DESTINATION"_s, &Arguments::Destination)
@@ -3872,9 +3912,18 @@ bool HandleArchiveExtractCommand(std::vector<std::string> const& args,
 
   std::string inFile = parsedArgs.Input;
 
+  if (parsedArgs.Encoding.empty()) {
+    if (status.GetMakefile().GetPolicyStatus(cmPolicies::CMP0213) ==
+        cmPolicies::NEW) {
+      parsedArgs.Encoding = "UTF-8";
+    } else {
+      parsedArgs.Encoding = "OEM";
+    }
+  }
+
   if (parsedArgs.ListOnly) {
     if (!cmSystemTools::ListTar(inFile, parsedArgs.Patterns,
-                                parsedArgs.Verbose)) {
+                                parsedArgs.Encoding, parsedArgs.Verbose)) {
       status.SetError(cmStrCat("failed to list: ", inFile));
       cmSystemTools::SetFatalErrorOccurred();
       return false;
@@ -3911,7 +3960,7 @@ bool HandleArchiveExtractCommand(std::vector<std::string> const& args,
           inFile, parsedArgs.Patterns,
           parsedArgs.Touch ? cmSystemTools::cmTarExtractTimestamps::No
                            : cmSystemTools::cmTarExtractTimestamps::Yes,
-          parsedArgs.Verbose)) {
+          parsedArgs.Encoding, parsedArgs.Verbose)) {
       status.SetError(cmStrCat("failed to extract:\n  ", inFile));
       cmSystemTools::SetFatalErrorOccurred();
       return false;

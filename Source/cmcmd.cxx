@@ -17,6 +17,7 @@
 #include "cmCommandLineArgument.h"
 #include "cmCryptoHash.h"
 #include "cmDuration.h"
+#include "cmEnvironment.h"
 #include "cmGeneratedFileStream.h"
 #include "cmGlobalGenerator.h"
 #include "cmList.h"
@@ -1267,7 +1268,7 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string> const& args,
 
     if (args[1] == "env") {
 #ifndef CMAKE_BOOTSTRAP
-      cmSystemTools::EnvDiff env;
+      auto envdiff = cmEnvironmentModification{};
 #endif
 
       auto ai = args.cbegin() + 2;
@@ -1285,7 +1286,7 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string> const& args,
 #ifdef CMAKE_BOOTSTRAP
           cmSystemTools::UnPutEnv(a.substr(8));
 #else
-          env.UnPutEnv(a.substr(8));
+          envdiff.Add(a.substr(8) + "=unset:");
 #endif
         } else if (a == "--modify") {
 #ifdef CMAKE_BOOTSTRAP
@@ -1298,7 +1299,7 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string> const& args,
             return 1;
           }
           std::string const& op = *ai;
-          if (!env.ParseOperation(op)) {
+          if (!envdiff.Add(op)) {
             std::cerr << "cmake -E env: invalid parameter to --modify: " << op
                       << '\n';
             return 1;
@@ -1314,7 +1315,10 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string> const& args,
 #ifdef CMAKE_BOOTSTRAP
           cmSystemTools::PutEnv(a);
 #else
-          env.PutEnv(a);
+          auto const pos = a.find('=');
+          std::string const& name = a.substr(0, pos);
+          std::string const& value = a.substr(pos + 1);
+          envdiff.Add(cmStrCat(name, "=set:", value));
 #endif
         } else {
           // This is the beginning of the command.
@@ -1327,16 +1331,19 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string> const& args,
         return 1;
       }
 
+      auto env = cmEnvironment{};
 #ifndef CMAKE_BOOTSTRAP
-      env.ApplyToCurrentEnv();
+      env.Update(cmSystemTools::GetEnvironmentVariables());
+      envdiff.ApplyTo(env);
 #endif
 
       // Execute command from remaining arguments.
       std::vector<std::string> cmd(ai, ae);
       int retval;
-      if (cmSystemTools::RunSingleCommand(cmd, nullptr, nullptr, &retval,
-                                          nullptr,
-                                          cmSystemTools::OUTPUT_PASSTHROUGH)) {
+      if (cmSystemTools::RunSingleCommand(
+            cmd, nullptr, nullptr, &retval, nullptr,
+            cmSystemTools::OUTPUT_PASSTHROUGH, cmDuration::zero(),
+            cmProcessOutput::Auto, env.GetVariables())) {
         return retval;
       }
       return 1;
@@ -1920,6 +1927,7 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string> const& args,
         cmSystemTools::TarCompressAuto;
       int nCompress = 0;
       bool doing_options = true;
+      std::string encoding = "UTF-8";
       for (auto const& arg : cmMakeRange(args).advance(4)) {
         if (doing_options && cmHasLiteralPrefix(arg, "--")) {
           if (arg == "--") {
@@ -1957,6 +1965,13 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string> const& args,
             }
 
             numThreads = static_cast<decltype(numThreads)>(numThreadsLong);
+          } else if (cmHasLiteralPrefix(arg, "--cmake-tar-encoding=")) {
+            encoding = arg.substr(21);
+            if (encoding.empty()) {
+              cmSystemTools::Error(
+                "Encoding value is empty - it must be filled if passed");
+              return 1;
+            }
           } else if (cmHasLiteralPrefix(arg,
                                         "--cmake-tar-compression-level=")) {
             std::string const& compressionLevelStr = arg.substr(30);
@@ -2106,7 +2121,7 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string> const& args,
       }
 
       if (action == cmSystemTools::TarActionList) {
-        if (!cmSystemTools::ListTar(outFile, files, verbose)) {
+        if (!cmSystemTools::ListTar(outFile, files, encoding, verbose)) {
           cmSystemTools::Error("Problem listing tar: " + outFile);
           return 1;
         }
@@ -2114,15 +2129,15 @@ int cmcmd::ExecuteCMakeCommand(std::vector<std::string> const& args,
         if (files.empty()) {
           std::cerr << "tar: No files or directories specified\n";
         }
-        if (!cmSystemTools::CreateTar(outFile, files, {}, compress, verbose,
-                                      mtime, format, compressionLevel,
+        if (!cmSystemTools::CreateTar(outFile, files, {}, compress, encoding,
+                                      verbose, mtime, format, compressionLevel,
                                       numThreads)) {
           cmSystemTools::Error(cmStrCat("Problem creating tar:\n  ", outFile));
           return 1;
         }
       } else if (action == cmSystemTools::TarActionExtract) {
         if (!cmSystemTools::ExtractTar(outFile, files, extractTimestamps,
-                                       verbose)) {
+                                       encoding, verbose)) {
           cmSystemTools::Error(
             cmStrCat("Problem extracting tar:\n  ", outFile));
           return 1;

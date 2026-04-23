@@ -4,6 +4,7 @@
 #include <chrono>
 #include <ctime>
 #include <iomanip>
+#include <iterator>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -108,6 +109,7 @@ cmInstrumentation::cmInstrumentation(std::string const& binary_dir,
 
 void cmInstrumentation::LoadQueries()
 {
+  this->ResetQueries();
   auto const readJSONQueries = [this](std::string const& dir) {
     if (cmSystemTools::FileIsDirectory(dir) && this->ReadJSONQueries(dir)) {
       this->hasQuery = true;
@@ -118,6 +120,16 @@ void cmInstrumentation::LoadQueries()
   if (!this->userTimingDirv1.empty()) {
     readJSONQueries(cmStrCat(this->userTimingDirv1, "/query"));
   }
+}
+
+void cmInstrumentation::ResetQueries()
+{
+  this->hasQuery = false;
+  this->options.clear();
+  this->hooks.clear();
+  this->callbacks.clear();
+  this->queryFiles.clear();
+  this->errorMsg.clear();
 }
 
 void cmInstrumentation::CheckCDashVariable()
@@ -311,6 +323,7 @@ void cmInstrumentation::ClearGeneratedQueries()
   if (cmSystemTools::FileIsDirectory(dir)) {
     cmSystemTools::RemoveADirectory(dir);
   }
+  this->writtenJsonQueries = 0;
 }
 
 bool cmInstrumentation::HasQuery() const
@@ -335,6 +348,8 @@ int cmInstrumentation::CollectTimingData(cmInstrumentationQuery::Hook hook)
     return 0;
   }
 
+  this->LockIndexing();
+
   // Touch index file immediately to claim snippets
   std::string suffix_time = ComputeSuffixTime();
   std::string const& index_name = cmStrCat("index-", suffix_time, ".json");
@@ -350,11 +365,11 @@ int cmInstrumentation::CollectTimingData(cmInstrumentationQuery::Hook hook)
   if (d.Load(this->dataDir)) {
     for (unsigned int i = 0; i < d.GetNumberOfFiles(); i++) {
       std::string fpath = d.GetFilePath(i);
-      std::string fname = d.GetFile(i);
+      std::string const& fname = d.GetFileName(i);
       if (fname.rfind('.', 0) == 0 || d.FileIsDirectory(i)) {
         continue;
       }
-      files.push_back(snippet(std::move(fname), std::move(fpath)));
+      files.push_back(snippet(fname, std::move(fpath)));
     }
   }
 
@@ -414,6 +429,8 @@ int cmInstrumentation::CollectTimingData(cmInstrumentationQuery::Hook hook)
   // Delete old content and trace files
   this->RemoveOldFiles("content");
   this->RemoveOldFiles("trace");
+
+  this->indexLock.Release();
 
   return 0;
 }
@@ -730,15 +747,21 @@ int cmInstrumentation::InstrumentCommand(
 
   // Don't write configure snippet until generate time
   if (command_type == "configure") {
-    this->configureSnippetData = root;
-    this->configureSnippetName = file_name;
+    this->configureSnippetData[file_name] = root;
   } else {
     // Add reference to CMake content and write out configure snippet after
     // generate
     if (command_type == "generate") {
-      addCMakeContent(this->configureSnippetData);
-      this->WriteInstrumentationJson(this->configureSnippetData, "data",
-                                     this->configureSnippetName);
+      for (auto it = this->configureSnippetData.begin();
+           it != this->configureSnippetData.end(); ++it) {
+        if (std::next(it) != this->configureSnippetData.end()) {
+          it->second["cmakeContent"] = Json::nullValue;
+        } else {
+          addCMakeContent(it->second);
+        }
+        this->WriteInstrumentationJson(it->second, "data", it->first);
+      }
+      this->configureSnippetData.clear();
     }
     this->WriteInstrumentationJson(root, "data", file_name);
   }
@@ -818,7 +841,7 @@ int cmInstrumentation::SpawnBuildDaemon()
   // preBuild Hook
   if (this->LockBuildDaemon()) {
     // Release lock before spawning the build daemon, to prevent blocking it.
-    this->lock.Release();
+    this->buildLock.Release();
     this->CollectTimingData(cmInstrumentationQuery::Hook::PreBuild);
   }
 
@@ -840,11 +863,26 @@ int cmInstrumentation::SpawnBuildDaemon()
 // Prevent multiple build daemons from running simultaneously
 bool cmInstrumentation::LockBuildDaemon()
 {
-  std::string const lockFile = cmStrCat(this->timingDirv1, "/.build.lock");
-  if (!cmSystemTools::FileExists(lockFile)) {
-    cmSystemTools::Touch(lockFile, true);
+  // 0 = non-blocking, 0s timeout
+  return this->AcquireLock(".build.lock", this->buildLock, 0);
+}
+
+// Prevent multiple index processes from claiming snippets simultaneously
+bool cmInstrumentation::LockIndexing()
+{
+  return this->AcquireLock(".index.lock", this->indexLock,
+                           // -1 = no timeout
+                           static_cast<unsigned long>(-1));
+}
+
+bool cmInstrumentation::AcquireLock(std::string const& lock_file,
+                                    cmFileLock& lock, unsigned long timeout)
+{
+  std::string const lock_path = cmStrCat(this->timingDirv1, '/', lock_file);
+  if (!cmSystemTools::FileExists(lock_path)) {
+    cmSystemTools::Touch(lock_path, true);
   }
-  return this->lock.Lock(lockFile, 0).IsOk();
+  return lock.Lock(lock_path, timeout).IsOk();
 }
 
 /*
@@ -871,6 +909,7 @@ int cmInstrumentation::CollectTimingAfterBuild(int ppid)
   int ret = this->InstrumentCommand(
     "build", {}, [waitForBuild]() { return waitForBuild(); }, cm::nullopt,
     cm::nullopt, LoadQueriesAfter::Yes);
+  this->buildLock.Release();
   this->CollectTimingData(cmInstrumentationQuery::Hook::PostBuild);
   return ret;
 }

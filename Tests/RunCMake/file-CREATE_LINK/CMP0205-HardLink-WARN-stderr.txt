@@ -1,11 +1,11 @@
-^CMake Warning \(dev\) at [^
+^CMake Warning \(author\) at [^
 ]*/CMP0205-common\.cmake:[0-9]+ \(file\):
   Path
 
     [^
 ]*[\\|/]file-CREATE_LINK[\\|/]CMP0205
 
-  is directory.  Hardlinks creation is not supported for directories.
+  is a directory.  Hard link creation is not supported for directories.
 
   Policy CMP0205 is not set: file\(CREATE_LINK\) with COPY_ON_ERROR copies
   directory content\.  Run "cmake --help-policy CMP0205" for policy details\.
@@ -15,17 +15,16 @@ Call Stack \(most recent call first\):
 ]*/CMP0205-common-WARN\.cmake:[0-9]+ \(include\)
   [^
 ]*/CMP0205-HardLink-WARN\.cmake:[0-9]+ \(include\)
-This warning is for project developers\.  Use -Wno-dev to suppress it\.
+This warning is for project developers\.  Use -Wno-author to suppress it\.
 
-CMake Warning \(dev\) at [^
+CMake Warning \(author\) at [^
 ]*/CMP0205-common\.cmake:[0-9]+ \(file\):
   Path
 
     [^
 ]*[\\|/]file-CREATE_LINK[\\|/]CMP0205
 
-  is directory.  It will be copied recursively when NEW policy behavior
-  applies for CMP0205\.
+  is a directory.  It will be copied recursively when CMP0205 is set to NEW\.
 
   Policy CMP0205 is not set: file\(CREATE_LINK\) with COPY_ON_ERROR copies
   directory content\.  Run "cmake --help-policy CMP0205" for policy details\.
@@ -35,4 +34,4 @@ Call Stack \(most recent call first\):
 ]*/CMP0205-common-WARN\.cmake:[0-9]+ \(include\)
   [^
 ]*/CMP0205-HardLink-WARN\.cmake:[0-9]+ \(include\)
-This warning is for project developers\.  Use -Wno-dev to suppress it\.$
+This warning is for project developers\.  Use -Wno-author to suppress it\.$

@@ -138,7 +138,6 @@ public:
                               std::string& value,
                               cmStateEnums::CacheEntryType& type);
 
-  cmStateSnapshot Reset();
   // Define a property
   void DefineProperty(std::string const& name, cmProperty::ScopeType scope,
                       std::string const& ShortDescription,
@@ -260,6 +259,8 @@ public:
 
 private:
   friend class cmake;
+  cmStateSnapshot Reset(cmStateSnapshot const& diagnosticState);
+
   void AddCacheEntry(std::string const& key, cmValue value,
                      std::string const& helpString,
                      cmStateEnums::CacheEntryType type);
@@ -288,6 +289,7 @@ private:
 
   cmLinkedTree<std::string> ExecutionListFiles;
 
+  cmLinkedTree<cmStateDetail::DiagnosticStackEntry> DiagnosticStack;
   cmLinkedTree<cmStateDetail::PolicyStackEntry> PolicyStack;
   cmLinkedTree<cmStateDetail::SnapshotDataType> SnapshotData;
   cmLinkedTree<cmDefinitions> VarTree;

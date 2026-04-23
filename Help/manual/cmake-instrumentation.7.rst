@@ -16,20 +16,41 @@ The CMake Instrumentation API allows for the collection of timing data, target
 information and system diagnostic information during the configure, generate,
 build, test and install steps for a CMake project.
 
-This feature is only available for projects using the
-:ref:`Makefile Generators`, :ref:`Ninja Generators` or :generator:`FASTBuild`.
-
 All interactions with the CMake instrumentation API must specify both an API
 version and a Data version. At this time, there is only one version for each of
 these: the `API v1`_ and `Data v1`_.
 
+.. note::
+
+  This feature is only available for projects using the
+  :ref:`Makefile Generators`, :ref:`Ninja Generators` or :generator:`FASTBuild`.
+
+Overview
+--------
+
+CMake Instrumentation works in 2 major stages: `Data Collection`_, and
+`Indexing`_.
+
+`Data Collection`_ is the process by which CMake writes out instrumentation
+data into a project build tree. The commands instrumented in this way range
+from overall builds, to individual compile commands. The full list of commands
+instrumented is documented under the `v1 Snippet File`_.
+
+Collected data will accumulate until `Indexing`_ occurs: the process of
+collating the generated data. Indexing occurs on events called "hooks",
+which can be configured as part of the `v1 Query Files`_. A `v1 Index File`_ is
+created and passed to any user-defined `Callbacks`_ provided to process
+the data. Once all `Callbacks`_ have run, CMake deletes the files.
+
+Without the need for any custom `Callbacks`_, CMake can submit instrumentation
+data to `CDash`_, or generate a `Google Trace File`_ for visualization.
+
 Data Collection
 ---------------
 
-Whenever a command is executed with
-instrumentation enabled, a `v1 Snippet File`_ is created in the project build
-tree with data specific to that command. These files remain until after
-`Indexing`_ occurs.
+Whenever a command is executed with instrumentation enabled, a
+`v1 Snippet File`_ is created in the project build tree with data specific to
+that command. These files remain until after `Indexing`_ occurs.
 
 CMake sets the :prop_gbl:`RULE_LAUNCH_COMPILE`, :prop_gbl:`RULE_LAUNCH_LINK`
 and :prop_gbl:`RULE_LAUNCH_CUSTOM` global properties to wrap each compile, link
@@ -43,43 +64,55 @@ addition to performing the communication typically handled by that module.
 Indexing
 --------
 
-Indexing is the process of collating generated instrumentation data. Indexing
-occurs at specific intervals called hooks, such as after every build. These
-hooks are configured as part of the `v1 Query Files`_. Whenever a hook is
-triggered, an index file is generated containing a list of snippet files newer
-than the previous indexing.
+Indexing is the process of collating generated instrumentation data. The
+available hooks to trigger indexing include options such as after every build,
+or every :manual:`ctest <ctest(1)>` invocation, and are configured as part of
+the `v1 Query Files`_. Whenever a hook is triggered, an index file is generated
+containing a list of snippet files newer than the previous indexing. This index
+file is passed to user-defined `Callbacks`_ commands to process the data.
 
 Indexing and can also be performed by manually invoking
 :option:`ctest --collect-instrumentation`.
 
+Indexing, and the subsequent callbacks, will not occur concurrently in a
+single build tree. When multiple hooks trigger indexing at the same time,
+a file-based lock is used to ensure one indexing completes, executes all of its
+callbacks, and deletes the instrumentation data before the next indexing can
+begin.
+
 .. _`cmake-instrumentation Callbacks`:
 
 Callbacks
----------
+^^^^^^^^^
 
 As part of the `v1 Query Files`_, users can provide a list of callbacks
 intended to handle data collected by this feature.
 
 Whenever `Indexing`_ occurs, each provided callback is executed, passing the
-path to the generated index file as an argument.
+path to the generated `v1 Index File`_ as an additional argument.
 
-These callbacks, defined either at the user-level or project-level should read
+These callbacks, defined either at the user-level or project-level, should read
 the instrumentation data and perform any desired handling of it. The index file
 and its listed snippets are automatically deleted by CMake once all callbacks
 have completed. Note that a callback should never move or delete these data
 files manually as they may be needed by other callbacks.
 
+If indexing is triggered again before `Callbacks`_ have finished running,
+the generated index file will contain only instrumentation data generated since
+the previous indexing.
+
 Enabling Instrumentation
 ========================
 
 Instrumentation can be enabled either for an individual CMake project, or
-for all CMake projects configured and built by a user. For both cases,
-see the `v1 Query Files`_ for details on configuring this feature.
+for all CMake projects configured and built by a user. In all cases, a "query"
+represents a request for instrumentation behavior. See the `v1 Query Files`_
+for details on configuring this feature.
 
 Enabling Instrumentation at the Project-Level
 ---------------------------------------------
 
-Project code can contain instrumentation queries with the
+Project code can contain instrumentation queries by using the
 :command:`cmake_instrumentation` command.
 
 In addition, query files can be placed manually under
@@ -92,6 +125,8 @@ Enabling Instrumentation at the User-Level
 Instrumentation can be configured at the user-level by placing query files in
 the :envvar:`CMAKE_CONFIG_DIR` under
 ``<config_dir>/instrumentation/<version>/query/``.
+
+.. _`CDash`:
 
 Enabling Instrumentation for CDash Submissions
 ----------------------------------------------
@@ -338,6 +373,15 @@ following:
 These files remain in the build tree until after `Indexing`_ occurs and any
 user-specified `Callbacks`_ are executed.
 
+.. note::
+
+  Configure and generate snippet files are not written by CMake until the
+  generate step is complete. When using :manual:`cmake-gui(1)` or
+  :manual:`ccmake(1)`, triggering only configure step(s) without generating the
+  project files will not generate any configure snippets. Once the generate
+  step is run, there will be one configure snippet for each time the configure
+  step was run.
+
 Snippet files have a filename with the syntax
 ``<role>-<hash>-<timestamp>.json`` and contain the following data:
 
@@ -374,9 +418,9 @@ Snippet files have a filename with the syntax
   ``target``
     The CMake target associated with the command. Only included when ``role``
     is ``compile`` or ``link``, or when ``role`` is ``custom`` and the custom
-    command is attached to a target with :ref:`add_custom_command(TARGET)`. In
-    conjunction with ``cmakeContent``, this can be used to look up the target
-    :prop_tgt:`TYPE` and :prop_tgt:`LABELS`.
+    command is attached to a target with :command:`add_custom_command(TARGET)`.
+    In conjunction with ``cmakeContent``, this can be used to look up the
+    target :prop_tgt:`TYPE` and :prop_tgt:`LABELS`.
 
   ``timeStart``
     Time at which the command started, expressed as the number of milliseconds
@@ -433,7 +477,9 @@ Snippet files have a filename with the syntax
   ``cmakeContent``
     The path to a `v1 CMake Content File`_ located under ``data``, which
     contains information about the CMake configure and generate steps
-    responsible for generating the ``command`` in this snippet.
+    responsible for generating the ``command`` in this snippet. When using
+    :manual:`cmake-gui(1)` or :manual:`ccmake(1)`, this field may be ``null``
+    for all configure steps up to the most recent one before the generate step.
 
   ``showOnly``
     A boolean representing whether the
@@ -491,10 +537,18 @@ generated whenever `Indexing`_ occurs and deleted after any user-specified
   value may be set to ``manual`` if indexing is performed by invoking
   :option:`ctest --collect-instrumentation`.
 
+  Note that the hook is not directly tied to what data may be available.
+  A ``postBuild`` hook, for example, may include ``test`` or ``install``
+  snippets, if these steps were run since the previous indexing.
+
 ``snippets``
   Contains a list of `v1 Snippet Files <v1 Snippet File_>`_. This includes all
   snippet files generated since the previous index file was created. The file
   paths are relative to ``dataDir``.
+
+  This list may be empty if indexing was run twice in succession, such as when
+  building multiple times with both the ``preBuild`` and ``postBuild`` hooks
+  enabled.
 
 ``trace``
   Contains the path to the `Google Trace File`_. This includes data from all
@@ -552,6 +606,10 @@ Example:
     "trace": "trace/trace-<timestamp>.json"
   }
 
+.. versionadded:: 4.4
+  The JSON format is described in machine-readable form by
+  :download:`this JSON schema </manual/instrumentation/index-v1-schema.json>`.
+
 .. _`cmake-instrumentation v1 CMake Content File`:
 
 v1 CMake Content File
@@ -588,10 +646,17 @@ Each CMake content file contains the following:
 Google Trace File
 -----------------
 
-Trace files follow the `Google Trace Event Format`_. They include data from
-all `v1 Snippet Files <v1 Snippet File_>`_ listed in the current index file.
-These files remain in the build tree even after `Indexing`_ occurs and all
-`Callbacks`_ are executed, until the next time `Indexing`_ occurs.
+CMake can generate a file in the `Google Trace Event Format`_ to help visualize
+collected instrumentation data. Enabling the ``trace`` option in the
+`v1 Query Files`_ causes such a file to be generated under
+``<build>/.cmake/instrumentation/v1/data/trace`` whenever `Indexing`_ occurs.
+
+Generated trace files include data from all
+`v1 Snippet Files <v1 Snippet File_>`_ listed in the current index file.
+
+When instrumentation data is deleted by CMake after `Indexing`_, the most
+recent trace file remains so that it can be manually inspected without the need
+for any custom `Callbacks`_.
 
 Trace files are stored in the ``JSON Array Format``, where each
 `v1 Snippet File`_ corresponds to a single trace event object. Each trace

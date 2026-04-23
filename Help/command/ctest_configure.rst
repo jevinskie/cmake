@@ -7,7 +7,9 @@ Perform the :ref:`CTest Configure Step` as a :ref:`Dashboard Client`.
 
   ctest_configure([BUILD <build-dir>] [SOURCE <source-dir>] [APPEND]
                   [OPTIONS <options>] [RETURN_VALUE <result-var>] [QUIET]
-                  [CAPTURE_CMAKE_ERROR <result-var>])
+                  [CAPTURE_CMAKE_ERROR <result-var>]
+                  [PRESET <preset>]
+                  )
 
 Configure the project build tree and record results in ``Configure.xml``
 for submission with the :command:`ctest_submit` command.
@@ -30,7 +32,21 @@ The options are:
   produced by a previous call to this command.
 
 ``OPTIONS <options>``
-  Specify command-line arguments to pass to the configuration tool.
+  Specify a :ref:`semicolon-separated list <CMake Language Lists>` of
+  command-line arguments to pass to the configuration tool.
+  This option is ignored when :variable:`CTEST_CONFIGURE_COMMAND` is used.
+
+``PRESET <preset>``
+  .. versionadded:: 4.4
+
+  Specify a :manual:`preset <cmake-presets(7)>` to use when configuring the
+  project.  Any value set in the CTest script will take priority over a
+  corresponding setting from the preset.  For example, the
+  :variable:`CTEST_BINARY_DIRECTORY` variable will override the
+  :preset:`configurePresets.binaryDir` setting from the chosen preset.
+
+  This option is ignored when :variable:`CTEST_CONFIGURE_COMMAND`
+  is used.
 
 ``RETURN_VALUE <result-var>``
   Store in the ``<result-var>`` variable the return value of the native
@@ -39,8 +55,9 @@ The options are:
 ``CAPTURE_CMAKE_ERROR <result-var>``
   .. versionadded:: 3.7
 
-  Store in the ``<result-var>`` variable -1 if there are any errors running
-  the command and prevent ctest from returning non-zero if an error occurs.
+  Store in the ``<result-var>`` variable ``-1`` if there are any errors running
+  the command and prevent :manual:`ctest(1)` from returning non-zero if an
+  error occurs.
 
 ``QUIET``
   .. versionadded:: 3.3

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 4.3)
 include(RunCMake)
 
 function(instrument test)
@@ -54,7 +54,15 @@ function(instrument test)
   if (ARGS_TRACE_QUERY)
     set(trace_query_hook_arg 1)
   endif()
-  set(GET_HOOK "\\\"${CMAKE_COMMAND}\\\" -P \\\"${RunCMake_SOURCE_DIR}/hook.cmake\\\" ${static_query_hook_arg} ${trace_query_hook_arg}")
+  set(GET_HOOK
+    "\\\"${CMAKE_COMMAND}\\\""
+    "-DSTATIC_QUERY=${static_query_hook_arg}"
+    "-DTRACE_QUERY=${trace_query_hook_arg}"
+    "-DPython_EXECUTABLE=${Python_EXECUTABLE}"
+    "-DCMake_TEST_JSON_SCHEMA=${CMake_TEST_JSON_SCHEMA}"
+    "-P \\\"${RunCMake_SOURCE_DIR}/hook.cmake\\\""
+  )
+  list(JOIN GET_HOOK " " GET_HOOK)
 
   # Load query JSON and cmake (with cmake_instrumentation(...)) files
   set(query ${query_dir}/${test}.json.in)
@@ -63,8 +71,18 @@ function(instrument test)
     file(MAKE_DIRECTORY ${v1}/query)
     configure_file(${query} ${v1}/query/${test}.json)
   else ()
-    if (NOT EXISTS ${cmake_file} AND NOT EXISTS ${cmake_file}.in)
-      set(cmake_file ${query_dir}/default.cmake)
+    if (NOT EXISTS ${cmake_file})
+      if (EXISTS ${cmake_file}.in)
+        cmake_path(GET cmake_file FILENAME cmake_filename)
+        configure_file(
+          "${cmake_file}.in"
+          "${RunCMake_TEST_BINARY_DIR}/${cmake_filename}"
+          @ONLY
+        )
+        set(cmake_file "${RunCMake_TEST_BINARY_DIR}/${cmake_filename}")
+      else ()
+        set(cmake_file ${query_dir}/default.cmake)
+      endif()
     endif()
     list(APPEND ARGS_CONFIGURE_ARG "-DINSTRUMENT_COMMAND_FILE=${cmake_file}")
   endif()
@@ -104,12 +122,7 @@ function(instrument test)
       "${RunCMake_TEST_BINARY_DIR}/CMakePresets.json"
       @ONLY
     )
-    configure_file(
-      "${cmake_file}.in"
-      "${RunCMake_TEST_BINARY_DIR}/cmake-command-workflow.cmake"
-      @ONLY
-    )
-    foreach(f IN ITEMS CMakeLists.txt main.cxx lib.cxx lib.h shell_redirect.txt)
+    foreach(f IN ITEMS CMakeLists.txt main.c lib.c lib.h shell_redirect.txt)
       configure_file(
         "${RunCMake_TEST_SOURCE_DIR}/${f}"
         "${RunCMake_TEST_BINARY_DIR}/${f}"
@@ -235,7 +248,6 @@ instrument(cmake-command-parallel-install
   CHECK_SCRIPT check-data-dir.cmake)
 instrument(cmake-command-initial-cache
   CONFIGURE_ARG "-C ${RunCMake_BINARY_DIR}/initial.cmake"
-  CHECK_SCRIPT check-data-dir.cmake
 )
 instrument(cmake-command-resets-generated
   COPY_QUERIES_GENERATED

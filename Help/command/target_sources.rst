@@ -77,11 +77,29 @@ File Sets
 Adds a file set to a target, or adds files to an existing file set. Targets
 have zero or more named file sets. Each file set has a name, a type, a scope of
 ``INTERFACE``, ``PUBLIC``, or ``PRIVATE``, one or more base directories, and
-files within those directories. The acceptable types include:
+files within those directories.
+
+.. versionchanged:: 4.4
+  A file may only belong to at most one file set in a target. See policy
+  :policy:`CMP0211`.
+
+ The acceptable types include:
 
 ``HEADERS``
 
   Sources intended to be used via a language's ``#include`` mechanism.
+
+``SOURCES``
+  .. versionadded:: 4.4
+
+  Specifies sources to use when building a target and/or its dependents.
+  With the scope ``PRIVATE`` and ``PUBLIC``, items will populate the
+  :prop_fs:`SOURCES` property of ``<set>``, which are used when building the
+  target itself. With the scope ``PUBLIC`` and ``INTERFACE``, items will
+  populate the :prop_fs:`INTERFACE_SOURCES` property of ``<set>``, which are
+  used when building dependents. The sources specified by the
+  :prop_fs:`INTERFACE_SOURCES` property are propagated, transitively, to all
+  the dependents.
 
 ``CXX_MODULES``
   .. versionadded:: 3.28
@@ -91,7 +109,8 @@ files within those directories. The acceptable types include:
   ``INTERFACE`` scope except on ``IMPORTED`` targets.
 
 The optional default file sets are named after their type. The target may not
-be a custom target or :prop_tgt:`FRAMEWORK` target.
+be a custom target or, for ``HEADERS`` and ``CXX_MODULES`` types, a
+:prop_tgt:`FRAMEWORK` target.
 
 Files in a ``PRIVATE`` or ``PUBLIC`` file set are marked as source files for
 the purposes of IDE integration. Additionally, files in ``HEADERS`` file sets
@@ -100,8 +119,8 @@ have their :prop_sf:`HEADER_FILE_ONLY` property set to ``TRUE``. Files in an
 :command:`install(TARGETS)` command, and exported with the
 :command:`install(EXPORT)` and :command:`export` commands.
 
-Each ``target_sources(FILE_SET)`` entry starts with ``INTERFACE``, ``PUBLIC``, or
-``PRIVATE`` and accepts the following arguments:
+Each ``target_sources(FILE_SET)`` entry starts with ``INTERFACE``, ``PUBLIC``,
+or ``PRIVATE`` and accepts the following arguments:
 
 ``FILE_SET <set>``
 
@@ -157,6 +176,15 @@ For file sets of type ``HEADERS``:
 * :prop_tgt:`HEADER_SET_<NAME>`
 * :prop_tgt:`HEADER_DIRS`
 * :prop_tgt:`HEADER_DIRS_<NAME>`
+
+For file sets of type ``SOURCES``:
+
+* :prop_tgt:`SOURCE_SETS`
+* :prop_tgt:`INTERFACE_SOURCE_SETS`
+* :prop_tgt:`SOURCE_SET`
+* :prop_tgt:`SOURCE_SET_<NAME>`
+* :prop_tgt:`SOURCE_DIRS`
+* :prop_tgt:`SOURCE_DIRS_<NAME>`
 
 For file sets of type ``CXX_MODULES``:
 

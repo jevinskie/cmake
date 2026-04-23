@@ -127,7 +127,7 @@ Rust Support
 In order to activate support for Rust, set
 
 * variable ``CMAKE_EXPERIMENTAL_RUST`` to
-* value ``3cc9b32c-47d3-4056-8953-d74e69fc0d6c``.
+* value ``efaed83b-d73a-48af-999a-bd0a6172c313``.
 
 This UUID may change in future versions of CMake.  Be sure to use the value
 documented here by the source tree of the version of CMake with which you are

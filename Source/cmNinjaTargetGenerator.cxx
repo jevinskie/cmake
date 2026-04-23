@@ -26,11 +26,13 @@
 #include "cmComputeLinkInformation.h"
 #include "cmCustomCommand.h"
 #include "cmCustomCommandGenerator.h"
+#include "cmDiagnostics.h"
 #include "cmDyndepCollation.h"
 #include "cmFileSetMetadata.h"
 #include "cmGeneratedFileStream.h"
 #include "cmGeneratorExpression.h"
 #include "cmGeneratorFileSet.h"
+#include "cmGeneratorFileSets.h"
 #include "cmGeneratorOptions.h"
 #include "cmGeneratorTarget.h"
 #include "cmGlobalCommonGenerator.h"
@@ -238,6 +240,18 @@ std::string cmNinjaTargetGenerator::ComputeFlagsForObject(
       flags, genexInterpreter.Evaluate(*coptions, COMPILE_OPTIONS));
   }
 
+  if (auto const* fileSet =
+        this->GeneratorTarget->GetGeneratorFileSets()->GetFileSetForSource(
+          config, source)) {
+    auto options = fileSet->BelongsTo(this->GeneratorTarget)
+      ? fileSet->GetCompileOptions(config, language)
+      : fileSet->GetInterfaceCompileOptions(config, language);
+    if (!options.empty()) {
+      this->LocalGenerator->AppendCompileOptions(flags,
+                                                 cm::remove_BT(options));
+    }
+  }
+
   // Add precompile headers compile options.
   if (!pchSources.empty() && !source->GetProperty("SKIP_PRECOMPILE_HEADERS")) {
     std::string pchOptions;
@@ -266,15 +280,19 @@ std::string cmNinjaTargetGenerator::ComputeFlagsForObject(
     }
 
     if (!this->GeneratorTarget->Target->IsNormal()) {
-      auto flag = this->GetMakefile()->GetSafeDefinition(
-        "CMAKE_CXX_MODULE_BMI_ONLY_FLAG");
-      cmRulePlaceholderExpander::RuleVariables compileObjectVars;
-      compileObjectVars.Object = objectFileName.c_str();
-      auto rulePlaceholderExpander =
-        this->GetLocalGenerator()->CreateRulePlaceholderExpander();
-      rulePlaceholderExpander->ExpandRuleVariables(this->GetLocalGenerator(),
-                                                   flag, compileObjectVars);
-      this->LocalGenerator->AppendCompileOptions(flags, flag);
+      if (this->GetMakefile()
+            ->GetDefinition("CMAKE_CXX_COMPILE_BMI")
+            .IsEmpty()) {
+        auto flag = this->GetMakefile()->GetSafeDefinition(
+          "CMAKE_CXX_MODULE_BMI_ONLY_FLAG");
+        cmRulePlaceholderExpander::RuleVariables compileObjectVars;
+        compileObjectVars.Object = objectFileName.c_str();
+        auto rulePlaceholderExpander =
+          this->GetLocalGenerator()->CreateRulePlaceholderExpander();
+        rulePlaceholderExpander->ExpandRuleVariables(this->GetLocalGenerator(),
+                                                     flag, compileObjectVars);
+        this->LocalGenerator->AppendCompileOptions(flags, flag);
+      }
     }
   }
 
@@ -327,6 +345,17 @@ std::string cmNinjaTargetGenerator::ComputeDefines(cmSourceFile const* source,
       genexInterpreter.Evaluate(*config_compile_defs, COMPILE_DEFINITIONS));
   }
 
+  if (auto const* fileSet =
+        this->GeneratorTarget->GetGeneratorFileSets()->GetFileSetForSource(
+          config, source)) {
+    auto fsDefines = fileSet->BelongsTo(this->GeneratorTarget)
+      ? fileSet->GetCompileDefinitions(config, language)
+      : fileSet->GetInterfaceCompileDefinitions(config, language);
+    if (!fsDefines.empty()) {
+      this->LocalGenerator->AppendDefines(defines, fsDefines);
+    }
+  }
+
   std::string definesString = this->GetDefines(language, config);
   this->LocalGenerator->JoinDefines(defines, definesString, language);
 
@@ -338,6 +367,19 @@ std::string cmNinjaTargetGenerator::ComputeIncludes(
   std::string const& config)
 {
   std::vector<std::string> includes;
+
+  if (auto const* fileSet =
+        this->GeneratorTarget->GetGeneratorFileSets()->GetFileSetForSource(
+          config, source)) {
+    auto fsIncludes = fileSet->BelongsTo(this->GeneratorTarget)
+      ? fileSet->GetIncludeDirectories(config, language)
+      : fileSet->GetInterfaceIncludeDirectories(config, language);
+    if (!fsIncludes.empty()) {
+      this->LocalGenerator->AppendIncludeDirectories(
+        includes, cm::remove_BT(fsIncludes), *source);
+    }
+  }
+
   cmGeneratorExpressionInterpreter genexInterpreter(
     this->LocalGenerator, config, this->GeneratorTarget, language);
 
@@ -653,6 +695,19 @@ void cmNinjaTargetGenerator::WriteCompileRule(std::string const& lang,
   this->WriteCompileRule(lang, config, WithScanning::No);
 }
 
+std::string cmNinjaTargetGenerator::GetCompileTemplateVar(
+  std::string const& lang) const
+{
+  std::string cmdVar = cmStrCat("CMAKE_", lang, "_COMPILE_OBJECT");
+  if (!this->GetGeneratorTarget()->IsNormal()) {
+    std::string bmiCmdVar = cmStrCat("CMAKE_", lang, "_COMPILE_BMI");
+    if (!this->GetMakefile()->GetDefinition(bmiCmdVar).IsEmpty()) {
+      cmdVar = std::move(bmiCmdVar);
+    }
+  }
+  return cmdVar;
+}
+
 void cmNinjaTargetGenerator::WriteCompileRule(std::string const& lang,
                                               std::string const& config,
                                               WithScanning withScanning)
@@ -674,6 +729,7 @@ void cmNinjaTargetGenerator::WriteCompileRule(std::string const& lang,
   vars.CudaCompileMode = "$CUDA_COMPILE_MODE";
   vars.ISPCHeader = "$ISPC_HEADER_FILE";
   vars.Config = "$CONFIG";
+  vars.RustEmit = "$RUST_EMIT";
 
   cmMakefile* mf = this->GetMakefile();
 
@@ -929,7 +985,7 @@ void cmNinjaTargetGenerator::WriteCompileRule(std::string const& lang,
   }
 
   // Rule for compiling object file.
-  std::string const cmdVar = cmStrCat("CMAKE_", lang, "_COMPILE_OBJECT");
+  std::string const cmdVar = this->GetCompileTemplateVar(lang);
   std::string const& compileCmd = mf->GetRequiredDefinition(cmdVar);
   cmList compileCmds(compileCmd);
 
@@ -1034,17 +1090,9 @@ void cmNinjaTargetGenerator::WriteObjectBuildStatements(
     // Gather order-only dependencies on custom command outputs.
     std::vector<std::string> ccouts;
     std::vector<std::string> ccouts_private;
-    bool usePrivateGeneratedSources = false;
-    if (this->GeneratorTarget->HasFileSets()) {
-      switch (this->GetGeneratorTarget()->GetPolicyStatusCMP0154()) {
-        case cmPolicies::WARN:
-        case cmPolicies::OLD:
-          break;
-        case cmPolicies::NEW:
-          usePrivateGeneratedSources = true;
-          break;
-      }
-    }
+    bool usePrivateGeneratedSources = this->GeneratorTarget->HasFileSets() &&
+      this->GetGeneratorTarget()->GetPolicyStatusCMP0154() == cmPolicies::NEW;
+
     for (cmCustomCommand const* cc : customCommands) {
       cmCustomCommandGenerator ccg(*cc, config, this->GetLocalGenerator());
       std::vector<std::string> const& ccoutputs = ccg.GetOutputs();
@@ -1060,15 +1108,51 @@ void cmNinjaTargetGenerator::WriteObjectBuildStatements(
           cmGeneratorFileSet const* fileset =
             this->GeneratorTarget->GetFileSetForSource(
               config, this->Makefile->GetOrCreateGeneratedSource(*it));
-          bool isVisible = fileset && fileset->IsForInterface();
-          bool isIncludeable = !fileset || fileset->CanBeIncluded();
-          if (fileset && isVisible && isIncludeable) {
-            ++it;
+
+          if (!fileset) {
+            // use private order dependency
+            ccouts_private.push_back(*it);
+            it = ccouts.erase(it);
             continue;
           }
-          if (!fileset || isIncludeable) {
-            ccouts_private.push_back(*it);
+
+          using DependencyMode = cm::FileSetMetadata::DependencyMode;
+
+          cmValue independentFiles = fileset->GetProperty("INDEPENDENT_FILES");
+          // retrieve default mode
+          DependencyMode dependencyMode =
+            cm::FileSetMetadata::GetDependencyMode(fileset->GetType());
+          // if property is defined, try to enforce mode requested
+          if (independentFiles) {
+            dependencyMode = cm::FileSetMetadata::GetDependencyMode(
+              fileset->GetType(),
+              independentFiles.IsOn() ? DependencyMode::IndependentFiles
+                                      : DependencyMode::Includables);
           }
+          if (independentFiles.IsOn() &&
+              dependencyMode != DependencyMode::IndependentFiles) {
+            // requested dependency mode not supported
+            this->GetMakefile()->IssueDiagnostic(
+              cmDiagnostics::CMD_AUTHOR,
+              cmStrCat(R"(the "INDEPENDENT_FILES" property of the file set ")",
+                       fileset->GetName(), R"(" of the target ")",
+                       this->GeneratorTarget->GetName(),
+                       R"(" will be ignored because it is incompatible with )"
+                       R"(the file set type ")",
+                       fileset->GetType(), R"(".)"));
+          }
+          if (dependencyMode == DependencyMode::Includables) {
+            if (fileset->IsForInterface()) {
+              // use public order dependency
+              ++it;
+            } else {
+              // use private order dependency
+              ccouts_private.push_back(*it);
+              it = ccouts.erase(it);
+            }
+            continue;
+          }
+          // no order dependency is required
           it = ccouts.erase(it);
         }
       }
@@ -1738,6 +1822,11 @@ void cmNinjaTargetGenerator::WriteObjectBuildStatement(
     }
   }
 
+  if (language == "Rust") {
+    cmValue const rustEmit = source->GetRustEmitProperty();
+    vars["RUST_EMIT"] = rustEmit;
+  }
+
   if (language == "Swift") {
     this->EmitSwiftDependencyInfo(source, config);
   } else {
@@ -2345,7 +2434,7 @@ void cmNinjaTargetGenerator::ExportObjectCompileCommand(
     compileObjectVars.CudaCompileMode = cudaCompileMode.c_str();
   }
 
-  std::string const cmdVar = cmStrCat("CMAKE_", language, "_COMPILE_OBJECT");
+  std::string const cmdVar = this->GetCompileTemplateVar(language);
   std::string const& compileCmd =
     this->Makefile->GetRequiredDefinition(cmdVar);
   cmList compileCmds(compileCmd);

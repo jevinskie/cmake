@@ -209,6 +209,9 @@ Available features are:
   * ``<cm/map>`` :
     ``cm::erase_if``, ``cm::ssize``
 
+  * ``<cm/ranges>``:
+    ``cm::ranges::views::keys``, ``cm::ranges::views::values``
+
   * ``<cm/set>`` :
     ``cm::erase_if``, ``cm::ssize``
 
@@ -244,6 +247,14 @@ These are:
   * ``cm::contains``:
     Checks if element or key is contained in container.
 
+  * ``cm::keys``
+    Extract keys from associative container or sequence container with tuple as
+    element
+
+  * ``cm::values``
+    Extract values from associative container or sequence container with tuple as
+    element
+
 * ``<cmext/enum_set>``
 
   * ``cm::enum_set``:
@@ -274,6 +285,12 @@ These are:
     Apply a ``dynamic_cast`` to a smart pointer.
 
 * ``<cmext/type_traits>``:
+
+  * ``cm::is_pair``:
+   Checks if a type is a std::pair<> type.
+
+  * ``cm::is_tuple``:
+   Checks if a type is a std::tuple<> type.
 
   * ``cm::is_container``:
     Checks if a type is a container type.

@@ -3,7 +3,6 @@
 #include "cmLocalVisualStudio7Generator.h"
 
 #include <algorithm>
-#include <cassert>
 #include <cstring>
 #include <functional>
 #include <sstream>
@@ -25,6 +24,8 @@
 #include "cmCustomCommandLines.h"
 #include "cmGeneratedFileStream.h"
 #include "cmGeneratorExpression.h"
+#include "cmGeneratorFileSet.h"
+#include "cmGeneratorFileSets.h"
 #include "cmGeneratorOptions.h"
 #include "cmGeneratorTarget.h"
 #include "cmGlobalGenerator.h"
@@ -1497,6 +1498,9 @@ cmLocalVisualStudio7GeneratorFCInfo::cmLocalVisualStudio7GeneratorFCInfo(
     }
 
     cmGeneratorExpressionInterpreter genexInterpreter(lg, config, gt, lang);
+    // lookup for the associated file set, if any.
+    auto const* fileSet =
+      gt->GetGeneratorFileSets()->GetFileSetForSource(config, &sf);
 
     bool needfc = false;
     if (!objectName.empty()) {
@@ -1514,6 +1518,15 @@ cmLocalVisualStudio7GeneratorFCInfo::cmLocalVisualStudio7GeneratorFCInfo(
         fc.CompileFlags,
         genexInterpreter.Evaluate(*coptions, COMPILE_OPTIONS));
       needfc = true;
+    }
+    // Add flags from file set properties.
+    if (fileSet) {
+      auto options = fileSet->BelongsTo(gt)
+        ? fileSet->GetCompileOptions(config, lang)
+        : fileSet->GetInterfaceCompileOptions(config, lang);
+      if (!options.empty()) {
+        lg->AppendCompileOptions(fc.CompileFlags, cm::remove_BT(options));
+      }
     }
     // Add precompile headers compile options.
     std::string const pchSource = gt->GetPchSource(config, lang);
@@ -1571,10 +1584,36 @@ cmLocalVisualStudio7GeneratorFCInfo::cmLocalVisualStudio7GeneratorFCInfo(
         genexInterpreter.Evaluate(*ccdefs, COMPILE_DEFINITIONS);
       needfc = true;
     }
+    // Add file set preprocessor definitions
+    if (fileSet) {
+      auto defines = fileSet->BelongsTo(gt)
+        ? fileSet->GetCompileDefinitions(config, lang)
+        : fileSet->GetInterfaceCompileDefinitions(config, lang);
+      if (!defines.empty()) {
+        if (!fc.CompileDefs.empty()) {
+          fc.CompileDefs += ';';
+        }
+        fc.CompileDefs += cmList::to_string(defines);
+        needfc = true;
+      }
+    }
 
+    // Add file set include directories definitions
+    if (fileSet) {
+      auto includes = fileSet->BelongsTo(gt)
+        ? fileSet->GetIncludeDirectories(config, lang)
+        : fileSet->GetInterfaceIncludeDirectories(config, lang);
+      if (!includes.empty()) {
+        fc.IncludeDirs = cmList::to_string(includes);
+        needfc = true;
+      }
+    }
     std::string const INCLUDE_DIRECTORIES("INCLUDE_DIRECTORIES");
     if (cmValue cincs = sf.GetProperty(INCLUDE_DIRECTORIES)) {
-      fc.IncludeDirs = genexInterpreter.Evaluate(*cincs, INCLUDE_DIRECTORIES);
+      if (!fc.IncludeDirs.empty()) {
+        fc.IncludeDirs += ';';
+      }
+      fc.IncludeDirs += genexInterpreter.Evaluate(*cincs, INCLUDE_DIRECTORIES);
       needfc = true;
     }
 
@@ -1681,17 +1720,19 @@ bool cmLocalVisualStudio7Generator::WriteGroup(
 
   // Loop through each source in the source group.
   for (cmSourceFile const* sf : sourceFiles) {
+    // We only need source group members that are part of this target.
+    auto si = sources.Index.find(sf);
+    if (si == sources.Index.end()) {
+      continue;
+    }
+
     std::string source = sf->GetFullPath();
 
     if (source != libName || target->GetType() == cmStateEnums::UTILITY ||
         target->GetType() == cmStateEnums::GLOBAL_TARGET ||
         target->GetType() == cmStateEnums::INTERFACE_LIBRARY) {
-      // Look up the source kind and configs.
-      auto map_it = sources.Index.find(sf);
-      // The map entry must exist because we populated it earlier.
-      assert(map_it != sources.Index.end());
       cmGeneratorTarget::AllConfigSource const& acs =
-        sources.Sources[map_it->second];
+        sources.Sources[si->second];
 
       FCInfo fcinfo(this, target, acs, configs);
 
@@ -1867,7 +1908,8 @@ void cmLocalVisualStudio7Generator::WriteCustomRule(
       for (std::string const& d : ccg.GetDepends()) {
         // Get the real name of the dependency in case it is a CMake target.
         std::string dep;
-        if (this->GetRealDependency(d, config, dep)) {
+        if (this->GetRealDependency(d, config, dep,
+                                    command.GetCMP0212Status())) {
           fout << this->ConvertToXMLOutputPath(dep) << ";";
         }
       }

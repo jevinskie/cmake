@@ -11,6 +11,8 @@
 
 #include "cmExportSet.h"
 #include "cmGeneratorExpression.h"
+#include "cmGeneratorFileSet.h"
+#include "cmGeneratorFileSets.h"
 #include "cmGeneratorTarget.h"
 #include "cmGlobalGenerator.h"
 #include "cmList.h"
@@ -21,7 +23,6 @@
 #include "cmTarget.h"
 #include "cmTargetExport.h"
 #include "cmValue.h"
-#include "cmake.h"
 
 class cmSourceFile;
 
@@ -244,8 +245,13 @@ void cmExportBuildFileGenerator::ComplainAboutDuplicateTarget(
 void cmExportBuildFileGenerator::IssueMessage(MessageType type,
                                               std::string const& message) const
 {
-  this->LG->GetGlobalGenerator()->GetCMakeInstance()->IssueMessage(
-    type, message, this->LG->GetMakefile()->GetBacktrace());
+  this->LG->GetMakefile()->IssueMessage(type, message);
+}
+
+void cmExportBuildFileGenerator::IssueDiagnostic(
+  cmDiagnosticCategory category, std::string const& message) const
+{
+  this->LG->GetMakefile()->IssueDiagnostic(category, message);
 }
 
 std::string cmExportBuildFileGenerator::InstallNameDir(
@@ -279,4 +285,25 @@ bool cmExportBuildFileGenerator::PopulateInterfaceProperties(
 
   return this->PopulateInterfaceProperties(
     target, {}, cmGeneratorExpression::BuildInterface, properties);
+}
+
+bool cmExportBuildFileGenerator::PopulateFileSetInterfaceProperties(
+  cmGeneratorTarget const* target, ImportFileSetPropertyMap& properties)
+{
+  cmGeneratorFileSets const* const gfs = target->GetGeneratorFileSets();
+  bool result = true;
+
+  for (auto const& type : gfs->GetInterfaceFileSetTypes()) {
+    for (auto const* fileSet : gfs->GetInterfaceFileSets(type)) {
+      ImportPropertyMap& fsProperties = properties[fileSet->GetName()];
+      this->PopulateFileSetInterfaceProperty(
+        "INTERFACE_INCLUDE_DIRECTORIES", target, fileSet,
+        cmGeneratorExpression::BuildInterface, fsProperties);
+      result = result &&
+        this->PopulateFileSetInterfaceProperties(
+          target, fileSet, cmGeneratorExpression::InstallInterface,
+          fsProperties);
+    }
+  }
+  return result;
 }

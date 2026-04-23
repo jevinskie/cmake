@@ -6,6 +6,7 @@
 #include <utility>
 
 #include <cm/memory>
+#include <cm/string_view>
 #include <cmext/string_view>
 
 #include "cmGenExContext.h"
@@ -38,20 +39,25 @@ void cmExportTryCompileFileGenerator::IssueMessage(
 {
   switch (type) {
     case MessageType::FATAL_ERROR:
-    case MessageType::AUTHOR_ERROR:
     case MessageType::INTERNAL_ERROR:
-    case MessageType::DEPRECATION_ERROR:
       cmSystemTools::Error(message);
       break;
     case MessageType::WARNING:
-    case MessageType::AUTHOR_WARNING:
-    case MessageType::DEPRECATION_WARNING:
       cmSystemTools::Message(cmStrCat("CMake Warning: "_s, message),
                              "Warning");
       break;
     default:
       cmSystemTools::Message(message);
   }
+}
+
+void cmExportTryCompileFileGenerator::IssueDiagnostic(
+  cmDiagnosticCategory category, std::string const& message) const
+{
+  cm::string_view const cname =
+    cmDiagnostics::GetCategoryString(category).substr(4);
+  cmSystemTools::Message(
+    cmStrCat("CMake Diagnostic ("_s, cname, "): "_s, message), "Diagnostic");
 }
 
 bool cmExportTryCompileFileGenerator::GenerateMainFile(std::ostream& os)

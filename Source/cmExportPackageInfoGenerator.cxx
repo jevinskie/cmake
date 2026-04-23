@@ -18,6 +18,7 @@
 #include "cmsys/RegularExpression.hxx"
 
 #include "cmArgumentParserTypes.h"
+#include "cmDiagnostics.h"
 #include "cmExportSet.h"
 #include "cmFindPackageStack.h"
 #include "cmGeneratorExpression.h"
@@ -118,10 +119,11 @@ bool cmExportPackageInfoGenerator::CheckVersion() const
       // so, but will probably need to introduce a policy whether to treat
       // invalid versions as an error.
     } else if (schema != "custom"_s) {
-      this->IssueMessage(MessageType::AUTHOR_WARNING,
-                         cmStrCat("Package \""_s, this->GetPackageName(),
-                                  "\" uses unrecognized version schema \""_s,
-                                  this->PackageVersionSchema, "\"."_s));
+      this->IssueDiagnostic(
+        cmDiagnostics::CMD_AUTHOR,
+        cmStrCat("Package \""_s, this->GetPackageName(),
+                 "\" uses unrecognized version schema \""_s,
+                 this->PackageVersionSchema, "\"."_s));
     }
 
     if (validator) {
@@ -311,7 +313,8 @@ bool cmExportPackageInfoGenerator::NoteLinkedTarget(
     auto pkgInfo = [](cmTarget* t) -> Package {
       cmFindPackageStack pkgStack = t->GetFindPackageStack();
       if (!pkgStack.Empty()) {
-        return std::make_pair(pkgStack.Top().Name, pkgStack.Top().PackageInfo);
+        return std::make_pair(pkgStack.Top().Name,
+                              *pkgStack.Top().PackageInfo);
       }
 
       cmPackageInformation package;
@@ -573,8 +576,8 @@ Json::Value cmExportPackageInfoGenerator::GenerateInterfaceConfigProperties(
       BuildArray(component, "dyld_requires", components);
       if (!libraries.empty()) {
         // In theory this can never happen?
-        this->IssueMessage(
-          MessageType::AUTHOR_WARNING,
+        this->IssueDiagnostic(
+          cmDiagnostics::CMD_AUTHOR,
           cmStrCat("Package \""_s, this->GetPackageName(),
                    "\" has IMPORTED_LINK_DEPENDENT_LIBRARIES \""_s,
                    cmJoin(libraries, ";"_s), this->PackageVersionSchema,

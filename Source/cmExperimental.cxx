@@ -7,9 +7,9 @@
 #include <cstddef>
 #include <string>
 
+#include "cmDiagnostics.h"
 #include "cmGlobalGenerator.h"
 #include "cmMakefile.h"
-#include "cmMessageType.h"
 #include "cmStringAlgorithms.h"
 #include "cmValue.h"
 
@@ -64,7 +64,7 @@ cmExperimental::FeatureData const LookupTable[] = {
     cmExperimental::TryCompileCondition::Never },
   // Rust support
   { "Rust",
-    "3cc9b32c-47d3-4056-8953-d74e69fc0d6c",
+    "efaed83b-d73a-48af-999a-bd0a6172c313",
     "CMAKE_EXPERIMENTAL_RUST",
     "CMake's support for the Rust programming language is experimental. "
     "It is meant only for experimentation and feedback to CMake developers.",
@@ -111,10 +111,10 @@ bool cmExperimental::HasSupportEnabled(cmMakefile const& mf, Feature f)
 
     if (mf.GetGlobalGenerator()->ShouldWarnExperimental(data.Name, *value)) {
       if (enabled) {
-        mf.IssueMessage(MessageType::AUTHOR_WARNING, data.Description);
+        mf.IssueDiagnostic(cmDiagnostics::CMD_AUTHOR, data.Description);
       } else {
-        mf.IssueMessage(
-          MessageType::AUTHOR_WARNING,
+        mf.IssueDiagnostic(
+          cmDiagnostics::CMD_AUTHOR,
           cmStrCat(
             data.Variable, " is set to incorrect value\n  ", value,
             "\n"

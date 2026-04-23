@@ -2,9 +2,14 @@
    file LICENSE.rst or https://cmake.org/licensing for details.  */
 #include "cmMessenger.h"
 
+#include <algorithm>
+#include <sstream>
+#include <utility>
+
 #include "cmDocumentationFormatter.h"
 #include "cmMessageMetadata.h"
 #include "cmMessageType.h"
+#include "cmStateSnapshot.h"
 #include "cmStdIoTerminal.h"
 #include "cmStringAlgorithms.h"
 #include "cmSystemTools.h"
@@ -14,9 +19,6 @@
 
 #  include "cmSarifLog.h"
 #endif
-
-#include <sstream>
-#include <utility>
 
 #ifdef CMake_ENABLE_DEBUGGER
 #  include "cmDebuggerAdapter.h"
@@ -32,18 +34,18 @@ char const* getMessageTypeStr(MessageType t)
       return "Internal Error (please report a bug)";
     case MessageType::LOG:
       return "Debug Log";
-    case MessageType::DEPRECATION_ERROR:
-      return "Deprecation Error";
-    case MessageType::DEPRECATION_WARNING:
-      return "Deprecation Warning";
-    case MessageType::AUTHOR_WARNING:
-      return "Warning (dev)";
-    case MessageType::AUTHOR_ERROR:
-      return "Error (dev)";
     default:
       break;
   }
   return "Warning";
+}
+
+std::string getDiagnosticCategoryStr(cmDiagnosticCategory category)
+{
+  std::string out = cmSystemTools::LowerCase(
+    cmDiagnostics::GetCategoryString(category).substr(4));
+  std::replace(out.begin(), out.end(), '_', '-');
+  return out;
 }
 
 cm::StdIo::TermAttr getMessageColor(MessageType t)
@@ -51,9 +53,7 @@ cm::StdIo::TermAttr getMessageColor(MessageType t)
   switch (t) {
     case MessageType::INTERNAL_ERROR:
     case MessageType::FATAL_ERROR:
-    case MessageType::AUTHOR_ERROR:
       return cm::StdIo::TermAttr::ForegroundRed;
-    case MessageType::AUTHOR_WARNING:
     case MessageType::WARNING:
       return cm::StdIo::TermAttr::ForegroundYellow;
     default:
@@ -69,15 +69,18 @@ void printMessageText(std::ostream& msg, std::string const& text)
   formatter.PrintFormatted(msg, text);
 }
 
-void displayMessage(MessageType t, std::ostringstream& msg)
+void displayMessage(MessageType type, cmDiagnosticCategory category,
+                    std::ostringstream& msg)
 {
-  // Add a note about warning suppression.
-  if (t == MessageType::AUTHOR_WARNING) {
-    msg << "This warning is for project developers.  Use -Wno-dev to suppress "
-           "it.";
-  } else if (t == MessageType::AUTHOR_ERROR) {
-    msg << "This error is for project developers. Use -Wno-error=dev to "
-           "suppress it.";
+  if (category == cmDiagnostics::CMD_AUTHOR) {
+    // Add a note about warning suppression.
+    if (type == MessageType::WARNING) {
+      msg << "This warning is for project developers.  "
+             "Use -Wno-author to suppress it.";
+    } else if (type == MessageType::FATAL_ERROR) {
+      msg << "This error is for project developers.  "
+             "Use -Wno-error=author to suppress it.";
+    }
   }
 
   // Add a terminating blank line.
@@ -85,7 +88,7 @@ void displayMessage(MessageType t, std::ostringstream& msg)
 
 #if !defined(CMAKE_BOOTSTRAP)
   // Add a C++ stack trace to internal errors.
-  if (t == MessageType::INTERNAL_ERROR) {
+  if (type == MessageType::INTERNAL_ERROR) {
     std::string stack = cmsys::SystemInformation::GetProgramStack(0, 0);
     if (!stack.empty()) {
       if (cmHasLiteralPrefix(stack, "WARNING:")) {
@@ -98,9 +101,9 @@ void displayMessage(MessageType t, std::ostringstream& msg)
 
   // Output the message.
   cmMessageMetadata md;
-  md.attrs = getMessageColor(t);
-  if (t == MessageType::FATAL_ERROR || t == MessageType::INTERNAL_ERROR ||
-      t == MessageType::DEPRECATION_ERROR || t == MessageType::AUTHOR_ERROR) {
+  md.attrs = getMessageColor(type);
+  if (type == MessageType::FATAL_ERROR ||
+      type == MessageType::INTERNAL_ERROR) {
     cmSystemTools::SetErrorOccurred();
     md.title = "Error";
   } else {
@@ -149,65 +152,47 @@ void PrintCallStack(std::ostream& out, cmListFileBacktrace bt,
 
 } // anonymous namespace
 
-MessageType cmMessenger::ConvertMessageType(MessageType t) const
-{
-  if (t == MessageType::AUTHOR_WARNING || t == MessageType::AUTHOR_ERROR) {
-    if (this->GetDevWarningsAsErrors()) {
-      return MessageType::AUTHOR_ERROR;
-    }
-    return MessageType::AUTHOR_WARNING;
-  }
-  if (t == MessageType::DEPRECATION_WARNING ||
-      t == MessageType::DEPRECATION_ERROR) {
-    if (this->GetDeprecatedWarningsAsErrors()) {
-      return MessageType::DEPRECATION_ERROR;
-    }
-    return MessageType::DEPRECATION_WARNING;
-  }
-  return t;
-}
-
-bool cmMessenger::IsMessageTypeVisible(MessageType t) const
-{
-  if (t == MessageType::DEPRECATION_ERROR) {
-    return this->GetDeprecatedWarningsAsErrors();
-  }
-  if (t == MessageType::DEPRECATION_WARNING) {
-    return !this->GetSuppressDeprecatedWarnings();
-  }
-  if (t == MessageType::AUTHOR_ERROR) {
-    return this->GetDevWarningsAsErrors();
-  }
-  if (t == MessageType::AUTHOR_WARNING) {
-    return !this->GetSuppressDevWarnings();
-  }
-
-  return true;
-}
-
 void cmMessenger::IssueMessage(MessageType t, std::string const& text,
                                cmListFileBacktrace const& backtrace) const
 {
-  bool force = false;
-  // override the message type, if needed, for warnings and errors
-  MessageType override = this->ConvertMessageType(t);
-  if (override != t) {
-    t = override;
-    force = true;
-  }
+  this->DisplayMessage(t, cmDiagnostics::CMD_NONE, text, backtrace);
+}
 
-  if (force || this->IsMessageTypeVisible(t)) {
-    this->DisplayMessage(t, text, backtrace);
+void cmMessenger::IssueDiagnostic(cmDiagnosticCategory category,
+                                  std::string const& text,
+                                  cmStateSnapshot const& context,
+                                  cmListFileBacktrace const& backtrace) const
+{
+  cmDiagnosticAction const action = context.GetDiagnostic(category);
+  switch (action) {
+    case cmDiagnostics::FatalError:
+      cmSystemTools::SetFatalErrorOccurred();
+      CM_FALLTHROUGH;
+    case cmDiagnostics::SendError:
+      cmSystemTools::SetErrorOccurred();
+      this->DisplayMessage(MessageType::FATAL_ERROR, category, text,
+                           backtrace);
+      break;
+    case cmDiagnostics::Warn:
+      this->DisplayMessage(MessageType::WARNING, category, text, backtrace);
+      break;
+    default:
+      return;
   }
 }
 
-void cmMessenger::DisplayMessage(MessageType t, std::string const& text,
+void cmMessenger::DisplayMessage(MessageType type,
+                                 cmDiagnosticCategory category,
+                                 std::string const& text,
                                  cmListFileBacktrace const& backtrace) const
 {
   std::ostringstream msg;
 
   // Print the message preamble.
-  msg << "CMake " << getMessageTypeStr(t);
+  msg << "CMake " << getMessageTypeStr(type);
+  if (category != cmDiagnostics::CMD_NONE) {
+    msg << " (" << getDiagnosticCategoryStr(category) << ')';
+  }
 
   // Add the immediate context.
   this->PrintBacktraceTitle(msg, backtrace);
@@ -217,16 +202,16 @@ void cmMessenger::DisplayMessage(MessageType t, std::string const& text,
   // Add the rest of the context.
   PrintCallStack(msg, backtrace, this->TopSource);
 
-  displayMessage(t, msg);
+  displayMessage(type, category, msg);
 
 #ifndef CMAKE_BOOTSTRAP
   // Add message to SARIF logs
-  this->SarifLog.LogMessage(t, text, backtrace);
+  this->SarifLog.LogMessage(type, text, backtrace);
 #endif
 
 #ifdef CMake_ENABLE_DEBUGGER
   if (DebuggerAdapter) {
-    DebuggerAdapter->OnMessageOutput(t, msg.str());
+    DebuggerAdapter->OnMessageOutput(type, msg.str());
   }
 #endif
 }

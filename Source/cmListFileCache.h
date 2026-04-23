@@ -6,6 +6,7 @@
 
 #include <iosfwd>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -13,8 +14,8 @@
 #include <cm/optional>
 #include <cm/string_view>
 
+#include "cmConstStack.h"
 #include "cmList.h"
-#include "cmStack.h"
 #include "cmSystemTools.h"
 
 /** \class cmListFileCache
@@ -24,7 +25,7 @@
  * cmake list files.
  */
 
-class cmMessenger;
+class cmMakefile;
 
 struct cmListFileArgument
 {
@@ -170,12 +171,11 @@ bool operator!=(cmListFileContext const& lhs, cmListFileContext const& rhs);
 class cmListFileBacktrace
   : public cmConstStack<cmListFileContext, cmListFileBacktrace>
 {
-  using cmStack::cmStack;
-  friend cmListFileBacktrace::Base;
+  using cmConstStack::cmConstStack;
+  friend class cmConstStack<cmListFileContext, cmListFileBacktrace>;
 };
 #ifndef cmListFileCache_cxx
-extern template class cmStack<cmListFileContext const, cmListFileBacktrace,
-                              cmStackType::Const>;
+extern template class cmConstStack<cmListFileContext, cmListFileBacktrace>;
 #endif
 
 // Wrap type T as a value with a backtrace.  For purposes of
@@ -205,6 +205,37 @@ public:
 };
 
 std::ostream& operator<<(std::ostream& os, BT<std::string> const& s);
+
+namespace cm {
+// Helpers for basic type retrieval
+template <typename T>
+T remove_BT(BT<T> const& bt)
+{
+  return bt.Value;
+}
+
+template <typename T>
+std::vector<T> remove_BT(std::vector<BT<T>> const& container)
+{
+  std::vector<T> result;
+  result.reserve(container.size());
+  for (auto const& entry : container) {
+    result.emplace_back(entry.Value);
+  }
+
+  return result;
+}
+template <typename T>
+std::set<T> remove_BT(std::set<BT<T>> const& container)
+{
+  std::set<T> result;
+  for (auto const& entry : container) {
+    result.emplace(entry.Value);
+  }
+
+  return result;
+}
+}
 
 // Wrap type T as a value with potentially multiple backtraces.  For purposes
 // of ordering and equality comparison, only the original value is used.  The
@@ -239,11 +270,11 @@ std::vector<BT<std::string>> cmExpandListWithBacktrace(
 
 struct cmListFile
 {
-  bool ParseFile(char const* path, cmMessenger* messenger,
+  bool ParseFile(std::string const& path, cmMakefile const* mf,
                  cmListFileBacktrace const& lfbt);
 
-  bool ParseString(cm::string_view str, char const* virtual_filename,
-                   cmMessenger* messenger, cmListFileBacktrace const& lfbt);
+  bool ParseString(cm::string_view str, std::string const& virtual_filename,
+                   cmMakefile const* mf, cmListFileBacktrace const& lfbt);
 
   std::vector<cmListFileFunction> Functions;
 };

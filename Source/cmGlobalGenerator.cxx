@@ -34,6 +34,7 @@
 #include "cmCustomCommand.h"
 #include "cmCustomCommandLines.h"
 #include "cmCustomCommandTypes.h"
+#include "cmDiagnostics.h"
 #include "cmDuration.h"
 #include "cmExperimental.h"
 #include "cmExportBuildFileGenerator.h"
@@ -1025,7 +1026,7 @@ void cmGlobalGenerator::CheckCompilerIdCompatibility(
             R"( compiler id "XLClang" to "XL" for compatibility.)"
             ;
           /* clang-format on */
-          mf->IssueMessage(MessageType::AUTHOR_WARNING, w.str());
+          mf->IssueDiagnostic(cmDiagnostics::CMD_AUTHOR, w.str());
         }
         CM_FALLTHROUGH;
       case cmPolicies::OLD:
@@ -1050,7 +1051,7 @@ void cmGlobalGenerator::CheckCompilerIdCompatibility(
             R"( compiler id "LCC" to "GNU" for compatibility.)"
             ;
           /* clang-format on */
-          mf->IssueMessage(MessageType::AUTHOR_WARNING, w.str());
+          mf->IssueDiagnostic(cmDiagnostics::CMD_AUTHOR, w.str());
         }
         CM_FALLTHROUGH;
       case cmPolicies::OLD:
@@ -1086,6 +1087,13 @@ std::string cmGlobalGenerator::GetLanguageOutputExtension(
 {
   std::string const& lang = source.GetLanguage();
   if (!lang.empty()) {
+    if (lang == "Rust") {
+      // Rust source file can be compiled into different type of outputs. So
+      // we need to change the extension based on the Rust_EMIT property.
+      if (cmValue const rustEmit = source.GetRustEmitProperty()) {
+        return this->GetRustEmitOutputExtension(rustEmit);
+      }
+    }
     return this->GetLanguageOutputExtension(lang);
   }
   // if no language is found then check to see if it is already an
@@ -1105,6 +1113,16 @@ std::string cmGlobalGenerator::GetLanguageOutputExtension(
 {
   auto const it = this->LanguageToOutputExtension.find(lang);
   if (it != this->LanguageToOutputExtension.end()) {
+    return it->second;
+  }
+  return "";
+}
+
+std::string cmGlobalGenerator::GetRustEmitOutputExtension(
+  std::string const& emitValue) const
+{
+  auto const it = this->RustEmitToOutputExtension.find(emitValue);
+  if (it != this->RustEmitToOutputExtension.end()) {
     return it->second;
   }
   return "";
@@ -1210,6 +1228,19 @@ void cmGlobalGenerator::SetLanguageEnabledMaps(std::string const& l,
     }
   }
 
+  if (l == "Rust") {
+    std::string const emitValues =
+      mf->GetSafeDefinition("CMAKE_Rust_EMIT_VALUES");
+    cmList emitList{ emitValues };
+    for (std::string const& v : emitList) {
+      std::string emitOutputExtension =
+        cmStrCat("CMAKE_Rust_EMIT_", v, "_OUTPUT_EXTENSION");
+      if (cmValue outputExtension = mf->GetDefinition(emitOutputExtension)) {
+        this->RustEmitToOutputExtension[v] = outputExtension;
+      }
+    }
+  }
+
   // The map was originally filled by SetLanguageEnabledFlag, but
   // since then the compiler- and platform-specific files have been
   // loaded which might have added more entries.
@@ -1307,8 +1338,8 @@ void cmGlobalGenerator::Configure()
     this->CMakeInstance->GetHomeOutputDirectory());
 
   if (this->ExtraGenerator && !this->CMakeInstance->GetIsInTryCompile()) {
-    this->CMakeInstance->IssueMessage(
-      MessageType::DEPRECATION_WARNING,
+    this->CMakeInstance->IssueDiagnostic(
+      cmDiagnostics::CMD_DEPRECATED,
       cmStrCat("Support for \"Extra Generators\" like\n  ",
                this->ExtraGenerator->GetName(),
                "\nis deprecated and will be removed from a future version "
@@ -1753,8 +1784,8 @@ void cmGlobalGenerator::Generate()
     for (std::string const& t : this->CMP0068WarnTargets) {
       w << ' ' << t << '\n';
     }
-    this->GetCMakeInstance()->IssueMessage(MessageType::AUTHOR_WARNING,
-                                           w.str());
+    this->GetCMakeInstance()->IssueDiagnostic(cmDiagnostics::CMD_AUTHOR,
+                                              w.str());
   }
 }
 
@@ -3068,29 +3099,22 @@ void cmGlobalGenerator::ReserveGlobalTargetCodegen()
     return;
   }
 
-  MessageType messageType = MessageType::AUTHOR_WARNING;
-  std::ostringstream e;
-  bool issueMessage = false;
   switch (policyStatus) {
     case cmPolicies::WARN:
-      e << cmPolicies::GetPolicyWarning(cmPolicies::CMP0171) << '\n';
-      issueMessage = true;
-      CM_FALLTHROUGH;
+      this->GetCMakeInstance()->IssueDiagnostic(
+        cmDiagnostics::CMD_AUTHOR,
+        cmStrCat(cmPolicies::GetPolicyWarning(cmPolicies::CMP0171), '\n',
+                 "The target name \"codegen\" is reserved."),
+        tgt->GetBacktrace());
+      break;
     case cmPolicies::OLD:
       break;
     case cmPolicies::NEW:
-      issueMessage = true;
-      messageType = MessageType::FATAL_ERROR;
-      break;
-  }
-  if (issueMessage) {
-    e << "The target name \"codegen\" is reserved.";
-    this->GetCMakeInstance()->IssueMessage(messageType, e.str(),
-                                           tgt->GetBacktrace());
-    if (messageType == MessageType::FATAL_ERROR) {
+      this->GetCMakeInstance()->IssueMessage(
+        MessageType::FATAL_ERROR, "The target name \"codegen\" is reserved.",
+        tgt->GetBacktrace());
       cmSystemTools::SetFatalErrorOccurred();
-      return;
-    }
+      break;
   }
 }
 
@@ -3697,8 +3721,8 @@ std::set<std::string> const& cmGlobalGenerator::GetDirectoryContent(
       if (d.Load(dir)) {
         unsigned long n = d.GetNumberOfFiles();
         for (unsigned long i = 0; i < n; ++i) {
-          char const* f = d.GetFile(i);
-          if (strcmp(f, ".") != 0 && strcmp(f, "..") != 0) {
+          std::string const& f = d.GetFileName(i);
+          if (f != "." && f != "..") {
             dc.All.insert(f);
           }
         }

@@ -50,8 +50,11 @@ scan or not is used.
   be scanned.
 - If the target does not use at least C++ 20, it will not be scanned.
 - If the source file is not the language ``CXX``, it will not be scanned.
-- If the :prop_sf:`CXX_SCAN_FOR_MODULES` source file property is set, its
+- If the source file belongs to a file set that is not of type ``CXX_MODULES``,
+  and the :prop_fs:`CXX_SCAN_FOR_MODULES` file set property is set, its
   value will be used.
+- If the :prop_sf:`CXX_SCAN_FOR_MODULES` source file property is set in the
+  target's directory, its value will be used.
 - If the :prop_tgt:`CXX_SCAN_FOR_MODULES` target property is set, its value
   will be used.  Set the :variable:`CMAKE_CXX_SCAN_FOR_MODULES` variable
   to initialize this property on all targets as they are created.
@@ -69,7 +72,13 @@ The list of compilers for which CMake supports scanning sources for C++
 modules includes:
 
 * MSVC toolset 14.34 and newer (provided with Visual Studio 17.4 and newer)
+
 * LLVM/Clang 16.0 and newer
+
+  .. versionadded:: 4.4
+
+    ``clang-cl`` version 19.1 and newer
+
 * GCC 14 and newer
 
 ``import std`` Support
@@ -393,8 +402,8 @@ commands to :term:`scan` for their dependencies.
 
   There is a known issue with ``ninja`` which can result in an erroneous
   detection of a dependency cycle when the dependency order between two
-  sources reverses (i.e., `a` importing `b` becomes `b` importing `a`) between
-  two builds.  See `ninja issue 2666`_ for details.
+  sources reverses (i.e., ``a`` importing ``b`` becomes ``b`` importing
+  ``a``) between two builds.  See `ninja issue 2666`_ for details.
 
 .. _`ninja issue 2666`: https://github.com/ninja-build/ninja/issues/2666
 
@@ -428,6 +437,13 @@ within the target.
 
 Implementation Details
 ----------------------
+
+.. warning::
+
+  The implementation details are not a stable interface.  Each version
+  of CMake may revise them without any attempt at providing compatibility.
+  External toolchain maintainers are responsible for updating their
+  implementations for each version of CMake they support.
 
 This section describes how CMake actually structures the build graph, the data
 passed between various parts, and the files which contain that data.  It is
@@ -463,52 +479,18 @@ Additionally, toolchains should set the following variables:
 * ``CMAKE_CXX_MODULE_MAP_FLAG``: The arguments used to inform the compiler of
   the :term:`module map` file.  It should use the ``<MODULE_MAP_FILE>``
   placeholder.
+* ``CMAKE_CXX_COMPILE_BMI``: The command template to compile a :term:`BMI`
+  file from a :term:`module interface unit`.  Used when
+  ``CMAKE_CXX_MODULE_BMI_ONLY_FLAG`` is not completely additive to an
+  object compilation template.
 * ``CMAKE_CXX_MODULE_BMI_ONLY_FLAG``: The arguments used to compile only a
   :term:`BMI` file from a :term:`module interface unit`.  This is used when
   consuming modules from external projects to compile :term:`BMI` files for
   use within the current build.
 
-If a toolchain does not provide the ``CMAKE_CXX_MODULE_BMI_ONLY_FLAG``, it
-will not be able to consume modules provided by ``IMPORTED`` targets.
-
-Toolchain (``import std``)
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-If the toolchain supports ``import std``, it must also provide a toolchain
-identification module named ``${CMAKE_CXX_COMPILER_ID}-CXX-CXXImportStd``.
-
-.. note::
-
-   Currently only CMake may provide these files due to the way they are
-   included.  Once ``import std`` is no longer experimental, external
-   toolchains may provide support independently as well.
-
-This module must provide the ``_cmake_cxx_import_std`` command.  It will be
-passed two arguments: the version of the C++ standard (e.g., ``23``) and the
-name of a variable in which to place the result of its ``import std`` support.
-The variable should be filled in with CMake source code which declares the
-``__CMAKE::CXX${std}`` target, where ``${std}`` is the version passed in.  If
-the target cannot be made, the source code should instead set the
-``CMAKE_CXX${std}_COMPILER_IMPORT_STD_NOT_FOUND_MESSAGE`` variable to the
-reason that ``import std`` is not supported in the current configuration.
-Note that CMake will guard the returned code with conditional checks to ensure
-that the target is only defined once.
-
-Ideally, the ``__CMAKE::CXX${std}`` target will be an ``IMPORTED``
-``INTERFACE`` target with the ``std`` module sources attached to it.  However,
-it may be necessary to compile objects for some implementations.  Object files
-are required when there are symbols expected to be provided by the consumer of
-the module by compiling it.  There is a concern that, if this happens, more
-than once within a program, this will result in duplication of these symbols
-which may violate the :term:`ODR` for them.
-
-As an example, if consumers of a module are expected to provide symbols for
-that module, the use of the module is then a global property of the program
-and cannot be abstracted away.  Imagine that a library exposes a C API but
-uses a C++ module internally.  If it is supposed to provide the module
-symbols, anything using the C API needs to cooperate with its internal module
-usage if it wants to use the same module for its own purposes.  If both end up
-providing symbols for the imported module, there may be conflicts.
+If a toolchain does not provide the ``CMAKE_CXX_COMPILE_BMI`` or
+``CMAKE_CXX_MODULE_BMI_ONLY_FLAG`` variables, it will not be able to consume
+modules provided by ``IMPORTED`` targets.
 
 Configure
 ^^^^^^^^^

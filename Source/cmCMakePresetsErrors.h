@@ -6,6 +6,8 @@
 
 #include <string>
 
+#include <cm/string_view>
+
 #include <cm3p/json/value.h>
 
 #include "cmJSONHelpers.h"
@@ -74,6 +76,8 @@ void GRAPHVIZ_FILE_UNSUPPORTED(cmJSONState* state);
 
 void JOBS_PROC_UNSUPPORTED(cmJSONState* state);
 
+void PASSTHROUGH_ARGS_UNSUPPORTED(cmJSONState* state);
+
 void CYCLIC_INCLUDE(std::string const& file, cmJSONState* state);
 
 void TEST_OUTPUT_TRUNCATION_UNSUPPORTED(cmJSONState* state);
@@ -121,4 +125,10 @@ void PRESET_MISSING_FIELD(std::string const& presetName,
                           std::string const& missingField, cmJSONState* state);
 
 void SCHEMA_UNSUPPORTED(cmJSONState* state);
+
+void DIAGNOSTIC_UNSUPPORTED(cm::string_view name, cm::string_view context,
+                            int version, cmJSONState* state);
+
+void DIAGNOSTIC_REMOVED(cm::string_view name, cm::string_view context,
+                        int version, cmJSONState* state);
 }

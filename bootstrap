@@ -311,6 +311,7 @@ CMAKE_CXX_SOURCES="\
   cmCMakeLanguageCommand \
   cmCMakeMinimumRequired \
   cmList \
+  cmCMakeDiagnosticCommand \
   cmCMakePath \
   cmCMakePathCommand \
   cmCMakePolicyCommand \
@@ -336,10 +337,13 @@ CMAKE_CXX_SOURCES="\
   cmCxxModuleUsageEffects \
   cmDefinePropertyCommand \
   cmDefinitions \
+  cmDiagnostics \
+  cmDiscoverTestsCommand \
   cmDocumentationFormatter \
   cmELF \
   cmEnableLanguageCommand \
   cmEnableTestingCommand \
+  cmEnvironment \
   cmEvaluatedTargetProperty \
   cmExecProgramCommand \
   cmExecuteProcessCommand \
@@ -390,6 +394,7 @@ CMAKE_CXX_SOURCES="\
   cmGeneratorFileSets \
   cmGeneratorTarget \
   cmGeneratorTarget_CompatibleInterface \
+  cmGeneratorTarget_HeaderSetVerification \
   cmGeneratorTarget_IncludeDirectories \
   cmGeneratorTarget_Link \
   cmGeneratorTarget_LinkDirectories \
@@ -426,6 +431,7 @@ CMAKE_CXX_SOURCES="\
   cmInstallGenerator \
   cmInstallGetRuntimeDependenciesGenerator \
   cmInstallImportedRuntimeArtifactsGenerator \
+  cmInstallDirs \
   cmInstallRuntimeDependencySet \
   cmInstallRuntimeDependencySetGenerator \
   cmInstallScriptGenerator \
@@ -1768,7 +1774,7 @@ libs=""
 uv_c_flags=""
 if ${cmake_system_mingw}; then
   uv_c_flags="${uv_c_flags} -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0600"
-  libs="${libs} -lws2_32 -lpsapi -liphlpapi -lshell32 -luserenv -lole32 -loleaut32 -luuid"
+  libs="${libs} -ladvapi32 -ldbghelp -liphlpapi -lole32 -loleaut32 -lpsapi -lshell32 -luser32 -luserenv -luuid -lws2_32"
 else
   case "${cmake_system}" in
     *AIX*)

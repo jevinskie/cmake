@@ -17,6 +17,7 @@
 #include <cm/optional>
 
 #include "cmCustomCommandTypes.h"
+#include "cmDiagnostics.h"
 #include "cmGeneratorOptions.h"
 #include "cmGeneratorTarget.h"
 #include "cmListFileCache.h"
@@ -265,6 +266,8 @@ public:
    */
   void AppendDefines(std::set<std::string>& defines,
                      std::string const& defines_list) const;
+  void AppendDefines(std::set<std::string>& defines,
+                     std::vector<BT<std::string>> const& defines_vec) const;
   void AppendDefines(std::set<BT<std::string>>& defines,
                      std::string const& defines_list) const;
   void AppendDefines(std::set<BT<std::string>>& defines,
@@ -309,7 +312,7 @@ public:
    *   used for dependencies of custom commands.
    */
   bool GetRealDependency(std::string const& name, std::string const& config,
-                         std::string& dep);
+                         std::string& dep, cmPolicies::PolicyStatus cmp0212);
 
   /** Called from command-line hook to clear dependencies.  */
   virtual void ClearDependencies(cmMakefile* /* mf */, bool /* verbose */) {}
@@ -569,7 +572,19 @@ public:
   bool IsNinjaMulti() const;
   bool IsWindowsVSIDE() const;
 
-  void IssueMessage(MessageType t, std::string const& text) const;
+  void IssueMessage(MessageType type, std::string const& text) const
+  {
+    this->IssueMessage(type, text, this->DirectoryBacktrace);
+  }
+  void IssueMessage(MessageType type, std::string const& text,
+                    cmListFileBacktrace const& bt) const;
+  void IssueDiagnostic(cmDiagnosticCategory category,
+                       std::string const& text) const
+  {
+    this->IssueDiagnostic(category, text, this->DirectoryBacktrace);
+  }
+  void IssueDiagnostic(cmDiagnosticCategory category, std::string const& text,
+                       cmListFileBacktrace const& bt) const;
 
   void CreateEvaluationFileOutputs();
   void CreateEvaluationFileOutputs(std::string const& config);

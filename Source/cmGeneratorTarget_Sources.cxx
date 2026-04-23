@@ -4,6 +4,8 @@
 #include "cmGeneratorTarget.h"
 /* clang-format on */
 
+#include "cmConfigure.h"
+
 #include <cstddef>
 #include <functional>
 #include <map>
@@ -20,6 +22,7 @@
 
 #include "cmsys/RegularExpression.hxx"
 
+#include "cmDiagnostics.h"
 #include "cmEvaluatedTargetProperty.h"
 #include "cmFileSetMetadata.h"
 #include "cmGenExContext.h"
@@ -34,6 +37,7 @@
 #include "cmLocalGenerator.h"
 #include "cmMakefile.h"
 #include "cmMessageType.h"
+#include "cmPolicies.h"
 #include "cmSourceFile.h"
 #include "cmSourceFileLocation.h"
 #include "cmSourceGroup.h"
@@ -50,7 +54,7 @@ using UseTo = cmGeneratorTarget::UseTo;
 void AddObjectEntries(cmGeneratorTarget const* headTarget,
                       cm::GenEx::Context const& context,
                       cmGeneratorExpressionDAGChecker* dagChecker,
-                      EvaluatedTargetPropertyEntries& entries)
+                      cm::EvaluatedTargetPropertyEntries& entries)
 {
   if (cmLinkImplementationLibraries const* impl =
         headTarget->GetLinkImplementationLibraries(context.Config,
@@ -70,7 +74,7 @@ void AddObjectEntries(cmGeneratorTarget const* headTarget,
           ge.Parse(std::move(genex));
         cge->SetEvaluateForBuildsystem(true);
 
-        EvaluatedTargetPropertyEntry ee(lib, lib.Backtrace);
+        cm::EvaluatedTargetPropertyEntry ee(lib, lib.Backtrace);
         cmExpandList(cge->Evaluate(context, dagChecker, headTarget),
                      ee.Values);
         if (cge->GetHadContextSensitiveCondition()) {
@@ -86,15 +90,15 @@ void AddFileSetEntries(cmGeneratorTarget const* headTarget,
                        cmGeneratorFileSets const* fileSets,
                        cm::GenEx::Context const& context,
                        cmGeneratorExpressionDAGChecker* dagChecker,
-                       EvaluatedTargetPropertyEntries& entries)
+                       cm::EvaluatedTargetPropertyEntries& entries)
 {
   auto sources = fileSets->GetSources(context, headTarget, dagChecker);
   entries =
     EvaluateTargetPropertyEntries(headTarget, context, dagChecker, sources);
 }
 
-bool processSources(cmGeneratorTarget const* tgt,
-                    EvaluatedTargetPropertyEntries& entries,
+bool processSources(cmGeneratorTarget const* tgt, std::string const& config,
+                    cm::EvaluatedTargetPropertyEntries& entries,
                     std::vector<BT<std::string>>& srcs,
                     std::unordered_set<std::string>& uniqueSrcs,
                     bool debugSources,
@@ -104,7 +108,7 @@ bool processSources(cmGeneratorTarget const* tgt,
 
   bool contextDependent = entries.HadContextSensitiveCondition;
 
-  for (EvaluatedTargetPropertyEntry& entry : entries.Entries) {
+  for (cm::EvaluatedTargetPropertyEntry& entry : entries.Entries) {
     if (entry.ContextDependent) {
       contextDependent = true;
     }
@@ -117,13 +121,13 @@ bool processSources(cmGeneratorTarget const* tgt,
       std::string e;
       std::string w;
       std::string fullPath = sf->ResolveFullPath(&e, &w);
-      cmake* cm = tgt->GetLocalGenerator()->GetCMakeInstance();
+      cmLocalGenerator const* const lg = tgt->GetLocalGenerator();
       if (!w.empty()) {
-        cm->IssueMessage(MessageType::AUTHOR_WARNING, w, entry.Backtrace);
+        lg->IssueDiagnostic(cmDiagnostics::CMD_AUTHOR, w, entry.Backtrace);
       }
       if (fullPath.empty()) {
         if (!e.empty()) {
-          cm->IssueMessage(MessageType::FATAL_ERROR, e, entry.Backtrace);
+          lg->IssueMessage(MessageType::FATAL_ERROR, e, entry.Backtrace);
         }
         return contextDependent;
       }
@@ -154,6 +158,28 @@ bool processSources(cmGeneratorTarget const* tgt,
         srcs.emplace_back(src, entry.Backtrace);
         if (debugSources) {
           usedSources += cmStrCat(" * ", src, '\n');
+        }
+      } else {
+        if (auto const* fileSet =
+              tgt->GetGeneratorFileSets()->GetFileSetForSource(config, src)) {
+          switch (tgt->GetPolicyStatusCMP0211()) {
+            case cmPolicies::WARN:
+              tgt->GetLocalGenerator()->IssueDiagnostic(
+                cmDiagnostics::CMD_AUTHOR,
+                cmStrCat(cmPolicies::GetPolicyWarning(cmPolicies::CMP0211),
+                         "\nIn target \"", tgt->GetName(), "\" the file\n  ",
+                         src, "\nalready belongs to file set \"",
+                         fileSet->GetName(), "\"."));
+              CM_FALLTHROUGH;
+            case cmPolicies::OLD:
+              break;
+            default:
+              tgt->GetLocalGenerator()->IssueMessage(
+                MessageType::FATAL_ERROR,
+                cmStrCat("In target \"", tgt->GetName(), "\" the file\n  ",
+                         src, "\nalready belongs to file set \"",
+                         fileSet->GetName(), "\"."));
+          }
         }
       }
     }
@@ -188,28 +214,30 @@ std::vector<BT<std::string>> cmGeneratorTarget::GetSourceFilePaths(
     this, "SOURCES", nullptr, nullptr, context,
   };
 
-  EvaluatedTargetPropertyEntries entries = EvaluateTargetPropertyEntries(
-    this, context, &dagChecker, this->SourceEntries);
+  cm::EvaluatedTargetPropertyEntries entries =
+    cm::EvaluateTargetPropertyEntries(this, context, &dagChecker,
+                                      this->SourceEntries);
 
   std::unordered_set<std::string> uniqueSrcs;
   bool contextDependentDirectSources =
-    processSources(this, entries, files, uniqueSrcs, debugSources);
+    processSources(this, config, entries, files, uniqueSrcs, debugSources);
 
   // Collect INTERFACE_SOURCES of all direct link-dependencies.
-  EvaluatedTargetPropertyEntries linkInterfaceSourcesEntries;
-  AddInterfaceEntries(this, "INTERFACE_SOURCES", context, &dagChecker,
-                      linkInterfaceSourcesEntries, IncludeRuntimeInterface::No,
-                      UseTo::Compile);
-  bool contextDependentInterfaceSources = processSources(
-    this, linkInterfaceSourcesEntries, files, uniqueSrcs, debugSources);
+  cm::EvaluatedTargetPropertyEntries linkInterfaceSourcesEntries;
+  cm::AddInterfaceEntries(this, "INTERFACE_SOURCES", context, &dagChecker,
+                          linkInterfaceSourcesEntries,
+                          cm::IncludeRuntimeInterface::No, UseTo::Compile);
+  bool contextDependentInterfaceSources =
+    processSources(this, config, linkInterfaceSourcesEntries, files,
+                   uniqueSrcs, debugSources);
 
   // Collect TARGET_OBJECTS of direct object link-dependencies.
   bool contextDependentObjects = false;
   if (this->GetType() != cmStateEnums::OBJECT_LIBRARY) {
-    EvaluatedTargetPropertyEntries linkObjectsEntries;
+    cm::EvaluatedTargetPropertyEntries linkObjectsEntries;
     AddObjectEntries(this, context, &dagChecker, linkObjectsEntries);
-    contextDependentObjects = processSources(this, linkObjectsEntries, files,
-                                             uniqueSrcs, debugSources);
+    contextDependentObjects = processSources(this, config, linkObjectsEntries,
+                                             files, uniqueSrcs, debugSources);
     // Note that for imported targets or multi-config generators supporting
     // cross-config builds the paths to the object files must be per-config,
     // so contextDependentObjects will be true here even if object libraries
@@ -217,8 +245,12 @@ std::vector<BT<std::string>> cmGeneratorTarget::GetSourceFilePaths(
   }
 
   // Collect this target's file sets.
-  EvaluatedTargetPropertyEntries fileSetEntries;
-  AddFileSetEntries(this, this->FileSets.get(), context, &dagChecker,
+  cmGeneratorExpressionDAGChecker fsDagChecker{
+    this, "SOURCES", nullptr, nullptr, context,
+  };
+
+  cm::EvaluatedTargetPropertyEntries fileSetEntries;
+  AddFileSetEntries(this, this->FileSets.get(), context, &fsDagChecker,
                     fileSetEntries);
   auto processFileSetEntry = [this, &config](cmSourceFile* sf) {
     auto const* fileSet = this->GetFileSetForSource(config, sf);
@@ -243,12 +275,22 @@ std::vector<BT<std::string>> cmGeneratorTarget::GetSourceFilePaths(
 #endif
   };
   bool contextDependentFileSets =
-    processSources(this, fileSetEntries, files, uniqueSrcs, debugSources,
-                   processFileSetEntry);
+    processSources(this, config, fileSetEntries, files, uniqueSrcs,
+                   debugSources, processFileSetEntry);
+
+  // Collect file sets INTERFACE_SOURCES of all direct link-dependencies.
+  cm::EvaluatedTargetPropertyEntries linkInterfaceFileSetsEntries;
+  cm::AddInterfaceFileSetsEntries(this, cm::FileSetMetadata::SOURCES,
+                                  "INTERFACE_SOURCES", context, &fsDagChecker,
+                                  linkInterfaceFileSetsEntries);
+  bool contextDependentInterfaceFileSets =
+    processSources(this, config, linkInterfaceFileSetsEntries, files,
+                   uniqueSrcs, debugSources);
 
   // Determine if sources are context-dependent or not.
   if (!contextDependentDirectSources && !contextDependentInterfaceSources &&
-      !contextDependentObjects && !contextDependentFileSets) {
+      !contextDependentObjects && !contextDependentFileSets &&
+      !contextDependentInterfaceFileSets) {
     this->SourcesAreContextDependent = Tribool::False;
   } else {
     this->SourcesAreContextDependent = Tribool::True;
@@ -347,6 +389,12 @@ void cmGeneratorTarget::ComputeKindedSources(KindedSources& files,
   cmsys::RegularExpression header_regex(CM_HEADER_REGEX);
   std::vector<cmSourceFile*> badObjLib;
 
+  cmValue const rustMainCrateRootProp =
+    this->GetProperty("Rust_MAIN_CRATE_ROOT");
+  cmSourceFile const* rustMainCrateRootSf = rustMainCrateRootProp
+    ? this->Makefile->GetOrCreateSource(rustMainCrateRootProp)
+    : nullptr;
+
   std::set<cmSourceFile*> emitted;
   for (BT<std::string> const& s : srcs) {
     // Create each source at most once.
@@ -379,7 +427,28 @@ void cmGeneratorTarget::ComputeKindedSources(KindedSources& files,
     } else if (sf->GetPropertyAsBool("EXTERNAL_OBJECT")) {
       kind = SourceKindExternalObject;
     } else if (!sf->GetOrDetermineLanguage().empty()) {
-      kind = SourceKindObjectSource;
+      if (sf->GetOrDetermineLanguage() == "Rust") {
+        // NOLINTNEXTLINE(bugprone-branch-clone)
+        if (this->Target->GetType() == cmStateEnums::OBJECT_LIBRARY) {
+          // There is no main crate root for object libraries.
+          kind = SourceKindObjectSource;
+        } else if (!rustMainCrateRootSf) {
+          // We do not have a main crate root source file, we use the first
+          // Rust source file for it.
+          rustMainCrateRootSf = sf;
+          kind = SourceKindRustMainCrateRoot;
+        } else if (rustMainCrateRootSf == sf) {
+          // Current source file is the main crate root defined in the target
+          // Rust_MAIN_CRATE_ROOT property.
+          kind = SourceKindRustMainCrateRoot;
+        } else {
+          // Any other Rust source file is treated as a normal object, but will
+          // be built into a .rlib. Maybe in the future this could be changed?
+          kind = SourceKindObjectSource;
+        }
+      } else {
+        kind = SourceKindObjectSource;
+      }
     } else if (ext == "def") {
       kind = SourceKindModuleDefinition;
       if (this->GetType() == cmStateEnums::OBJECT_LIBRARY) {

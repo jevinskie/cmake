@@ -21,6 +21,9 @@ if sphinx.version_info >= (2,):
     from sphinx import addnodes
     from sphinx.directives import ObjectDescription, nl_escape_re
     from sphinx.domains import Domain, ObjType
+    from sphinx.domains.changeset import VersionChange
+    from sphinx.domains.changeset import versionlabels, versionlabel_classes
+    from sphinx.domains.std import OptionXRefRole
     from sphinx.roles import XRefRole
     from sphinx.util import logging, ws_re
     from sphinx.util.docutils import ReferenceRole
@@ -30,6 +33,21 @@ else:
     assert sphinx.version_info >= (2,)
 
 # END imports
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+# BEGIN sphinx tweaks
+
+# Adjust the 'std' domain regex used to parse options so that it recognizes
+# e.g. `-W<name>` as the option `-W` with a value `<name>`, rather than
+# treating the entire string as the option name.
+#
+# See also https://github.com/sphinx-doc/sphinx/issues/14323.
+
+sphinx.domains.std.option_desc_re = (
+    re.compile(r'((?:/|--|-|\+)?[^\s=<]+)(=?\s*.*)'))
+
+# END sphinx tweaks
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -461,6 +479,8 @@ class CMakeSignatureObject(CMakeObject):
             sigargs = self.targetnames[sig]
         else:
             def extract_keywords(params):
+                if params[-1].endswith(')'):
+                    params[-1] = params[-1][:-1]
                 for p in params:
                     if p[0].isalpha():
                         yield p
@@ -550,6 +570,7 @@ class CMakeXRefRole(CMakeReferenceRole[XRefRole]):
     _re_sub = re.compile(r'^([^()\s]+)\s*\(([^()]*)\)$', re.DOTALL)
     _re_genex = re.compile(r'^\$<([^<>:]+)(:[^<>]+)?>$', re.DOTALL)
     _re_guide = re.compile(r'^([^<>/]+)/([^<>]*)$', re.DOTALL)
+    _re_explicit = re.compile(r'^([^<>]+)\s+<([^<>]+)>$', re.DOTALL)
 
     def __call__(self, typ, rawtext, text, *args, **kwargs):
         if typ == 'cmake:command':
@@ -569,6 +590,13 @@ class CMakeXRefRole(CMakeReferenceRole[XRefRole]):
             m = CMakeXRefRole._re_guide.match(text)
             if m:
                 text = f'{m.group(2)} <{text}>'
+        elif typ == 'cmake:preset':
+            m = CMakeXRefRole._re_explicit.match(text)
+            if m:
+                rawtext = f'{m.group(1)} <CMakePresets.{m.group(2)}>'
+                text = f'{m.group(1)} <CMakePresets.{m.group(2)}>'
+            else:
+                text = f'CMakePresets.{text}'
         return super().__call__(typ, rawtext, text, *args, **kwargs)
 
     # We cannot insert index nodes using the result_nodes method
@@ -581,6 +609,16 @@ class CMakeXRefRole(CMakeReferenceRole[XRefRole]):
     #
     # def result_nodes(self, document, env, node, is_ref):
     #     pass
+
+
+class CMakeOptionXRefRole(OptionXRefRole):
+    def __init__(self, command: str) -> None:
+        self.command = command
+        super().__init__()
+
+    def __call__(self, typ, rawtext, text, *args, **kwargs):
+        content = f'{text} <{self.command} {re.split(r"[ =]", text)[0]}>'
+        return super().__call__('std:option', text, content, *args, **kwargs)
 
 
 class CMakeXRefTransform(Transform):
@@ -668,6 +706,7 @@ class CMakeDomain(Domain):
         # Other `object_types` cannot be created except by the `CMakeTransform`
     }
     roles = {
+        # General CMake reference roles.
         'cref':       CMakeCRefRole(),
         'command':    CMakeXRefRole(fix_parens=True, lowercase=True),
         'cpack_gen':  CMakeXRefRole(),
@@ -687,6 +726,14 @@ class CMakeDomain(Domain):
         'prop_test':  CMakeXRefRole(),
         'prop_tgt':   CMakeXRefRole(),
         'manual':     CMakeXRefRole(),
+        'preset':     CMakeXRefRole(lowercase=True, warn_dangling=True),
+        # Roles for program-specific command-line options without the program
+        # name (which add the name to form the ref).
+        'cmake-option':         CMakeOptionXRefRole('cmake'),
+        'cmake-build-option':   CMakeOptionXRefRole('cmake--build'),
+        'cmake-install-option': CMakeOptionXRefRole('cmake--install'),
+        'cpack-option':         CMakeOptionXRefRole('cpack'),
+        'ctest-option':         CMakeOptionXRefRole('ctest'),
     }
     initial_data = {
         'objects': {},  # fullname -> ObjectEntry
@@ -719,13 +766,28 @@ class CMakeDomain(Domain):
         targetid = f'{typ}:{target}'
         obj = self.data['objects'].get(targetid)
 
-        if obj is None and typ == 'command':
-            # If 'command(args)' wasn't found, try just 'command'.
-            # TODO: remove this fallback? warn?
-            # logger.warning(f'no match for {targetid}')
-            command = target.split('(')[0]
-            targetid = f'{typ}:{command}'
-            obj = self.data['objects'].get(targetid)
+        if obj is None:
+            if typ == 'command':
+                # If 'command(args)' wasn't found, try just 'command'.
+                # TODO: remove this fallback? warn?
+                # logger.warning(f'no match for {targetid}')
+                command = target.split('(')[0]
+                targetid = f'{typ}:{command}'
+                obj = self.data['objects'].get(targetid)
+            elif typ == 'preset':
+                # Preset references are really just references to plain old
+                # explicit targets.
+                labels = env.get_domain('std').labels
+                docname, labelid, sectname = labels.get(target, ('', '', ''))
+
+                if not docname:
+                    return None
+
+                if node['refexplicit']:
+                    sectname = node.astext()
+
+                return make_refnode(builder, fromdocname, docname, labelid,
+                                    nodes.literal('', sectname), target)
 
         if obj is None:
             # TODO: warn somehow?
@@ -755,4 +817,21 @@ def setup(app):
     app.add_transform(CMakeTransform)
     app.add_transform(CMakeXRefTransform)
     app.add_domain(CMakeDomain)
+
+    versionlabels.update({
+        'presets-versionadded':   'Added in presets version %s',
+        'presets-versionchanged': 'Changed in presets version %s',
+        'presets-versionremoved': 'Removed in presets version %s',
+    })
+
+    versionlabel_classes.update({
+        'presets-versionadded':     'added',
+        'presets-versionchanged':   'changed',
+        'presets-versionremoved':   'removed',
+    })
+
+    app.add_directive('presets-versionadded', VersionChange)
+    app.add_directive('presets-versionchanged', VersionChange)
+    app.add_directive('presets-versionremoved', VersionChange)
+
     return {"parallel_read_safe": True}

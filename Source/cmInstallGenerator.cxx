@@ -5,9 +5,7 @@
 #include <sstream>
 #include <utility>
 
-#if __cplusplus >= 201703L || defined(_MSVC_LANG) && _MSVC_LANG >= 201703L
-#  include <string_view> // To fix IWYU warning
-#endif
+#include <cm/string_view>
 
 #include "cmMakefile.h"
 #include "cmStringAlgorithms.h"
@@ -219,6 +217,10 @@ bool cmInstallGenerator::InstallsForConfig(std::string const& config)
 std::string cmInstallGenerator::ConvertToAbsoluteDestination(
   std::string const& dest)
 {
+  if (dest == ".") {
+    return "${CMAKE_INSTALL_PREFIX}";
+  }
+
   std::string result;
   if (!dest.empty() && !cmSystemTools::FileIsFullPath(dest)) {
     result = "${CMAKE_INSTALL_PREFIX}/";

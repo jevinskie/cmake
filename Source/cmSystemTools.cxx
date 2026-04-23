@@ -847,10 +847,12 @@ bool cmSystemTools::RunSingleCommand(std::vector<std::string> const& command,
                                      std::string* captureStdOut,
                                      std::string* captureStdErr, int* retVal,
                                      char const* dir, OutputOption outputflag,
-                                     cmDuration timeout, Encoding encoding)
+                                     cmDuration timeout, Encoding encoding,
+                                     std::vector<std::string> env)
 {
   cmUVProcessChainBuilder builder;
   builder.SetExternalStream(cmUVProcessChainBuilder::Stream_INPUT, stdin)
+    .SetEnvironment(std::move(env))
     .AddCommand(command);
   if (dir) {
     builder.SetWorkingDirectory(dir);
@@ -1770,9 +1772,9 @@ void cmSystemTools::Glob(std::string const& directory,
     unsigned int i;
     numf = d.GetNumberOfFiles();
     for (i = 0; i < numf; i++) {
-      std::string fname = d.GetFile(i);
+      std::string const& fname = d.GetFileName(i);
       if (reg.find(fname)) {
-        files.push_back(std::move(fname));
+        files.push_back(fname);
       }
     }
   }
@@ -1792,9 +1794,9 @@ void cmSystemTools::GlobDirs(std::string const& path,
   cmsys::Directory d;
   if (d.Load(startPath)) {
     for (unsigned int i = 0; i < d.GetNumberOfFiles(); ++i) {
-      if ((std::string(d.GetFile(i)) != ".") &&
-          (std::string(d.GetFile(i)) != "..")) {
-        std::string fname = cmStrCat(startPath, '/', d.GetFile(i));
+      std::string const& f = d.GetFileName(i);
+      if (f != "." && f != "..") {
+        std::string fname = cmStrCat(startPath, '/', f);
         if (cmSystemTools::FileIsDirectory(fname)) {
           fname += finishPath;
           cmSystemTools::GlobDirs(fname, files);
@@ -1823,14 +1825,13 @@ bool cmSystemTools::SimpleGlob(std::string const& glob,
   cmsys::Directory d;
   if (d.Load(path)) {
     for (unsigned int i = 0; i < d.GetNumberOfFiles(); ++i) {
-      if ((std::string(d.GetFile(i)) != ".") &&
-          (std::string(d.GetFile(i)) != "..")) {
+      std::string const& sfname = d.GetFileName(i);
+      if (sfname != "." && sfname != "..") {
         std::string fname = path;
         if (path.back() != '/') {
           fname += "/";
         }
-        fname += d.GetFile(i);
-        std::string sfname = d.GetFile(i);
+        fname += sfname;
         if (type > 0 && cmSystemTools::FileIsDirectory(fname)) {
           continue;
         }
@@ -2100,165 +2101,28 @@ bool cmSystemTools::UnsetEnv(char const* value)
 std::vector<std::string> cmSystemTools::GetEnvironmentVariables()
 {
   std::vector<std::string> env;
-  int cc;
 #  ifdef _WIN32
-  // if program starts with main, _wenviron is initially NULL, call to
-  // _wgetenv and create wide-character string environment
-  _wgetenv(L"");
-  for (cc = 0; _wenviron[cc]; ++cc) {
-    env.emplace_back(cmsys::Encoding::ToNarrow(_wenviron[cc]));
+  struct EnvDeleter
+  {
+    void operator()(wchar_t* p) const { FreeEnvironmentStringsW(p); }
+  };
+
+  auto block = std::unique_ptr<wchar_t, EnvDeleter>(GetEnvironmentStringsW());
+  if (!block) {
+    return env;
+  }
+
+  for (wchar_t const* p = block.get(); *p; p += wcslen(p) + 1) {
+    if (p[0] != L'=') {
+      env.emplace_back(cmsys::Encoding::ToNarrow(p));
+    }
   }
 #  else
-  for (cc = 0; environ[cc]; ++cc) {
+  for (int cc = 0; environ[cc]; ++cc) {
     env.emplace_back(environ[cc]);
   }
 #  endif
   return env;
-}
-
-void cmSystemTools::AppendEnv(std::vector<std::string> const& env)
-{
-  for (std::string const& var : env) {
-    cmSystemTools::PutEnv(var);
-  }
-}
-
-void cmSystemTools::EnvDiff::AppendEnv(std::vector<std::string> const& env)
-{
-  for (std::string const& var : env) {
-    this->PutEnv(var);
-  }
-}
-
-void cmSystemTools::EnvDiff::PutEnv(std::string const& env)
-{
-  auto const eq_loc = env.find('=');
-  if (eq_loc != std::string::npos) {
-    std::string name = env.substr(0, eq_loc);
-    diff[name] = env.substr(eq_loc + 1);
-  } else {
-    this->UnPutEnv(env);
-  }
-}
-
-void cmSystemTools::EnvDiff::UnPutEnv(std::string const& env)
-{
-  diff[env] = cm::nullopt;
-}
-
-bool cmSystemTools::EnvDiff::ParseOperation(std::string const& envmod)
-{
-  char path_sep = GetSystemPathlistSeparator();
-
-  auto apply_diff = [this](std::string const& name,
-                           std::function<void(std::string&)> const& apply) {
-    cm::optional<std::string> old_value = diff[name];
-    std::string output;
-    if (old_value) {
-      output = *old_value;
-    } else {
-      char const* curval = cmSystemTools::GetEnv(name);
-      if (curval) {
-        output = curval;
-      }
-    }
-    apply(output);
-    diff[name] = output;
-  };
-
-  // Split on `=`
-  auto const eq_loc = envmod.find_first_of('=');
-  if (eq_loc == std::string::npos) {
-    cmSystemTools::Error(cmStrCat(
-      "Error: Missing `=` after the variable name in: ", envmod, '\n'));
-    return false;
-  }
-
-  auto const name = envmod.substr(0, eq_loc);
-
-  // Split value on `:`
-  auto const op_value_start = eq_loc + 1;
-  auto const colon_loc = envmod.find_first_of(':', op_value_start);
-  if (colon_loc == std::string::npos) {
-    cmSystemTools::Error(
-      cmStrCat("Error: Missing `:` after the operation in: ", envmod, '\n'));
-    return false;
-  }
-  auto const op = envmod.substr(op_value_start, colon_loc - op_value_start);
-
-  auto const value_start = colon_loc + 1;
-  auto const value = envmod.substr(value_start);
-
-  // Determine what to do with the operation.
-  if (op == "reset"_s) {
-    auto entry = diff.find(name);
-    if (entry != diff.end()) {
-      diff.erase(entry);
-    }
-  } else if (op == "set"_s) {
-    diff[name] = value;
-  } else if (op == "unset"_s) {
-    diff[name] = cm::nullopt;
-  } else if (op == "string_append"_s) {
-    apply_diff(name, [&value](std::string& output) { output += value; });
-  } else if (op == "string_prepend"_s) {
-    apply_diff(name,
-               [&value](std::string& output) { output.insert(0, value); });
-  } else if (op == "path_list_append"_s) {
-    apply_diff(name, [&value, path_sep](std::string& output) {
-      if (!output.empty()) {
-        output += path_sep;
-      }
-      output += value;
-    });
-  } else if (op == "path_list_prepend"_s) {
-    apply_diff(name, [&value, path_sep](std::string& output) {
-      if (!output.empty()) {
-        output.insert(output.begin(), path_sep);
-      }
-      output.insert(0, value);
-    });
-  } else if (op == "cmake_list_append"_s) {
-    apply_diff(name, [&value](std::string& output) {
-      if (!output.empty()) {
-        output += ';';
-      }
-      output += value;
-    });
-  } else if (op == "cmake_list_prepend"_s) {
-    apply_diff(name, [&value](std::string& output) {
-      if (!output.empty()) {
-        output.insert(output.begin(), ';');
-      }
-      output.insert(0, value);
-    });
-  } else {
-    cmSystemTools::Error(cmStrCat(
-      "Error: Unrecognized environment manipulation argument: ", op, '\n'));
-    return false;
-  }
-
-  return true;
-}
-
-void cmSystemTools::EnvDiff::ApplyToCurrentEnv(std::ostringstream* measurement)
-{
-  for (auto const& env_apply : diff) {
-    if (env_apply.second) {
-      auto const env_update =
-        cmStrCat(env_apply.first, '=', *env_apply.second);
-      cmSystemTools::PutEnv(env_update);
-      if (measurement) {
-        *measurement << env_update << std::endl;
-      }
-    } else {
-      cmSystemTools::UnsetEnv(env_apply.first.c_str());
-      if (measurement) {
-        // Signify that this variable is being actively unset
-        *measurement << '#' << env_apply.first << "=\n";
-      }
-    }
-  }
 }
 
 cmSystemTools::SaveRestoreEnvironment::SaveRestoreEnvironment()
@@ -2280,7 +2144,9 @@ cmSystemTools::SaveRestoreEnvironment::~SaveRestoreEnvironment()
   }
 
   // Then put back each entry from the original environment:
-  cmSystemTools::AppendEnv(this->Env);
+  for (std::string const& var : this->Env) {
+    cmSystemTools::PutEnv(var);
+  }
 }
 #endif
 
@@ -2359,13 +2225,11 @@ bool cmSystemTools::IsPathToMacOSSharedLibrary(std::string const& path)
           cmHasLiteralSuffix(path, ".dylib"));
 }
 
-bool cmSystemTools::CreateTar(std::string const& arFileName,
-                              std::vector<std::string> const& files,
-                              std::string const& workingDirectory,
-                              cmTarCompression compressType, bool verbose,
-                              std::string const& mtime,
-                              std::string const& format, int compressionLevel,
-                              int numThreads)
+bool cmSystemTools::CreateTar(
+  std::string const& arFileName, std::vector<std::string> const& files,
+  std::string const& workingDirectory, cmTarCompression compressType,
+  std::string const& encoding, bool verbose, std::string const& mtime,
+  std::string const& format, int compressionLevel, int numThreads)
 {
 #if !defined(CMAKE_BOOTSTRAP)
   cmWorkingDirectory workdir(cmSystemTools::GetLogicalWorkingDirectory());
@@ -2416,7 +2280,7 @@ bool cmSystemTools::CreateTar(std::string const& arFileName,
       break;
   }
 
-  cmArchiveWrite a(fout, compress, format.empty() ? "paxr" : format,
+  cmArchiveWrite a(fout, compress, format.empty() ? "paxr" : format, encoding,
                    compressionLevel, numThreads);
 
   if (!a.Open()) {
@@ -2440,6 +2304,7 @@ bool cmSystemTools::CreateTar(std::string const& arFileName,
 #else
   (void)arFileName;
   (void)files;
+  (void)encoding;
   (void)verbose;
   return false;
 #endif
@@ -2619,15 +2484,16 @@ bool copy_data(struct archive* ar, struct archive* aw)
 }
 
 bool extract_tar(std::string const& arFileName,
-                 std::vector<std::string> const& files, bool verbose,
+                 std::vector<std::string> const& files,
+                 std::string const& encoding, bool verbose,
                  cmSystemTools::cmTarExtractTimestamps extractTimestamps,
                  bool extract)
 {
   struct archive* a = archive_read_new();
   struct archive* ext = archive_write_disk_new();
   if (extract) {
-    int flags = ARCHIVE_EXTRACT_SECURE_NODOTDOT |
-      ARCHIVE_EXTRACT_SECURE_NOABSOLUTEPATHS | ARCHIVE_EXTRACT_SECURE_SYMLINKS;
+    int flags =
+      ARCHIVE_EXTRACT_SECURE_NODOTDOT | ARCHIVE_EXTRACT_SECURE_NOABSOLUTEPATHS;
     if (extractTimestamps == cmSystemTools::cmTarExtractTimestamps::Yes) {
       flags |= ARCHIVE_EXTRACT_TIME;
     }
@@ -2640,6 +2506,15 @@ bool extract_tar(std::string const& arFileName,
   }
   archive_read_support_filter_all(a);
   archive_read_support_format_all(a);
+
+  if (encoding != "OEM") {
+    if (archive_read_set_options(
+          a, cmStrCat("hdrcharset=", encoding).c_str()) != ARCHIVE_OK) {
+      cmSystemTools::Error(
+        cmStrCat("Cannot set archive encoding: ", encoding));
+      return false;
+    }
+  }
   struct archive_entry* entry;
 
   struct archive* matching = archive_match_new();
@@ -2749,14 +2624,16 @@ bool extract_tar(std::string const& arFileName,
 bool cmSystemTools::ExtractTar(std::string const& arFileName,
                                std::vector<std::string> const& files,
                                cmTarExtractTimestamps extractTimestamps,
-                               bool verbose)
+                               std::string const& encoding, bool verbose)
 {
 #if !defined(CMAKE_BOOTSTRAP)
-  return extract_tar(arFileName, files, verbose, extractTimestamps, true);
+  return extract_tar(arFileName, files, encoding, verbose, extractTimestamps,
+                     true);
 #else
   (void)arFileName;
   (void)files;
   (void)extractTimestamps;
+  (void)encoding;
   (void)verbose;
   return false;
 #endif
@@ -2764,14 +2641,15 @@ bool cmSystemTools::ExtractTar(std::string const& arFileName,
 
 bool cmSystemTools::ListTar(std::string const& arFileName,
                             std::vector<std::string> const& files,
-                            bool verbose)
+                            std::string const& encoding, bool verbose)
 {
 #if !defined(CMAKE_BOOTSTRAP)
-  return extract_tar(arFileName, files, verbose, cmTarExtractTimestamps::Yes,
-                     false);
+  return extract_tar(arFileName, files, encoding, verbose,
+                     cmTarExtractTimestamps::Yes, false);
 #else
   (void)arFileName;
   (void)files;
+  (void)encoding;
   (void)verbose;
   return false;
 #endif

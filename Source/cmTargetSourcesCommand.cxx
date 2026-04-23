@@ -11,6 +11,7 @@
 
 #include "cmArgumentParser.h"
 #include "cmArgumentParserTypes.h"
+#include "cmDiagnostics.h"
 #include "cmFileSet.h"
 #include "cmFileSetMetadata.h"
 #include "cmGeneratorExpression.h"
@@ -186,7 +187,7 @@ std::vector<std::string> TargetSourcesImpl::ConvertToAbsoluteContent(
       e << "A private source from a directory other than that of target \""
         << tgt->GetName() << "\" has a relative path.";
     }
-    this->Makefile->IssueMessage(MessageType::AUTHOR_WARNING, e.str());
+    this->Makefile->IssueDiagnostic(cmDiagnostics::CMD_AUTHOR, e.str());
   }
 
   return useAbsoluteContent ? absoluteContent : content;
@@ -228,10 +229,6 @@ bool TargetSourcesImpl::HandleOneFileSet(
     this->SetError("FILE_SETs may not be added to custom targets");
     return false;
   }
-  if (this->Target->IsFrameworkOnApple()) {
-    this->SetError("FILE_SETs may not be added to FRAMEWORK targets");
-    return false;
-  }
 
   if (!args.Type.empty() && !cm::FileSetMetadata::IsKnownType(args.Type)) {
     this->SetError(
@@ -269,6 +266,13 @@ bool TargetSourcesImpl::HandleOneFileSet(
   cm::FileSetMetadata::Visibility visibility =
     cm::FileSetMetadata::VisibilityFromName(scope, this->Makefile);
 
+  if (this->Target->IsFrameworkOnApple() &&
+      !cm::FileSetMetadata::IsFrameworkSupported(type)) {
+    this->SetError(cmStrCat(R"(FILE_SETs, of type ")", type,
+                            R"(", may not be added to FRAMEWORK targets)"));
+    return false;
+  }
+
   auto fileSet =
     this->Target->GetOrCreateFileSet(args.FileSet, type, visibility);
   if (fileSet.second) {
@@ -284,7 +288,7 @@ bool TargetSourcesImpl::HandleOneFileSet(
         this->SetError(
           cmStrCat(R"(File set TYPE ")", cm::FileSetMetadata::CXX_MODULES,
                    R"(" may not have "PUBLIC" )"
-                   R"(or "PRIVATE" visibility on INTERFACE libraries.)"));
+                   R"(or "PRIVATE" scope on INTERFACE libraries.)"));
         return false;
       }
     }
@@ -297,9 +301,19 @@ bool TargetSourcesImpl::HandleOneFileSet(
       if (type == cm::FileSetMetadata::CXX_MODULES) {
         this->SetError(cmStrCat(R"(File set TYPE ")",
                                 cm::FileSetMetadata::CXX_MODULES,
-                                R"(" may not have "INTERFACE" visibility)"));
+                                R"(" may not have "INTERFACE" scope)"));
         return false;
       }
+    }
+
+    if (cm::FileSetMetadata::VisibilityIsForSelf(visibility) &&
+        this->Target->GetType() == cmStateEnums::INTERFACE_LIBRARY &&
+        type == cm::FileSetMetadata::SOURCES) {
+      this->SetError(
+        cmStrCat(R"(File set TYPE ")", cm::FileSetMetadata::SOURCES,
+                 R"(" may not have "PUBLIC" )"
+                 R"(or "PRIVATE" scope on INTERFACE libraries.)"));
+      return false;
     }
 
     if (args.BaseDirs.empty()) {

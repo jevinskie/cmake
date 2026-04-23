@@ -95,6 +95,9 @@ set(CMakePresetsTest_NO_CONFIGURE 1)
 set(CMakePresetsTest_FILE "${RunCMake_SOURCE_DIR}/Good.json.in")
 run_cmake_test_presets(ListPresets "" "" "x" "--list-presets")
 
+run_cmake_command(PresetsNoArg-test ${CMAKE_CTEST_COMMAND} "--preset")
+run_cmake_command(PresetsNoArgEq-test ${CMAKE_CTEST_COMMAND} "--preset=")
+
 set(CMakePresetsTest_FILE "${RunCMake_SOURCE_DIR}/Condition.json.in")
 run_cmake_test_presets(ConditionListPresets "" "" "x" "--list-presets")
 unset(CMakePresetsTest_NO_CONFIGURE)
@@ -113,8 +116,13 @@ run_cmake_test_presets(TestOutputTruncationUnsupported "" "" "x")
 run_cmake_test_presets(OutputJUnitUnsupported "" "" "x")
 run_cmake_test_presets(InvalidJobs "" "" "x")
 run_cmake_test_presets(JobsProcUnsupported "" "" "x")
+run_cmake_test_presets(PassthroughUnsupported "" "" "x")
 set(CMakePresets_SCHEMA_EXPECTED_RESULT 0)
 run_cmake_test_presets(ConfigurePresetUnreachable "" "" "x")
 set(CMakePresetsTest_NO_CONFIGURE 0)
+
+run_cmake_test_presets(Passthrough "default" "" "basic;inherit;execOnly")
+run_cmake_test_presets(PassthroughCombined "default" "" "combined" "--" "--cli-arg")
+set(CMakePresetsTest_NO_CONFIGURE 1)
 
 set(CMakePresetsTest_NO_BUILD 0)
