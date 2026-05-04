@@ -19,6 +19,7 @@
 
 #include "cmsys/Encoding.hxx"
 
+#include "cmCMakePresetsArgs.h"
 #include "cmCMakePresetsGraph.h"
 #include "cmCPackGenerator.h"
 #include "cmCPackGeneratorFactory.h"
@@ -46,7 +47,7 @@ cmDocumentationEntry const cmDocumentationName = {
 
 cmDocumentationEntry const cmDocumentationUsage = { {}, "  cpack [options]" };
 
-cmDocumentationEntry const cmDocumentationOptions[14] = {
+cmDocumentationEntry const cmDocumentationOptions[] = {
   { "-G <generators>", "Override/define CPACK_GENERATOR" },
   { "-C <Configurations>", "Specify the project configuration(s)" },
   { "-D <var>=<value>", "Set a CPack variable." },
@@ -60,6 +61,7 @@ cmDocumentationEntry const cmDocumentationOptions[14] = {
   { "-B <packageDirectory>", "Override/define CPACK_PACKAGE_DIRECTORY" },
   { "--vendor <vendorName>", "Override/define CPACK_PACKAGE_VENDOR" },
   { "--preset", "Read arguments from a package preset" },
+  { "--presets-file", "Load package presets from the given file" },
   { "--list-presets", "List available package presets" }
 };
 
@@ -130,8 +132,7 @@ int main(int argc, char const* const* argv)
   std::string cpackProjectVendor;
   std::string cpackConfigFile;
 
-  std::string preset;
-  bool listPresets = false;
+  cmCMakePresetsArgs presetsArgs;
 
   std::map<std::string, std::string> definitions;
 
@@ -159,6 +160,12 @@ int main(int argc, char const* const* argv)
                                     cmMakefile*) -> bool {
     state->SetTrace(true);
     state->SetTraceExpand(true);
+    return true;
+  };
+
+  auto const presetFileLambda = [&presetsArgs](std::string const& value,
+                                               cmake*, cmMakefile*) -> bool {
+    presetsArgs.PresetsFile = cmSystemTools::ToNormalizedPathOnDisk(value);
     return true;
   };
 
@@ -201,9 +208,11 @@ int main(int argc, char const* const* argv)
                      CommandArgument::setToValue(cpackProjectVendor) },
     CommandArgument{ "--preset", "No preset specified for --preset",
                      CommandArgument::Values::One,
-                     CommandArgument::setToValue(preset) },
+                     CommandArgument::setToValue(presetsArgs.PresetName) },
     CommandArgument{ "--list-presets", CommandArgument::Values::Zero,
-                     CommandArgument::setToTrue(listPresets) },
+                     CommandArgument::setToTrue(presetsArgs.ListPresets) },
+    CommandArgument{ "--presets-file", "No file specified for --presets-file",
+                     CommandArgument::Values::One, presetFileLambda },
     CommandArgument{ "-D", CommandArgument::Values::One,
                      CommandArgument::RequiresSeparator::No,
                      [&log, &definitions](std::string const& arg, cmake*,
@@ -249,7 +258,7 @@ int main(int argc, char const* const* argv)
   generators.SetLogger(&log);
 
   // Set up presets
-  if (!preset.empty() || listPresets) {
+  if (presetsArgs.HasPresetsArg()) {
     auto const workingDirectory = cmSystemTools::GetLogicalWorkingDirectory();
 
     auto const presetGeneratorsPresent =
@@ -262,7 +271,8 @@ int main(int argc, char const* const* argv)
       };
 
     cmCMakePresetsGraph presetsGraph;
-    auto result = presetsGraph.ReadProjectPresets(workingDirectory);
+    auto result = presetsGraph.ReadProjectPresets(workingDirectory,
+                                                  presetsArgs.PresetsFile);
     if (result != true) {
       cmCPack_Log(&log, cmCPackLog::LOG_ERROR,
                   "Could not read presets from "
@@ -271,13 +281,13 @@ int main(int argc, char const* const* argv)
       return 1;
     }
 
-    if (listPresets) {
+    if (presetsArgs.ListPresets) {
       presetsGraph.PrintPackagePresetList(presetGeneratorsPresent);
       return 0;
     }
 
-    auto resolveResult =
-      presetsGraph.ResolvePreset(preset, presetsGraph.PackagePresets);
+    auto resolveResult = presetsGraph.ResolvePreset(
+      presetsArgs.PresetName, presetsGraph.PackagePresets);
     auto resolveError = cmCMakePresetsGraph::FormatPresetError<
       cmCMakePresetsGraph::PackagePreset>(resolveResult.StatusCode,
                                           resolveResult.ErrorPresetName,

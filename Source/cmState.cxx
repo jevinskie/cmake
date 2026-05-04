@@ -414,7 +414,10 @@ void cmState::AddBuiltinCommand(std::string const& name, Command command)
 {
   assert(name == cmSystemTools::LowerCase(name));
   assert(this->BuiltinCommands.find(name) == this->BuiltinCommands.end());
-  this->BuiltinCommands.emplace(name, std::move(command));
+  this->BuiltinCommands.emplace(
+    name,
+    CommandDescriptor{ cmStateEnums::CommandType::Function,
+                       std::move(command) });
 }
 
 static bool InvokeBuiltinCommand(cmState::BuiltinCommand command,
@@ -522,8 +525,31 @@ void cmState::AddUnexpectedFlowControlCommand(std::string const& name,
   this->AddUnexpectedCommand(name, error);
 }
 
-bool cmState::AddScriptedCommand(std::string const& name, BT<Command> command,
-                                 cmMakefile& mf)
+cmState::CommandDescriptor::CommandDescriptor(CommandType type,
+                                              Command command)
+  : Type(type)
+  , Script(std::move(command))
+{
+}
+cmState::CommandDescriptor::CommandDescriptor(
+  CommandDescriptor&& descriptor) noexcept
+  : Type(descriptor.Type)
+  , Script(std::move(descriptor.Script))
+{
+}
+
+cmState::CommandDescriptor& cmState::CommandDescriptor::operator=(
+  CommandDescriptor&& descriptor) noexcept
+{
+  this->Type = descriptor.Type;
+  this->Script = std::move(descriptor.Script);
+
+  return *this;
+}
+
+bool cmState::AddScriptedCommand(std::string const& name,
+                                 cmStateEnums::CommandType type,
+                                 BT<Command> command, cmMakefile& mf)
 {
   std::string sName = cmSystemTools::LowerCase(name);
 
@@ -538,30 +564,60 @@ bool cmState::AddScriptedCommand(std::string const& name, BT<Command> command,
   }
 
   // if the command already exists, give a new name to the old command.
-  if (Command oldCmd = this->GetCommandByExactName(sName)) {
-    this->ScriptedCommands["_" + sName] = oldCmd;
+  if (CommandDescriptor const* oldCmd =
+        this->GetCommandDescriptorByExactName(sName)) {
+    this->ScriptedCommands["_" + sName] = *oldCmd;
   }
 
-  this->ScriptedCommands[sName] = std::move(command.Value);
+  this->ScriptedCommands[sName] =
+    CommandDescriptor{ type, std::move(command.Value) };
   return true;
+}
+
+cmState::CommandDescriptor const* cmState::GetCommandDescriptorByExactName(
+  std::string const& name) const
+{
+  auto pos = this->ScriptedCommands.find(name);
+  if (pos != this->ScriptedCommands.end()) {
+    return &pos->second;
+  }
+  pos = this->BuiltinCommands.find(name);
+  if (pos != this->BuiltinCommands.end()) {
+    return &pos->second;
+  }
+  return nullptr;
 }
 
 cmState::Command cmState::GetCommand(std::string const& name) const
 {
   return this->GetCommandByExactName(cmSystemTools::LowerCase(name));
 }
+cm::optional<cmStateEnums::CommandType> cmState::GetCommandType(
+  std::string const& name) const
+{
+  return this->GetCommandTypeByExactName(cmSystemTools::LowerCase(name));
+}
 
 cmState::Command cmState::GetCommandByExactName(std::string const& name) const
 {
-  auto pos = this->ScriptedCommands.find(name);
-  if (pos != this->ScriptedCommands.end()) {
-    return pos->second;
+  CommandDescriptor const* descriptor =
+    this->GetCommandDescriptorByExactName(name);
+  if (!descriptor) {
+    return nullptr;
   }
-  pos = this->BuiltinCommands.find(name);
-  if (pos != this->BuiltinCommands.end()) {
-    return pos->second;
+
+  return descriptor->Script;
+}
+cm::optional<cmStateEnums::CommandType> cmState::GetCommandTypeByExactName(
+  std::string const& name) const
+{
+  CommandDescriptor const* descriptor =
+    this->GetCommandDescriptorByExactName(name);
+  if (!descriptor) {
+    return cm::nullopt;
   }
-  return nullptr;
+
+  return descriptor->Type;
 }
 
 std::vector<std::string> cmState::GetCommandNames() const

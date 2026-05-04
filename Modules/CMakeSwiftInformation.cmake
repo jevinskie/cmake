@@ -59,6 +59,7 @@ set(CMAKE_Swift_RESPONSE_FILE_LINK_FLAG @)
 set(CMAKE_Swift_RESPONSE_FILE_FLAG @)
 set(CMAKE_Swift_COMPILE_OPTIONS_COLOR_DIAGNOSTICS -color-diagnostics)
 set(CMAKE_Swift_COMPILE_OPTIONS_COLOR_DIAGNOSTICS_OFF -no-color-diagnostics)
+set(CMAKE_Swift_PACKAGE_NAME_FLAG -package-name)
 
 set(CMAKE_Swift_LINKER_PREFERENCE 50)
 set(CMAKE_Swift_LINKER_PREFERENCE_PROPAGATES 1)
@@ -122,6 +123,10 @@ if(CMAKE_Swift_COMPILATION_MODE_DEFAULT)
     # for normal builds. For wholemodule builds, CMake appends the appropriate
     # flags.
     set(CMAKE_Swift_COMPILE_OBJECT "<CMAKE_Swift_COMPILER> ${CMAKE_Swift_PARALLEL_FLAGS} -c <DEFINES> <FLAGS> <INCLUDES> <SOURCE>")
+  endif()
+
+  if(NOT CMAKE_Swift_EMIT_MODULE)
+    set(CMAKE_Swift_EMIT_MODULE "<CMAKE_Swift_COMPILER> ${CMAKE_Swift_PARALLEL_FLAGS} -emit-module <DEFINES> <FLAGS> <INCLUDES> <SOURCE>")
   endif()
 
   if(NOT CMAKE_Swift_CREATE_SHARED_LIBRARY)

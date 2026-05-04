@@ -32,6 +32,15 @@
   This may not be set to ``false``
   if ``errors.dev`` is set to ``true``.
 
+.. _`CMakePresets.configurePresets.warnings.installAbsoluteDestination`:
+
+``installAbsoluteDestination``
+  .. presets-versionadded:: 12
+
+  An optional boolean. Equivalent to passing :option:`-Winstall-absolute-destination <cmake -W>` or
+  :option:`-Wno-install-absolute-destination <cmake -Wno->` on the command line.
+  This may not be set to ``false`` if ``errors.installAbsoluteDestination`` is set to ``true``.
+
 .. _`CMakePresets.configurePresets.warnings.uninitialized`:
 
 ``uninitialized``

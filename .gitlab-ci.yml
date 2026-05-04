@@ -138,6 +138,18 @@ l:tidy-fedora43:
         - .cmake_cdash_artifacts
         - .rules
 
+l:pvs-studio-fedora43:
+    extends:
+        - .fedora43_pvs_studio
+        - .cmake_build_linux
+        - .linux_x86_64_tags
+        - .cmake_cdash_artifacts
+        - .rules
+    variables:
+        CMAKE_CI_JOB_CONTINUOUS: "true"
+        CMAKE_CI_JOB_NIGHTLY: "true"
+        CMAKE_CI_JOB_NO_MR: "true"
+
 l:sphinx-fedora43:
     extends:
         - .fedora43_sphinx

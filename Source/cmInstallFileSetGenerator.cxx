@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <map>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -21,6 +22,7 @@
 #include "cmList.h"
 #include "cmListFileCache.h"
 #include "cmLocalGenerator.h"
+#include "cmMakefile.h"
 #include "cmMessageType.h"
 #include "cmStringAlgorithms.h"
 #include "cmTarget.h"
@@ -91,11 +93,32 @@ bool cmInstallFileSetGenerator::Compute(cmLocalGenerator* lg)
   return true;
 }
 
+std::string cmInstallFileSetGenerator::GetDestination() const
+{
+  cmInstallGenerator::CheckAbsoluteDestination(
+    this->Destination, this->LocalGenerator, this->Backtrace);
+  return this->Destination;
+}
+
 std::string cmInstallFileSetGenerator::GetDestination(
   std::string const& config) const
 {
-  return cmGeneratorExpression::Evaluate(this->Destination,
-                                         this->LocalGenerator, config);
+  return this->GetDestination(this->Target, config).UnescapedDestination;
+}
+
+cmInstallFileSetGenerator::DestinationContext
+cmInstallFileSetGenerator::GetDestination(cmGeneratorTarget* gte,
+                                          std::string const& config) const
+{
+  cmGeneratorExpression ge(*gte->Makefile->GetCMakeInstance());
+  std::unique_ptr<cmCompiledGeneratorExpression> cge =
+    ge.Parse(this->Destination);
+
+  std::string const dest = cge->Evaluate(gte->LocalGenerator, config, gte);
+  cmInstallGenerator::CheckAbsoluteDestination(dest, gte->LocalGenerator,
+                                               this->Backtrace);
+
+  return { dest, cge->GetHadContextSensitiveCondition() };
 }
 
 void cmInstallFileSetGenerator::GenerateScriptForConfig(

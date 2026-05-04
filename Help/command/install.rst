@@ -60,6 +60,10 @@ signatures that specify them.  The common options are:
   ``<dir>`` should be a relative path.  An absolute path is allowed,
   but not recommended.
 
+  .. versionadded:: 4.4
+    The :diagnostic:`CMD_INSTALL_ABSOLUTE_DESTINATION` diagnostic can be
+    enabled to warn or error out when an absolute destination is provided.
+
   When a relative path is given, it is interpreted relative to the value
   of the :variable:`CMAKE_INSTALL_PREFIX` variable.
   The prefix can be relocated at install time using the ``DESTDIR``

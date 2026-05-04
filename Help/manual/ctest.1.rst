@@ -69,20 +69,41 @@ The options for running tests are:
 
 .. option:: --preset <preset>, --preset=<preset>
 
- Use a test preset to specify test options. The project binary directory
- is inferred from the ``configurePreset`` key. The current working directory
- must contain CMake preset files.
- See :manual:`preset <cmake-presets(7)>` for more details.
+ Use a test :manual:`preset <cmake-presets(7)>` to specify test options. The
+ project binary directory is inferred from the
+ :preset:`testPresets.configurePreset` key.
 
  .. versionadded:: 3.30
-   The ``--test-dir`` option may optionally be specified with a different
-   binary directory than the one specified by the ``configurePreset`` key
-   of the test preset.
+   The :ctest-option:`--test-dir` option may be specified with a different
+   binary directory than the one specified by the
+   :preset:`testPresets.configurePreset` key.
+
+ .. versionchanged:: 4.4
+   If :ctest-option:`--presets-file` is specified, neither of
+   ``CMakePresets.json`` nor ``CMakeUserPresets.json`` are required to be
+   present.  Otherwise, they are required to be present in the top level
+    source directory.  In prior versions, this was strictly required.
+
+.. option:: --presets-file <file>, --presets-file=<file>
+
+ .. versionadded:: 4.4
+
+ Reads :manual:`presets <cmake-presets(7)>` from the given ``<file>``. The
+ specified path may be absolute or relative to the current working directory.
+ If ``--presets-file`` is given, presets defined in ``CMakePresets.json`` and
+ ``CMakeUserPresets.json`` will be ignored.
 
 .. option:: --list-presets
 
  Lists the available test presets. The current working directory must contain
- CMake preset files.
+ ``CMakePresets.json`` and/or ``CMakeUserPresets.json``.
+
+ .. versionchanged:: 4.4
+   If :ctest-option:`--presets-file` is specified, neither of
+   ``CMakePresets.json`` nor ``CMakeUserPresets.json`` are required to be
+   present, and only presets defined in the given ``<file>`` will be listed.
+   Otherwise, they are required to be present in the top level source
+   directory.  In prior versions, this was strictly required.
 
 .. option:: -C <cfg>, --build-config <cfg>
 
@@ -1362,7 +1383,40 @@ Configuration settings include:
   * `CTest Script`_ variable: :variable:`CTEST_TEST_TIMEOUT`
   * :module:`CTest` module variable: ``DART_TESTING_TIMEOUT``
 
+.. _`ctest-CoverageTool`:
+
+``CoverageTool``
+  .. versionadded:: 4.4
+
+  Specify the tool used for collecting coverage during the running
+  of the tests.  The tool may be one of:
+
+  ``LLVM-COV``
+    This value indicates the usage of Clang's source-based code coverage
+    which "operates on AST and preprocessor information directly".
+    For more information, see the `Clang Source-based Code Coverage`_
+    documentation.
+
+    CTest will run each test with the ``LLVM_PROFILE_FILE`` environment
+    variable set to ``<directory>/<test-name>_<process-id>.profraw``,
+    where ``<directory>`` is the absolute path to the directory where
+    the ``CTestTestfile.cmake`` that describes the test is located.
+    This configures Clang Source-based Code Coverage to uniquely identify
+    the coverage information gathered by each test without any collisions.
+
+    Any existing ``<directory>/<test-name>_*.profraw`` files for a test
+    are removed before running the test.  Any existing ``LLVM_PROFILE_FILE``
+    environment variable is ignored.
+
+  If no value is specified, no work is done and nothing is added to the
+  environment.
+
+  * `CTest Script`_ variable: :variable:`CTEST_TEST_COVERAGE_TOOL`
+  * :module:`CTest` module variable: :variable:`CTEST_TEST_COVERAGE_TOOL`
+
 To report extra test values to CDash, see :ref:`Additional Test Measurements`.
+
+.. _`Clang Source-based Code Coverage`: https://clang.llvm.org/docs/SourceBasedCodeCoverage.html
 
 .. _`CTest Coverage Step`:
 

@@ -9,8 +9,9 @@
 
 #include "cmInstallGenerator.h"
 
-class cmGeneratorTarget;
+class cmExportInstallCMakeConfigGenerator;
 class cmGeneratorFileSet;
+class cmGeneratorTarget;
 class cmListFileBacktrace;
 class cmLocalGenerator;
 
@@ -28,14 +29,23 @@ public:
 
   bool Compute(cmLocalGenerator* lg) override;
 
+  struct DestinationContext
+  {
+    std::string UnescapedDestination;
+    bool HadContextSensitiveCondition;
+  };
   std::string GetDestination(std::string const& config) const;
-  std::string GetDestination() const { return this->Destination; }
+  DestinationContext GetDestination(cmGeneratorTarget* gt,
+                                    std::string const& config) const;
   bool GetOptional() const { return this->Optional; }
   std::string GetFileSetName() const { return this->FileSetName; }
   cmGeneratorFileSet const* GetFileSet() const { return this->FileSet; };
   cmGeneratorTarget* GetTarget() const { return this->Target; }
 
 protected:
+  friend cmExportInstallCMakeConfigGenerator;
+  std::string GetDestination() const;
+
   void GenerateScriptForConfig(std::ostream& os, std::string const& config,
                                Indent indent) override;
 

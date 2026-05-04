@@ -963,9 +963,10 @@ properties:
             An optional boolean specifying whether or not a preset should be
             hidden. If a preset is hidden, it cannot be used in the
             :cmake-build-option:`--preset` argument and does not have to have a
-            valid ``configurePreset``, even from inheritance. ``hidden``
-            presets are intended to be used as a base for other presets to
-            inherit via the ``inherits`` field.
+            valid :preset:`buildPresets.configurePreset`, even from
+            inheritance. ``hidden`` presets are intended to be used as a base
+            for other presets to inherit via the
+            :preset:`buildPresets.inherits` field.
         inherits: *preset-inherits
         condition: *condition
         vendor: *preset-vendor
@@ -1033,7 +1034,7 @@ properties:
             .. versionchanged:: 4.3
 
               This field does not accept negative integer values, regardless of
-              the version in the preset file.
+              the version in the presets file.
           minimum: 0
         targets:
           anyOf:
@@ -1181,9 +1182,10 @@ properties:
             An optional boolean specifying whether or not a preset should be
             hidden. If a preset is hidden, it cannot be used in the
             :ctest-option:`--preset` argument and does not have to have a valid
-            ``configurePreset``, even from inheritance. ``hidden`` presets are
-            intended to be used as a base for other presets to inherit via the
-            ``inherits`` field.
+            :preset:`testPresets.configurePreset`, even from
+            inheritance. ``hidden`` presets are intended to be used as a base
+            for other presets to inherit via the
+            :preset:`testPresets.inherits` field.
         inherits: *preset-inherits
         condition: *condition
         vendor: *preset-vendor
@@ -1629,7 +1631,7 @@ properties:
                 .. versionchanged:: 4.3
 
                   This field does not accept negative integer values,
-                  regardless of the version in the preset file.
+                  regardless of the version in the presets file.
               minimum: 0
             resourceSpecFile:
               type: string
@@ -1819,9 +1821,10 @@ properties:
             An optional boolean specifying whether or not a preset should be
             hidden. If a preset is hidden, it cannot be used in the
             :cpack-option:`--preset` argument and does not have to have a valid
-            ``configurePreset``, even from inheritance. ``hidden`` presets are
-            intended to be used as a base for other presets to inherit via the
-            ``inherits`` field.
+            :preset:`packagePresets.configurePreset`, even from
+            inheritance. ``hidden`` presets are intended to be used as a base
+            for other presets to inherit via the
+            :preset:`packagePresets.inherits` field.
         inherits: *preset-inherits
         condition: *condition
         vendor: *preset-vendor

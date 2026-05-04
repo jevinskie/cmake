@@ -56,6 +56,9 @@ public:
   /** Get the install destination as it should appear in the
       installation script.  */
   static std::string ConvertToAbsoluteDestination(std::string const& dest);
+  static void CheckAbsoluteDestination(std::string const& dest,
+                                       cmLocalGenerator* lg,
+                                       cmListFileBacktrace const& bt);
 
   /** Test if this generator installs something for a given configuration.  */
   bool InstallsForConfig(std::string const& config);

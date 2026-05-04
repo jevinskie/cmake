@@ -17,9 +17,10 @@
   An optional boolean specifying whether or not a preset should be
   hidden. If a preset is hidden, it cannot be used in the
   :ctest-option:`--preset` argument and does not have to have a valid
-  ``configurePreset``, even from inheritance. ``hidden`` presets are
-  intended to be used as a base for other presets to inherit via the
-  ``inherits`` field.
+  :preset:`testPresets.configurePreset`, even from
+  inheritance. ``hidden`` presets are intended to be used as a base
+  for other presets to inherit via the
+  :preset:`testPresets.inherits` field.
 
 .. _`CMakePresets.testPresets.inherits`:
 

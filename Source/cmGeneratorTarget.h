@@ -628,6 +628,8 @@ public:
 
   void AddRustTargetFlags(std::string& flags) const;
 
+  void AddSwiftTargetFlags(std::string& flags) const;
+
   std::string GetFeatureSpecificLinkRuleVariable(
     std::string const& var, std::string const& lang,
     std::string const& config) const;
@@ -637,6 +639,9 @@ public:
                                     std::string const& config) const;
 
   std::string GetClangTidyExportFixesDirectory(std::string const& lang) const;
+
+  /** Return the Swift package name for this target. */
+  std::string GetSwiftPackageName() const;
 
   /** Return the swift module name for this target. */
   std::string GetSwiftModuleName() const;

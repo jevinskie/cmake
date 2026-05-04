@@ -72,6 +72,15 @@ run_ctest(IgnoreColor)
 unset(RunCMake_BUILD_COMMAND)
 
 set(RunCMake_USE_CUSTOM_BUILD_COMMAND FALSE)
+set(RunCMake_TEST_SOURCE_DIR "${RunCMake_BINARY_DIR}/BuildPreset")
+configure_file(
+  "${RunCMake_SOURCE_DIR}/CMakePresets.json.in"
+  "${RunCMake_TEST_SOURCE_DIR}/CMakePresets.json"
+  @ONLY)
+run_ctest_build(BuildPreset PRESET my-build-preset)
+unset(RunCMake_TEST_SOURCE_DIR)
+
+set(RunCMake_USE_CUSTOM_BUILD_COMMAND FALSE)
 if(RunCMake_GENERATOR MATCHES "Ninja")
   function(run_NinjaLauncherSingleBuildFailure)
     set(LANG C)

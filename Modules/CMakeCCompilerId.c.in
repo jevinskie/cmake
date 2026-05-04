@@ -74,6 +74,8 @@ const char* info_language_extensions_default = "INFO" ":" "extensions_default["
      defined(__TI_COMPILER_VERSION__) || defined(__RENESAS__)) &&             \
   !defined(__STRICT_ANSI__)
   "ON"
+#elif defined(__POCC__) && defined(__POCC__EXTENSIONS)
+  "ON"
 #else
   "OFF"
 #endif

@@ -479,8 +479,11 @@ void cmInstallTargetGenerator::GetInstallObjectNames(
 std::string cmInstallTargetGenerator::GetDestination(
   std::string const& config) const
 {
-  return cmGeneratorExpression::Evaluate(
-    this->Destination, this->Target->GetLocalGenerator(), config);
+  cmLocalGenerator* lg = this->Target->GetLocalGenerator();
+  std::string dest =
+    cmGeneratorExpression::Evaluate(this->Destination, lg, config);
+  cmInstallGenerator::CheckAbsoluteDestination(dest, lg, this->Backtrace);
+  return dest;
 }
 
 std::string cmInstallTargetGenerator::GetInstallFilename(

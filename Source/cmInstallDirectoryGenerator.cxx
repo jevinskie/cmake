@@ -118,6 +118,9 @@ void cmInstallDirectoryGenerator::AddDirectoryInstallRule(
 std::string cmInstallDirectoryGenerator::GetDestination(
   std::string const& config) const
 {
-  return cmGeneratorExpression::Evaluate(this->Destination,
-                                         this->LocalGenerator, config);
+  std::string dest = cmGeneratorExpression::Evaluate(
+    this->Destination, this->LocalGenerator, config);
+  cmInstallGenerator::CheckAbsoluteDestination(dest, this->LocalGenerator,
+                                               this->Backtrace);
+  return dest;
 }

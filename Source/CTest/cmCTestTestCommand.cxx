@@ -96,6 +96,9 @@ std::unique_ptr<cmCTestGenericHandler> cmCTestTestCommand::InitializeHandler(
   if (!args.ResourceSpecFile.empty()) {
     handler->TestOptions.ResourceSpecFile = args.ResourceSpecFile;
   }
+  if (!args.CoverageTool.empty()) {
+    handler->TestOptions.CoverageTool = args.CoverageTool;
+  }
   if (!args.StopTime.empty()) {
     this->CTest->SetStopTime(args.StopTime);
   }

@@ -2723,6 +2723,15 @@ void cmGlobalXCodeGenerator::CreateBuildSettings(cmGeneratorTarget* gtgt,
           break;
       }
     }
+
+    // Add SWIFT_PACKAGE_NAME
+    if (this->XcodeVersion >= 150) {
+      std::string const packageName = gtgt->GetSwiftPackageName();
+      if (!packageName.empty()) {
+        buildSettings->AddAttribute("SWIFT_PACKAGE_NAME",
+                                    this->CreateString(packageName));
+      }
+    }
   }
 
   std::string extraLinkOptions;
@@ -4554,7 +4563,7 @@ bool cmGlobalXCodeGenerator::CreateGroups(
 
       auto addSourceToGroup = [this, &gtgt,
                                &generator](std::string const& source) {
-        cmSourceGroup* sourceGroup = generator->FindSourceGroup(source);
+        cmSourceGroup const* sourceGroup = generator->FindSourceGroup(source);
         cmXCodeObject* pbxgroup =
           this->CreateOrGetPBXGroup(gtgt.get(), sourceGroup);
         std::string key = GetGroupMapKeyFromPath(gtgt.get(), source);
@@ -4630,7 +4639,7 @@ cmXCodeObject* cmGlobalXCodeGenerator::CreatePBXGroup(cmXCodeObject* parent,
 }
 
 cmXCodeObject* cmGlobalXCodeGenerator::CreateOrGetPBXGroup(
-  cmGeneratorTarget* gtgt, cmSourceGroup* sg)
+  cmGeneratorTarget* gtgt, cmSourceGroup const* sg)
 {
   std::string s;
   std::string target;

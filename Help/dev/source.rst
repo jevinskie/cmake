@@ -287,10 +287,10 @@ These are:
 * ``<cmext/type_traits>``:
 
   * ``cm::is_pair``:
-   Checks if a type is a std::pair<> type.
+    Checks if a type is a std::pair<> type.
 
   * ``cm::is_tuple``:
-   Checks if a type is a std::tuple<> type.
+    Checks if a type is a std::tuple<> type.
 
   * ``cm::is_container``:
     Checks if a type is a container type.

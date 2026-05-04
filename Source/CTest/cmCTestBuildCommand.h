@@ -23,6 +23,7 @@ protected:
     std::string Flags;
     std::string ProjectName;
     std::string ParallelLevel;
+    std::string Preset;
   };
 
 private:

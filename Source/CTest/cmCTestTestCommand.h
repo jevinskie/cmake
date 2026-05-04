@@ -46,6 +46,7 @@ protected:
     std::string TestLoad;
     std::string ResourceSpecFile;
     std::string OutputJUnit;
+    std::string CoverageTool;
     bool StopOnFailure = false;
   };
 
@@ -74,6 +75,7 @@ protected:
       .Bind("TEST_LOAD"_s, &TestArguments::TestLoad)
       .Bind("RESOURCE_SPEC_FILE"_s, &TestArguments::ResourceSpecFile)
       .Bind("STOP_ON_FAILURE"_s, &TestArguments::StopOnFailure)
+      .Bind("COVERAGE_TOOL"_s, &TestArguments::CoverageTool)
       .Bind("OUTPUT_JUNIT"_s, &TestArguments::OutputJUnit);
   }
 

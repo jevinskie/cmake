@@ -147,12 +147,63 @@ if(RunCMake_GENERATOR MATCHES "Ninja")
   endblock()
 
   block()
+    set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/EmitModuleSeparately-build)
+    run_cmake(EmitModuleSeparately)
+    set(RunCMake_TEST_NO_CLEAN 1)
+    # -v: verbose to capture executed commands -n: dry-run to avoid actually compiling
+    run_cmake_command(EmitModuleSeparately-build ${CMAKE_COMMAND} --build . -- -vn)
+  endblock()
+
+  block()
+    set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/EmitModuleSeparatelyResponseFile-build)
+    run_cmake(EmitModuleSeparatelyResponseFile)
+    set(RunCMake_TEST_NO_CLEAN 1)
+    # -v: verbose to capture executed commands -n: dry-run to avoid actually compiling
+    run_cmake_command(EmitModuleSeparatelyResponseFile-build ${CMAKE_COMMAND} --build . -- -vn)
+  endblock()
+
+  block()
+    set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/EmitModuleSeparatelyDirectoryStyle-build)
+    run_cmake(EmitModuleSeparatelyDirectoryStyle)
+    set(RunCMake_TEST_NO_CLEAN 1)
+    # -v: verbose to capture executed commands -n: dry-run to avoid actually compiling
+    run_cmake_command(EmitModuleSeparatelyDirectoryStyle-build ${CMAKE_COMMAND} --build . -- -vn)
+  endblock()
+
+  block()
+    run_cmake(EmitModuleSeparatelyLinkDep)
+  endblock()
+
+  block()
+    run_cmake(EmitModuleSeparatelyLinkDepCustomPath)
+  endblock()
+
+  block()
+    set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/EmitModuleSeparatelyExistingModulePath-build)
+    run_cmake(EmitModuleSeparatelyExistingModulePath)
+    set(RunCMake_TEST_NO_CLEAN 1)
+    # -v: verbose to capture executed commands -n: dry-run to avoid actually compiling
+    run_cmake_command(EmitModuleSeparatelyExistingModulePath-build ${CMAKE_COMMAND} --build . -- -vn)
+  endblock()
+
+  block()
+    run_cmake(EmitModuleSeparatelyOrdering)
+  endblock()
+
+  block()
     if(CMAKE_SYSTEM_NAME MATCHES Windows)
       set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/ImportLibraryFlags-build)
       run_cmake(ImportLibraryFlags)
       set(RunCMake_TEST_NO_CLEAN 1)
       run_cmake_command(ImportLibraryFlags-check ${CMAKE_COMMAND} --build . -- -n -v)
     endif()
+  endblock()
+
+  block()
+    set(RunCMake_TEST_BINARY_DIR ${RunCMake_BINARY_DIR}/SwiftModuleNameHyphen-build)
+    run_cmake(SwiftModuleNameHyphen)
+    set(RunCMake_TEST_NO_CLEAN 1)
+    run_cmake_command(SwiftModuleNameHyphen-build ${CMAKE_COMMAND} --build . -- -vn)
   endblock()
 
   block()
@@ -165,4 +216,11 @@ if(RunCMake_GENERATOR MATCHES "Ninja")
   run_cmake(CMP0214-NEW)
   run_cmake(CMP0214-OLD)
   run_cmake(CMP0214-NEW-CMP0157-OLD)
+endif()
+
+if(NOT RunCMake_GENERATOR STREQUAL "Xcode" OR
+    (RunCMake_GENERATOR STREQUAL "Xcode" AND XCODE_VERSION VERSION_GREATER_EQUAL 15.0))
+  run_cmake(PackageName)
+  run_cmake(CMP0216-OLD)
+  run_cmake(CMP0216-NEW)
 endif()

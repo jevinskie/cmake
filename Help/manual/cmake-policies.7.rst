@@ -100,6 +100,9 @@ Policies Introduced by CMake 4.4
 .. toctree::
    :maxdepth: 1
 
+   CMP0217: The MACROS directory property does not exist anymore. </policy/CMP0217>
+   CMP0216: Swift targets have a default project name. </policy/CMP0216>
+   CMP0215: Ninja generators emit Swift modules separately from compilation. </policy/CMP0215>
    CMP0214: Honor CMAKE_EXE_LINKER_FLAGS for Swift executable targets. </policy/CMP0214>
    CMP0213: file(ARCHIVE_{CREATE,EXTRACT}) encode archive paths as UTF-8 by default. </policy/CMP0213>
    CMP0212: add_custom_command DEPENDS does not strip .exe suffixes. </policy/CMP0212>

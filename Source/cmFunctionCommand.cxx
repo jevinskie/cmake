@@ -19,6 +19,7 @@
 #include "cmPolicies.h"
 #include "cmRange.h"
 #include "cmState.h"
+#include "cmStateTypes.h"
 #include "cmStringAlgorithms.h"
 #include "cmSystemTools.h"
 
@@ -175,7 +176,7 @@ bool cmFunctionFunctionBlocker::Replay(
   mf.RecordPolicies(f.Policies);
   mf.RecordDiagnostics(f.Diagnostics);
   return mf.GetState()->AddScriptedCommand(
-    this->Args.front(),
+    this->Args.front(), cmStateEnums::CommandType::Function,
     BT<cmState::Command>(std::move(f),
                          mf.GetBacktrace().Push(this->GetStartingContext())),
     mf);

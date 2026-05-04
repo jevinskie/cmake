@@ -541,7 +541,8 @@ void QCMake::setUpEnvironment() const
 void QCMake::loadPresets()
 {
   auto result = this->CMakePresetsGraph.ReadProjectPresets(
-    this->SourceDirectory.toStdString(), true);
+    this->SourceDirectory.toStdString(), "",
+    cmCMakePresetsGraph::ReadOption::AllowNoFiles);
   if (!result) {
     emit this->presetLoadError(
       this->SourceDirectory,

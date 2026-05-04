@@ -44,6 +44,7 @@
 #include "cmcmd.h"
 
 #ifndef CMAKE_BOOTSTRAP
+#  include "cmCMakePresetsArgs.h"
 #  include "cmDocumentation.h"
 #endif
 
@@ -75,6 +76,8 @@ cmDocumentationEntry const cmDocumentationUsageNote = {
 
 cmDocumentationEntry const cmDocumentationOptions[] = {
   { "--preset <preset>,--preset=<preset>", "Specify a configure preset." },
+  { "--presets-file <file>,--presets-file=<file>",
+    "Specify the path to a presets file." },
   { "--list-presets[=<type>]", "List available presets." },
   { "--workflow [<options>]", "Run a workflow preset." },
   { "-E", "CMake command mode. Run \"cmake -E\" for a summary of commands." },
@@ -474,8 +477,7 @@ int do_build(int ac, char const* const* av)
   bool foundNonClean = false;
   PackageResolveMode resolveMode = PackageResolveMode::Default;
   buildArgs.verbose = cmSystemTools::HasEnv("VERBOSE");
-  std::string presetName;
-  bool listPresets = false;
+  cmCMakePresetsArgs presetsArgs;
 
   auto jLambda = extract_job_number_lambda_builder(buildArgs.binaryDir,
                                                    buildArgs.jobs, "-j");
@@ -516,6 +518,10 @@ int do_build(int ac, char const* const* av)
     buildArgs.verbose = true;
     return true;
   };
+  auto presetFileLambda = [&](std::string const& value) -> bool {
+    presetsArgs.PresetsFile = cmSystemTools::ToNormalizedPathOnDisk(value);
+    return true;
+  };
 
   using CommandArgument =
     cmCommandLineArgument<bool(std::string const& value)>;
@@ -523,9 +529,11 @@ int do_build(int ac, char const* const* av)
   std::vector<CommandArgument> arguments = {
     CommandArgument{ "--preset", "No preset specified for --preset",
                      CommandArgument::Values::One,
-                     CommandArgument::setToValue(presetName) },
+                     CommandArgument::setToValue(presetsArgs.PresetName) },
+    CommandArgument{ "--presets-file", "No file specified for --presets-file",
+                     CommandArgument::Values::One, presetFileLambda },
     CommandArgument{ "--list-presets", CommandArgument::Values::Zero,
-                     CommandArgument::setToTrue(listPresets) },
+                     CommandArgument::setToTrue(presetsArgs.ListPresets) },
     CommandArgument{ "-j", CommandArgument::Values::ZeroOrOne,
                      CommandArgument::RequiresSeparator::No, jLambda },
     CommandArgument{ "--parallel", CommandArgument::Values::ZeroOrOne,
@@ -622,7 +630,7 @@ int do_build(int ac, char const* const* av)
     }
   }
 
-  if (buildArgs.binaryDir.empty() && presetName.empty() && !listPresets) {
+  if (buildArgs.binaryDir.empty() && !presetsArgs.HasPresetsArg()) {
     /* clang-format off */
     std::cerr <<
       "Usage: cmake --build <dir>            "
@@ -633,6 +641,8 @@ int do_build(int ac, char const* const* av)
       "  <dir>          = Project binary directory to be built.\n"
       "  --preset <preset>, --preset=<preset>\n"
       "                 = Specify a build preset.\n"
+      "  --presets-file <file>, --presets-file=<file>\n"
+      "                 = Specify the path to a presets file.\n"
       "  --list-presets[=<type>]\n"
       "                 = List available build presets.\n"
       "  --parallel [<jobs>], -j [<jobs>]\n"
@@ -672,7 +682,7 @@ int do_build(int ac, char const* const* av)
   std::vector<std::string> cmd;
   cm::append(cmd, av, av + ac);
   return cm.Build(buildArgs, std::move(targets), std::move(nativeOptions),
-                  buildOptions, presetName, listPresets, cmd);
+                  buildOptions, presetsArgs, cmd);
 #endif
 }
 
@@ -980,11 +990,7 @@ int do_workflow(int ac, char const* const* av)
   std::cerr << "This cmake does not support --workflow\n";
   return -1;
 #else
-  using WorkflowListPresets = cmake::WorkflowListPresets;
-  using WorkflowFresh = cmake::WorkflowFresh;
-  std::string presetName;
-  auto listPresets = WorkflowListPresets::No;
-  auto fresh = WorkflowFresh::No;
+  cmCMakePresetsWorkflowArgs presetsArgs;
 
   using CommandArgument =
     cmCommandLineArgument<bool(std::string const& value)>;
@@ -992,17 +998,18 @@ int do_workflow(int ac, char const* const* av)
   std::vector<CommandArgument> arguments = {
     CommandArgument{ "--preset", "No preset specified for --preset",
                      CommandArgument::Values::One,
-                     CommandArgument::setToValue(presetName) },
+                     CommandArgument::setToValue(presetsArgs.PresetName) },
+    CommandArgument{ "--presets-file", "No file specified for --presets-file",
+                     CommandArgument::Values::One,
+                     [&presetsArgs](std::string const& value) -> bool {
+                       presetsArgs.PresetsFile =
+                         cmSystemTools::ToNormalizedPathOnDisk(value);
+                       return true;
+                     } },
     CommandArgument{ "--list-presets", CommandArgument::Values::Zero,
-                     [&listPresets](std::string const&) -> bool {
-                       listPresets = WorkflowListPresets::Yes;
-                       return true;
-                     } },
+                     CommandArgument::setToTrue(presetsArgs.ListPresets) },
     CommandArgument{ "--fresh", CommandArgument::Values::Zero,
-                     [&fresh](std::string const&) -> bool {
-                       fresh = WorkflowFresh::Yes;
-                       return true;
-                     } },
+                     CommandArgument::setToTrue(presetsArgs.Fresh) }
   };
 
   std::vector<std::string> inputArgs;
@@ -1029,23 +1036,23 @@ int do_workflow(int ac, char const* const* av)
     }
     if (!(matched && parsed)) {
       if (!matched) {
-        presetName.clear();
-        listPresets = WorkflowListPresets::No;
+        presetsArgs.Clear();
         std::cerr << "Unknown argument " << arg << std::endl;
       }
       break;
     }
   }
 
-  if (presetName.empty() && listPresets == WorkflowListPresets::No) {
+  if (!presetsArgs.HasPresetsArg()) {
     /* clang-format off */
     std::cerr <<
       "Usage: cmake --workflow <options>\n"
       "Options:\n"
-      "  --preset <preset> = Workflow preset to execute.\n"
-      "  --list-presets    = List available workflow presets.\n"
-      "  --fresh           = Configure a fresh build tree, removing any "
-                            "existing cache file.\n"
+      "  --preset <preset>     = Workflow preset to execute.\n"
+      "  --presets-file <file>  = Path to a presets file.\n"
+      "  --list-presets        = List available workflow presets.\n"
+      "  --fresh               = Configure a fresh build tree, removing any "
+                                "existing cache file.\n"
       ;
     /* clang-format on */
     return 1;
@@ -1060,7 +1067,7 @@ int do_workflow(int ac, char const* const* av)
     cmakemainProgressCallback(msg, prog, &cm);
   });
 
-  return cm.Workflow(presetName, listPresets, fresh);
+  return cm.Workflow(presetsArgs);
 #endif
 }
 

@@ -896,6 +896,13 @@ bool cmCMakePresetsGraph::ConfigurePreset::VisitPresetInherit(
   InheritMap(preset.Errors, parent.Errors);
   InheritOptionalValue(preset.WarnSystemVars, parent.WarnSystemVars);
   InheritMap(preset.CacheVariables, parent.CacheVariables);
+  InheritOptionalValue(preset.DebugOutput, parent.DebugOutput);
+  InheritOptionalValue(preset.DebugTryCompile, parent.DebugTryCompile);
+  InheritOptionalValue(preset.DebugFind, parent.DebugFind);
+  InheritOptionalValue(preset.TraceMode, parent.TraceMode);
+  InheritOptionalValue(preset.TraceFormat, parent.TraceFormat);
+  InheritVector(preset.TraceSource, parent.TraceSource);
+  InheritString(preset.TraceRedirect, parent.TraceRedirect);
 
   return true;
 }
@@ -1135,12 +1142,13 @@ std::string cmCMakePresetsGraph::GetUserFilename(std::string const& sourceDir)
 }
 
 bool cmCMakePresetsGraph::ReadProjectPresets(std::string const& sourceDir,
-                                             bool allowNoFiles)
+                                             std::string const& presetsFile,
+                                             ReadOption readFilesOption)
 {
-  this->SourceDir = sourceDir;
+  this->SourceDir = cmSystemTools::CollapseFullPath(sourceDir);
   this->ClearPresets();
 
-  if (!this->ReadProjectPresetsInternal(allowNoFiles)) {
+  if (!this->ReadProjectPresetsInternal(presetsFile, readFilesOption)) {
     this->ClearPresets();
     return false;
   }
@@ -1176,33 +1184,46 @@ std::string cmCMakePresetsGraph::GetGeneratorForPreset(
   return {};
 }
 
-bool cmCMakePresetsGraph::ReadProjectPresetsInternal(bool allowNoFiles)
+bool cmCMakePresetsGraph::ReadProjectPresetsInternal(
+  std::string const& presetsFile, ReadOption readFilesOption)
 {
   bool haveOneFile = false;
 
   File* file;
-  std::string filename = GetUserFilename(this->SourceDir);
+  std::string filename;
   std::vector<File*> inProgressFiles;
-  if (cmSystemTools::FileExists(filename)) {
-    if (!this->ReadJSONFile(filename, RootType::User, ReadReason::Root,
-                            inProgressFiles, file, this->errors)) {
-      return false;
-    }
-    haveOneFile = true;
-  } else {
-    filename = GetFilename(this->SourceDir);
+  if (!presetsFile.empty()) {
+    filename = presetsFile;
     if (cmSystemTools::FileExists(filename)) {
-      if (!this->ReadJSONFile(filename, RootType::Project, ReadReason::Root,
+      if (!this->ReadJSONFile(filename, RootType::Any, ReadReason::Root,
                               inProgressFiles, file, this->errors)) {
         return false;
       }
       haveOneFile = true;
     }
+  } else {
+    filename = GetUserFilename(this->SourceDir);
+    if (cmSystemTools::FileExists(filename)) {
+      if (!this->ReadJSONFile(filename, RootType::User, ReadReason::Root,
+                              inProgressFiles, file, this->errors)) {
+        return false;
+      }
+      haveOneFile = true;
+    } else {
+      filename = GetFilename(this->SourceDir);
+      if (cmSystemTools::FileExists(filename)) {
+        if (!this->ReadJSONFile(filename, RootType::Project, ReadReason::Root,
+                                inProgressFiles, file, this->errors)) {
+          return false;
+        }
+        haveOneFile = true;
+      }
+    }
   }
   assert(inProgressFiles.empty());
 
   if (!haveOneFile) {
-    if (allowNoFiles) {
+    if (readFilesOption == ReadOption::AllowNoFiles) {
       return true;
     }
     cmCMakePresetsErrors::FILE_NOT_FOUND(filename, &this->parseState);

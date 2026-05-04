@@ -686,12 +686,15 @@ Options
 
 .. option:: --preset <preset>, --preset=<preset>
 
- Reads a :manual:`preset <cmake-presets(7)>` from ``CMakePresets.json`` and
- ``CMakeUserPresets.json`` files, which must be located in the same directory
- as the top level ``CMakeLists.txt`` file. The preset may specify the
- generator, the build directory, a list of variables, and other arguments to
- pass to CMake. At least one of ``CMakePresets.json`` or
- ``CMakeUserPresets.json`` must be present.
+ Reads a :manual:`preset <cmake-presets(7)>` from CMake presets files.
+ ``CMakePresets.json`` and ``CMakeUserPresets.json`` are the default files,
+ which must be located in the same directory as the top level
+ ``CMakeLists.txt`` file.  A file can also be specified with
+ :cmake-option:`--presets-file`.
+
+ The preset may specify the generator, the build directory, a list of
+ variables, and other arguments to pass to CMake.
+
  The :manual:`CMake GUI <cmake-gui(1)>` also recognizes and supports
  ``CMakePresets.json`` and ``CMakeUserPresets.json`` files. For full details
  on these files, see :manual:`cmake-presets(7)`.
@@ -699,25 +702,49 @@ Options
  The presets are read before all other command line options, although the
  :cmake-option:`-S` option can be used to specify the source directory
  containing the ``CMakePresets.json`` and ``CMakeUserPresets.json`` files.
- If :cmake-option:`-S` is not given, the current directory is assumed to
- be the top level source directory and must contain the presets files. The
- options specified by the chosen preset (variables, generator, etc.) can all
- be overridden by manually specifying them on the command line. For example,
- if the preset sets a variable called ``MYVAR`` to ``1``, but the user sets
- it to ``2`` with a ``-D`` argument, the value ``2`` is preferred.
+ If neither :cmake-option:`-S` nor :cmake-option:`--presets-file` are given,
+ the current working directory is assumed to be the top level source directory
+ and must contain ``CMakePresets.json`` and/or ``CMakeUserPresets.json``.
+
+ The options specified by the chosen preset (variables, generator, etc.)
+ can all be overridden by manually specifying them on the command line.
+ For example, if the preset sets a variable called ``MYVAR`` to ``1``,
+ but the user sets it to ``2`` with a :cmake-option:`-D` argument,
+ the value ``2`` is preferred.
 
  .. versionadded:: 3.21
-   The ``-B`` option may optionally be specified with a different binary
-   directory than the one specified by the ``binaryDir`` key of the
-   configure preset.
+   The :cmake-option:`-B` option may optionally be specified with a different
+   binary directory than the one specified by the
+   :preset:`configurePresets.binaryDir` field.
+
+ .. versionchanged:: 4.4
+   If :cmake-option:`--presets-file` is specified, neither of
+   ``CMakePresets.json`` nor ``CMakeUserPresets.json`` are required to be
+   present.  In prior versions, the presence of these files in the top-level
+   source directory (whether via :cmake-option:`-S` or the current working
+   directory) was strictly required.
+
+.. option:: --presets-file <file>, --presets-file=<file>
+
+ .. versionadded:: 4.4
+
+ Reads :manual:`presets <cmake-presets(7)>` from the given ``<file>``. The
+ specified path may be absolute or relative to the current working directory.
+ If ``--presets-file`` is given, presets defined in ``CMakePresets.json`` and
+ ``CMakeUserPresets.json`` will be ignored.
 
 .. option:: --list-presets[=<type>]
 
  Lists the available presets of the specified ``<type>``.  Valid values for
  ``<type>`` are ``configure``, ``build``, ``test``, ``package``, or ``all``.
- If ``<type>`` is omitted, ``configure`` is assumed.  The current working
- directory must contain CMake preset files unless the :cmake-option:`-S`
- option is used to specify a different top level source directory.
+ If ``<type>`` is omitted, ``configure`` is assumed.
+
+ .. versionchanged:: 4.4
+   If :cmake-option:`--presets-file` is specified, the presets defined in the
+   given ``<file>`` will be listed.  Otherwise, the top-level source directory
+   (whether via :cmake-option:`-S` or the current working directory) must
+   contain ``CMakePresets.json`` and/or ``CMakeUserPresets.json``.
+   In prior versions, the latter was strictly required.
 
 .. option:: --debugger
 
@@ -778,8 +805,8 @@ project binary tree:
 
 .. code-block:: shell
 
-  cmake --build <dir>             [<options>] [-- <build-tool-options>]
-  cmake --build --preset <preset> [<options>] [-- <build-tool-options>]
+  cmake --build <dir>                     [<options>] [-- <build-tool-options>]
+  cmake --build [<dir>] --preset <preset> [<options>] [-- <build-tool-options>]
 
 This abstracts a native build tool's command-line interface with the
 following options:
@@ -793,19 +820,41 @@ following options:
 
 .. option:: --preset <preset>, --preset=<preset>
 
-  Use a build preset to specify build options. The project binary directory
-  is inferred from the ``configurePreset`` key unless a directory is specified
-  after ``--build``. The current working directory must contain CMake preset
-  files. See :manual:`preset <cmake-presets(7)>` for more details.
+  Use a build :manual:`preset <cmake-presets(7)>` to specify build options.
+  The project binary directory is inferred from the
+  :preset:`buildPresets.configurePreset` key unless a directory is specified
+  after ``--build``.
 
   .. versionadded:: 4.3
     ``cmake --build`` now supports specifying a build directory and
     preset together.
 
+  .. versionchanged:: 4.4
+    ``cmake --build <dir> --preset`` no longer needs to be called from the
+    directory containing ``CMakePresets.json`` or ``CMakeUserPresets.json``.
+    If :cmake-build-option:`--presets-file` is specified, CMake will use that
+    file; otherwise, the presets file(s) can be inferred from the current
+    build directory's ``CMakeCache.txt``.
+
+.. option:: --presets-file <file>, --presets-file=<file>
+
+  .. versionadded:: 4.4
+
+  Reads :manual:`presets <cmake-presets(7)>` from the given ``<file>``. The
+  specified path may be absolute or relative to the current working directory.
+  If ``--presets-file`` is given, presets defined in ``CMakePresets.json`` and
+  ``CMakeUserPresets.json`` will be ignored.
+
 .. option:: --list-presets
 
-  Lists the available build presets. The current working directory must
-  contain CMake preset files.
+  Lists the available build presets.
+
+  .. versionchanged:: 4.4
+    ``cmake --build <dir> --list-presets`` no longer needs to be called from
+    the directory containing ``CMakePresets.json`` or ``CMakeUserPresets.json``.
+    If :cmake-build-option:`--presets-file` is specified, only presets defined
+    in the given ``<file>`` will be listed; otherwise, the presets file(s) are
+    inferred from the current build directory's ``CMakeCache.txt``.
 
 .. option:: -j [<jobs>], --parallel [<jobs>]
 
@@ -1903,10 +1952,8 @@ The options are:
 
 .. option:: --preset <preset>, --preset=<preset>
 
-  Use a workflow preset to specify a workflow. The project binary directory
-  is inferred from the initial configure preset. The current working directory
-  must contain CMake preset files.
-  See :manual:`preset <cmake-presets(7)>` for more details.
+  Use a workflow :manual:`preset <cmake-presets(7)>` to specify a workflow.
+  The project binary directory is inferred from the initial configure preset.
 
   .. versionchanged:: 3.31
     When following immediately after the ``--workflow`` option,
@@ -1917,10 +1964,31 @@ The options are:
 
       $ cmake --workflow my-preset
 
+  .. versionchanged:: 4.4
+    If :cmake-workflow-option:`--presets-file` is specified, neither of
+    ``CMakePresets.json`` nor ``CMakeUserPresets.json`` are required to be
+    present.  Otherwise, they are required to be present in the top level
+    source directory.  In prior versions, this was strictly required.
+
+.. option:: --presets-file <file>, --presets-file=<file>
+
+  .. versionadded:: 4.4
+
+  Reads :manual:`presets <cmake-presets(7)>` from the given ``<file>``. The
+  specified path may be absolute or relative to the current working directory.
+  If ``--presets-file`` is given, presets defined in ``CMakePresets.json`` and
+  ``CMakeUserPresets.json`` will be ignored.
+
 .. option:: --list-presets
 
-  Lists the available workflow presets. The current working directory must
-  contain CMake preset files.
+  Lists the available workflow presets.
+
+  .. versionchanged:: 4.4
+    If :cmake-workflow-option:`--presets-file` is specified, neither of
+    ``CMakePresets.json`` nor ``CMakeUserPresets.json`` are required to be
+    present, and only presets defined in the given ``<file>`` will be listed.
+    Otherwise, they are required to be present in the top level source
+    directory.  In prior versions, this was strictly required.
 
 .. option:: --fresh
 

@@ -15,6 +15,7 @@ Perform the :ref:`CTest Build Step` as a :ref:`Dashboard Client`.
               [NUMBER_WARNINGS <num-warn-var>]
               [RETURN_VALUE <result-var>]
               [CAPTURE_CMAKE_ERROR <result-var>]
+              [PRESET <preset>]
               )
 
 Build the project and store results in ``Build.xml``
@@ -74,6 +75,15 @@ The options are:
 
 ``NUMBER_WARNINGS <num-warn-var>``
   Store the number of build warnings detected in the given variable.
+
+``PRESET <preset>``
+  .. versionadded:: 4.4
+
+  Specify a :manual:`preset <cmake-presets(7)>` to use when building the
+  project.  Any value set in the CTest script will take priority over a
+  corresponding setting from the preset.  For example, the ``TARGET``
+  argument will override the :preset:`buildPresets.targets` setting from
+  the chosen preset.
 
 ``RETURN_VALUE <result-var>``
   Store the return value of the native build tool in the given variable.

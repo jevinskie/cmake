@@ -37,7 +37,7 @@ When activated, this experimental feature provides the following:
 
 * The package name associated with specific targets may be specified
   using the ``CMAKE_EXPORT_FIND_PACKAGE_NAME`` variable and/or
-``EXPORT_FIND_PACKAGE_NAME`` target property.
+  ``EXPORT_FIND_PACKAGE_NAME`` target property.
 
 Export |CPS| Package Information for ``install(EXPORT)``
 ========================================================
@@ -102,7 +102,7 @@ When activated, this experimental feature provides the following:
 * Targets with the property set to a true value will have their C++ build
   information exported to the build database.
 
-Software Bill Of Materials |SBOM|
+Software Bill Of Materials (SBOM)
 =================================
 
 In order to activate support for the :command:`install(SBOM)` command,

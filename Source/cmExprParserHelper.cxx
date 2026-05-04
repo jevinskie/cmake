@@ -190,6 +190,9 @@ std::int64_t cmExprParserHelper::Div(std::int64_t l, std::int64_t r)
   if (r == 0) {
     throw std::overflow_error("divide by zero");
   }
+  if (l == INT64_MIN && r == -1) {
+    throw std::overflow_error("signed integer overflow in division");
+  }
   return l / r;
 }
 
@@ -197,6 +200,9 @@ std::int64_t cmExprParserHelper::Mod(std::int64_t l, std::int64_t r)
 {
   if (r == 0) {
     throw std::overflow_error("modulo by zero");
+  }
+  if (l == INT64_MIN && r == -1) {
+    throw std::overflow_error("signed integer overflow in modulo");
   }
   return l % r;
 }

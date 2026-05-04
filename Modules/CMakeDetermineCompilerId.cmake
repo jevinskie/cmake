@@ -324,6 +324,12 @@ function(CMAKE_DETERMINE_COMPILER_ID lang flagvar src)
     else()
       set(CMAKE_${lang}_COMPILER_FRONTEND_VARIANT "GNU")
     endif()
+  elseif("x${CMAKE_${lang}_COMPILER_ID}" STREQUAL "xIntel")
+    if(CMAKE_HOST_WIN32)
+      set(CMAKE_${lang}_COMPILER_FRONTEND_VARIANT "MSVC")
+    else()
+      set(CMAKE_${lang}_COMPILER_FRONTEND_VARIANT "GNU")
+    endif()
   elseif("x${CMAKE_${lang}_COMPILER_ID}" STREQUAL "xGNU"
     OR "x${CMAKE_${lang}_COMPILER_ID}" STREQUAL "xAppleClang"
     OR "x${CMAKE_${lang}_COMPILER_ID}" STREQUAL "xFujitsuClang"

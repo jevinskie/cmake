@@ -1639,16 +1639,25 @@ void cmNinjaNormalTargetGenerator::WriteLinkStatement(
     if (cmComputeLinkInformation* cli =
           this->GeneratorTarget->GetLinkInformation(config)) {
       for (auto const& dependency : cli->GetItems()) {
-        // Both the current target and the linked target must be swift targets
-        // in order for there to be a swiftmodule to depend on
+        // Only depend on swiftmodule from targets that actually compile
+        // Swift sources. A C/C++ target may have Swift as its linker
+        // language (due to language propagation) without producing one.
         if (dependency.Target &&
-            dependency.Target->GetLinkerLanguage(config) == "Swift") {
+            dependency.Target->IsLanguageUsed("Swift", config)) {
           std::string swiftmodule = this->ConvertToNinjaPath(
             dependency.Target->GetSwiftModulePath(config));
           linkBuild.ImplicitDeps.emplace_back(swiftmodule);
         }
       }
     }
+  }
+
+  // For split Swift builds, ensure the link edge depends on the target's own
+  // .swiftmodule so the emit-module edge runs even when no other target in
+  // the build depends on it (e.g. install-only targets).
+  std::string swiftModuleOutput = this->GetSwiftModuleOutput(config);
+  if (!swiftModuleOutput.empty()) {
+    linkBuild.ImplicitDeps.emplace_back(std::move(swiftModuleOutput));
   }
 
   // Ninja should restat after linking if and only if there are byproducts.

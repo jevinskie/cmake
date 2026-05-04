@@ -381,6 +381,7 @@ TargetProperty const StaticTargetProperties[] = {
   { "Swift_LANGUAGE_VERSION"_s, IC::CanCompileSources },
   { "Swift_MODULE_DIRECTORY"_s, IC::CanCompileSources },
   { "Swift_COMPILATION_MODE"_s, IC::CanCompileSources },
+  { "Swift_SEPARATE_MODULE_EMISSION"_s, IC::CanCompileSources },
   // ---- Rust
   { "Rust_EDITION"_s, IC::CanCompileSources },
   { "Rust_MAIN_CRATE_ROOT"_s, IC::CanCompileSources },

@@ -64,7 +64,7 @@ bool ConstructConfigureCommand(cmExecutionStatus& status, cmMakefile& mf,
 
   if (!presetName.empty()) {
     cmCMakePresetsGraph presetsGraph;
-    if (!presetsGraph.ReadProjectPresets(sourceDirectory)) {
+    if (!presetsGraph.ReadProjectPresets(sourceDirectory, "")) {
       status.SetError(
         cmStrCat("Could not read presets from \"", sourceDirectory,
                  "\": ", presetsGraph.parseState.GetErrorMessage()));

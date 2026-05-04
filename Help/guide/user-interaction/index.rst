@@ -425,7 +425,7 @@ saving presets for commonly-used configure settings. These
 presets can set the build directory, generator, cache
 variables, environment variables, and other command-line
 options. All of these options can be overridden by the
-user. The full details of the ``CMakePresets.json`` format
+user. The full details of the CMake presets format
 are listed in the :manual:`cmake-presets(7)` manual.
 
 Using presets on the command-line

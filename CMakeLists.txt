@@ -391,6 +391,22 @@ if(CMake_RUN_IWYU)
   list(APPEND CMAKE_CXX_INCLUDE_WHAT_YOU_USE ${CMake_IWYU_OPTIONS})
 endif()
 
+option(CMake_RUN_PVS_STUDIO "Run pvs-studio-analyzer with the compiler." OFF)
+if(CMake_RUN_PVS_STUDIO)
+  if(CMake_SOURCE_DIR STREQUAL CMake_BINARY_DIR)
+    message(FATAL_ERROR "CMake_RUN_PVS_STUDIO requires an out-of-source build!")
+  endif()
+  find_program(PVS_STUDIO_COMMAND NAMES pvs-studio-analyzer)
+  if(NOT PVS_STUDIO_COMMAND)
+    message(FATAL_ERROR "CMake_RUN_PVS_STUDIO is ON but pvs-studio-analyzer is not found!")
+  endif()
+  set(CMAKE_CXX_PVS_STUDIO
+    "${PVS_STUDIO_COMMAND}" analyze
+      -a GA
+      --apply-pvs-configs
+      --project-root "${CMAKE_SOURCE_DIR}"
+  )
+endif()
 
 #-----------------------------------------------------------------------
 # a macro that only sets the FOLDER target property if it's

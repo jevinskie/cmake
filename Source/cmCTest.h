@@ -20,6 +20,7 @@
 #include "cmProcessOutput.h"
 
 class cmake;
+class cmCMakePresetsArgs;
 class cmGeneratedFileStream;
 class cmInstrumentation;
 class cmMakefile;
@@ -452,7 +453,7 @@ private:
   bool AddVariableDefinition(std::string const& arg);
 
   /** set command line arguments read from a test preset */
-  bool SetArgsFromPreset(std::string const& presetName, bool listPresets);
+  bool SetArgsFromPreset(cmCMakePresetsArgs const& args);
 
   /** returns true iff the console supports progress output */
   static bool ProgressOutputSupportedByConsole();

@@ -7,6 +7,9 @@
 
 #include <cm/string_view>
 
+#include "cmDiagnostics.h"
+#include "cmListFileCache.h"
+#include "cmLocalGenerator.h"
 #include "cmMakefile.h"
 #include "cmStringAlgorithms.h"
 #include "cmSystemTools.h"
@@ -227,6 +230,19 @@ std::string cmInstallGenerator::ConvertToAbsoluteDestination(
   }
   result += dest;
   return result;
+}
+
+void cmInstallGenerator::CheckAbsoluteDestination(
+  std::string const& dest, cmLocalGenerator* lg, cmListFileBacktrace const& bt)
+{
+  if (!cmSystemTools::FileIsFullPath(dest)) {
+    return;
+  }
+  lg->IssueDiagnostic(
+    cmDiagnostics::CMD_INSTALL_ABSOLUTE_DESTINATION,
+    cmStrCat("INSTALL command given absolute DESTINATION path (", dest,
+             ").\n"),
+    bt);
 }
 
 cmInstallGenerator::MessageLevel cmInstallGenerator::SelectMessageLevel(

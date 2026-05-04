@@ -32,59 +32,62 @@ issues in several categories:
 * Issues that may impact the ability of the project
   to be built with newer versions of CMake.
 
-Diagnostic Actions
-------------------
+Controlling Diagnostics
+=======================
 
-The action taken when a particular diagnostic is triggered depends on the
-diagnostic category.  Most categories will warn by default.  The
-:command:`cmake_diagnostic` command and :option:`-W <cmake -W>` options can be
-used to control what action occurs when a diagnostic of a particular category
-is triggered.  The possible actions are described in the documentation of the
-same.
+Each diagnostic category has an associated action to be taken when that
+diagnostic is triggered.  Most categories will warn by default.  The available
+actions are described in the :command:`cmake_diagnostic` command documentation.
+
+CMake maintains a diagnostic state stack that is similar to the policy state.
+The initial state of the stack is determined by four factors, which are, in
+order of precedence:
+
+* The default action associated with the diagnostic.
+
+* The action associated with the diagnostic stored in the CMake variable cache,
+  which is used to persist the initial state between CMake runs.
+
+* The :preset:`configurePresets.warnings` and :preset:`configurePresets.errors`
+  fields of :manual:`CMake Presets <cmake-presets(7)>`.
+
+* The :option:`-W[no-][error=] <cmake -W>` command line arguments.
+
+.. note::
+
+  Because command line arguments operate both recursively and in the order
+  specified, some combinations of diagnostic arguments may result in later
+  arguments completely overwriting the action of earlier arguments.  For
+  example, ``-Wno-child -Wparent`` will result in the ``child`` warning being
+  enabled, because ``-Wparent`` promotes both ``parent`` and ``child`` to at
+  least ``WARN`` severity.  CMake presets are evaluated in order from most
+  ancestral to least ancestral.
+
+During script execution, the :command:`cmake_diagnostic` command can be used to
+query or alter the state, or to perform limited stack manipulations.
+
+When a diagnostic is issued at configure time (or during script execution, when
+CMake is running in script mode), the current diagnostic state controls the
+action.  Diagnostics issued at generate time, or outside of the configuration
+and generation phases must make use of recorded state information. While CMake
+strives to preserve this information in a way that matches the recorded state
+to the state as of the CMake command which ultimately causes a diagnostic to be
+issued, CMake may sometimes fall back to the state when processing of a
+subdirectory completed, or even the root state.  This may limit the ability of
+the :command:`cmake_diagnostic` command to control such diagnostics, especially
+if called from a function or included file.  This is especially the case for
+diagnostics that are not directly coupled to a CMake command.
 
 Diagnostic Categories
 =====================
 
-The following categories are defined.
+The following categories are defined:
 
-``CMD_AUTHOR`` (``-Wauthor``)
------------------------------
+.. toctree::
+   :maxdepth: 1
 
-:Default: Warn
-
-Warn about a build system's incorrect use of CMake, or of a CMake interface
-provided by a dependency.  This is the category triggered by
-:command:`message(AUTHOR_WARNING)`.  It is also the ancestor of many other
-diagnostic categories.
-
-The most important aspect of this category is that it represents issues with
-a project's build system which typically require alteration to the same.  This
-is to say that users simply trying to build a project obtained elsewhere will
-typically not be interested in these warnings, except to perhaps report them
-to the project's developer(s).
-
-``CMD_DEPRECATED`` (``-Wdeprecated``)
--------------------------------------
-
-:Default: Warn
-:Parent: ``CMD_AUTHOR``
-
-Warn about use of a deprecated function or package.  This is the category
-triggered by :command:`message(DEPRECATION)`.
-
-``CMD_UNINITIALIZED`` (``-Wuninitialized``)
--------------------------------------------
-
-:Default: Ignore
-
-Warn if an uninitialized variable is dereferenced.
-
-``CMD_UNUSED_CLI`` (``-Wunused-cli``)
--------------------------------------
-
-:Default: Warn
-
-Warn about variables that are declared on the command line, but not used.
-
-Although the action of this warning category can be queried as usual, changes
-made using the :command:`cmake_diagnostic` command have no effect.
+   /diagnostic/CMD_AUTHOR
+   /diagnostic/CMD_DEPRECATED
+   /diagnostic/CMD_INSTALL_ABSOLUTE_DESTINATION
+   /diagnostic/CMD_UNINITIALIZED
+   /diagnostic/CMD_UNUSED_CLI

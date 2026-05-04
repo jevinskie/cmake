@@ -2115,14 +2115,7 @@ void cmLocalGenerator::AddLanguageFlags(std::string& flags,
     (compilerId == "OpenWatcom" || compilerSimulateId == "OpenWatcom");
 
   if (lang == "Swift") {
-    if (cmValue v = target->GetProperty("Swift_LANGUAGE_VERSION")) {
-      if (cmSystemTools::VersionCompare(
-            cmSystemTools::OP_GREATER_EQUAL,
-            this->Makefile->GetDefinition("CMAKE_Swift_COMPILER_VERSION"),
-            "4.2")) {
-        this->AppendFlags(flags, "-swift-version " + *v);
-      }
-    }
+    target->AddSwiftTargetFlags(flags);
   } else if (lang == "CUDA") {
     target->AddCUDAArchitectureFlags(compileOrLink, config, flags);
     target->AddCUDAToolkitFlags(flags);

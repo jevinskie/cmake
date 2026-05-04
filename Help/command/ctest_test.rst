@@ -183,6 +183,13 @@ The options are:
   file is **not** uploaded to CDash because it would be redundant with
   CTest's ``Test.xml`` file.
 
+``COVERAGE_TOOL <tool>``
+  .. versionadded:: 4.4
+
+  Specify the ``<tool>`` used for collecting coverage during the running
+  of the tests.  See the CTest :ref:`CoverageTool <ctest-CoverageTool>`
+  setting for details.
+
 ``QUIET``
   .. versionadded:: 3.3
 

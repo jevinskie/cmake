@@ -120,13 +120,37 @@ Options
 
   Override/define :variable:`CPACK_PACKAGE_VENDOR`.
 
-.. option:: --preset <presetName>
+.. option:: --preset <preset>, --preset=<preset>
 
-  Use a preset from :manual:`cmake-presets(7)`.
+  Use a package :manual:`preset <cmake-presets(7)>` to specify package
+  options. The project binary directory is inferred from the
+  :preset:`packagePresets.configurePreset` key.
+
+  .. versionchanged:: 4.4
+    If :cpack-option:`--presets-file` is specified, neither of
+    ``CMakePresets.json`` nor ``CMakeUserPresets.json`` are required to be
+    present.  Otherwise, they are required to be present in the top level
+    source directory.  In prior versions, this was strictly required.
+
+.. option:: --presets-file <file>, --presets-file=<file>
+
+  .. versionadded:: 4.4
+
+  Reads :manual:`presets <cmake-presets(7)>` from the given ``<file>``. The
+  specified path may be absolute or relative to the current working directory.
+  If ``--presets-file`` is given, presets defined in ``CMakePresets.json`` and
+  ``CMakeUserPresets.json`` will be ignored.
 
 .. option:: --list-presets
 
-  List presets from :manual:`cmake-presets(7)`.
+  Lists the available package presets.
+
+  .. versionchanged:: 4.4
+    If :cpack-option:`--presets-file` is specified, neither of
+    ``CMakePresets.json`` nor ``CMakeUserPresets.json`` are required to be
+    present, and only presets defined in the given ``<file>`` will be listed.
+    Otherwise, they are required to be present in the top level source
+    directory.  In prior versions, this was strictly required.
 
 .. include:: include/OPTIONS_HELP.rst
 

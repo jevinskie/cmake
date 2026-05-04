@@ -1912,6 +1912,15 @@ bool HandleDirectoryMode(std::vector<std::string> const& args,
   cmInstallGenerator::MessageLevel message =
     cmInstallGenerator::SelectMessageLevel(helper.Makefile, message_never);
 
+  // Check for an absolute destination.
+  if (cmGeneratorExpression::Find(*destination) == std::string::npos &&
+      cmSystemTools::FileIsFullPath(*destination)) {
+    helper.Makefile->IssueDiagnostic(
+      cmDiagnostics::CMD_INSTALL_ABSOLUTE_DESTINATION,
+      cmStrCat("INSTALL command given absolute DESTINATION path (",
+               *destination, ").\n"));
+  }
+
   // Create the directory install generator.
   helper.Makefile->AddInstallGenerator(
     cm::make_unique<cmInstallDirectoryGenerator>(

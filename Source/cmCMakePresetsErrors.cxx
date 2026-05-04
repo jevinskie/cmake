@@ -197,7 +197,7 @@ void PASSTHROUGH_ARGS_UNSUPPORTED(cmJSONState* state)
 
 void CYCLIC_INCLUDE(std::string const& file, cmJSONState* state)
 {
-  state->AddError(cmStrCat("Cyclic include among preset files: ", file));
+  state->AddError(cmStrCat("Cyclic include among presets files: ", file));
 }
 
 void TEST_OUTPUT_TRUNCATION_UNSUPPORTED(cmJSONState* state)

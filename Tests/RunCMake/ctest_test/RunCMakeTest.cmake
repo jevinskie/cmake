@@ -260,6 +260,15 @@ set_property(TEST RunCMakeVersion PROPERTY ENVIRONMENT "ENV1=env1;ENV2=env2")
 endfunction()
 run_environment()
 
+# Test setting of CTEST_TEST_COVERAGE_TOOL
+function(run_CTestTestCoverageTool)
+  set(CASE_CTEST_TEST_ARGS "COVERAGE_TOOL" "LLVM-COV")
+  set(CASE_TEST_PREFIX_CODE [[ unset(ENV{LLVM_PROFILE_FILE})]])
+
+  run_ctest(TestCTestTestCoverageTool -VV)
+endfunction()
+run_CTestTestCoverageTool()
+
 # test for OUTPUT_JUNIT
 run_ctest_test(OutputJUnit OUTPUT_JUNIT junit.xml REPEAT UNTIL_FAIL:2)
 

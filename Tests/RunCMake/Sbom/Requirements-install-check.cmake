@@ -46,9 +46,19 @@ set(FOO_SPDX_DOCUMENT [=[
 set(FOO_LIBB [=[
 {
   "creationInfo" : "_:Build#CreationInfo",
-  "name" : "libd",
+  "name" : "libb",
   "software_primaryPurpose" : "library",
-  "spdxId" : "urn:libd#Package",
+  "spdxId" : "urn:libb#Package",
+  "type" : "software_Package"
+}
+]=])
+
+set(BAR_LIBB [=[
+{
+  "creationInfo" : "_:Build#CreationInfo",
+  "name" : "libb",
+  "software_primaryPurpose" : "library",
+  "spdxId" : "urn:libb#Package",
   "type" : "software_Package"
 }
 ]=])
@@ -67,7 +77,7 @@ set(BAR_LIBD [=[
 {
   "spdxId" : "urn:libd#Package",
   "name" : "libd",
-  "software_primaryPurpose" : "LIBRARY",
+  "software_primaryPurpose" : "library",
   "type" : "software_Package"
 }
 ]=])
@@ -127,13 +137,13 @@ expect_value("${FOO_CONTENT}" "https://spdx.org/rdf/3.0.1/spdx-context.jsonld" "
 string(JSON FOO_CREATION_INFO GET "${FOO_CONTENT}" "@graph" "0")
 string(JSON FOO_SPDX_DOCUMENT GET "${FOO_CONTENT}" "@graph" "1")
 expect_object("${FOO_SPDX_DOCUMENT}" FOO_SPDX_DOCUMENT)
-expect_object("${FOO_SPDX_DOCUMENT}" FOO_LIBB "rootElement" "0")
+expect_object("${FOO_SPDX_DOCUMENT}" FOO_LIBB "rootElement")
 
 expect_value("${BAR_CONTENT}" "https://spdx.org/rdf/3.0.1/spdx-context.jsonld" "@context")
 string(JSON BAR_CREATION_INFO GET "${BAR_CONTENT}" "@graph" "0")
 string(JSON BAR_SPDX_DOCUMENT GET "${BAR_CONTENT}" "@graph" "1")
 expect_object("${BAR_SPDX_DOCUMENT}" BAR_SPDX_DOCUMENT)
-expect_object("${BAR_SPDX_DOCUMENT}" BAR_LIBC "rootElement" "0")
-expect_object("${BAR_SPDX_DOCUMENT}" BAR_LIBD "rootElement" "1")
-expect_object("${BAR_SPDX_DOCUMENT}" BAR_DEPENDENCY_TEST "element" "0")
-expect_object("${BAR_SPDX_DOCUMENT}" BAR_DEPENDENCY_FOO "element" "1")
+expect_object("${BAR_SPDX_DOCUMENT}" BAR_LIBC "rootElement")
+expect_object("${BAR_SPDX_DOCUMENT}" BAR_LIBD "rootElement")
+expect_object("${BAR_SPDX_DOCUMENT}" BAR_DEPENDENCY_TEST "element")
+expect_object("${BAR_SPDX_DOCUMENT}" BAR_DEPENDENCY_FOO "element")

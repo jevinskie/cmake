@@ -2810,6 +2810,34 @@ void cmGeneratorTarget::AddRustTargetFlags(std::string& flags) const
   }
 }
 
+void cmGeneratorTarget::AddSwiftTargetFlags(std::string& flags) const
+{
+  if (cmValue version = GetProperty("Swift_LANGUAGE_VERSION")) {
+    if (cmSystemTools::VersionCompare(
+          cmSystemTools::OP_GREATER_EQUAL,
+          this->Makefile->GetDefinition("CMAKE_Swift_COMPILER_VERSION"),
+          "4.2")) {
+      flags += " -swift-version " + *version;
+    }
+  }
+
+  if (!this->GetGlobalGenerator()->IsXcode() &&
+      cmSystemTools::VersionCompare(
+        cmSystemTools::OP_GREATER_EQUAL,
+        this->Makefile->GetDefinition("CMAKE_Swift_COMPILER_VERSION"),
+        "5.8")) {
+    // Note: The Xcode generator sets the `SWIFT_PACKAGE_NAME` BuildSettings
+    //       attribute
+    std::string const packageName = this->GetSwiftPackageName();
+    if (!packageName.empty()) {
+      std::string const packageFlag =
+        this->Makefile->GetSafeDefinition("CMAKE_Swift_PACKAGE_NAME_FLAG");
+      // Add the package name to the flags
+      flags += " " + packageFlag + " " + packageName;
+    }
+  }
+}
+
 void cmGeneratorTarget::AddCUDAToolkitFlags(std::string& flags) const
 {
   std::string const& compiler =
@@ -6171,9 +6199,26 @@ std::string cmGeneratorTarget::BuildDatabasePath(
                   "_build_database.json");
 }
 
+std::string cmGeneratorTarget::GetSwiftPackageName() const
+{
+  std::string packageName;
+  if (cmValue projectName = this->GetProperty("Swift_PACKAGE_NAME")) {
+    packageName = *projectName;
+  } else if (this->GetPolicyStatusCMP0216() == cmPolicies::NEW) {
+    packageName = this->Makefile->GetSafeDefinition("PROJECT_NAME");
+  }
+  return packageName;
+}
+
 std::string cmGeneratorTarget::GetSwiftModuleName() const
 {
-  return this->GetPropertyOrDefault("Swift_MODULE_NAME", this->GetName());
+  if (cmValue name = this->GetProperty("Swift_MODULE_NAME")) {
+    return *name;
+  }
+  // Hyphens are not valid in Swift module identifiers.
+  std::string name = this->GetName();
+  std::replace(name.begin(), name.end(), '-', '_');
+  return name;
 }
 
 std::string cmGeneratorTarget::GetSwiftModuleFileName() const

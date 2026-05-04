@@ -2493,7 +2493,8 @@ bool cmCTestTestHandler::AddTest(std::vector<std::string> const& args)
   cmCTestTestProperties test;
   test.Name = testname;
   test.Args = args;
-  test.Directory = cmSystemTools::GetLogicalWorkingDirectory();
+  test.CTestDirectory = cmSystemTools::GetLogicalWorkingDirectory();
+  test.Directory = test.CTestDirectory;
   cmCTestOptionalLog(this->CTest, DEBUG,
                      "Set test directory: " << test.Directory << std::endl,
                      this->Quiet);

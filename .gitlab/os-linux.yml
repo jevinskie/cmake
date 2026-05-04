@@ -58,7 +58,7 @@
 ### Debian
 
 .debian13:
-    image: "kitware/cmake:ci-debian13-x86_64-2026-02-08"
+    image: "kitware/cmake:ci-debian13-x86_64-2026-04-28"
 
     variables:
         GIT_CLONE_PATH: "$CI_BUILDS_DIR/cmake ci"
@@ -82,7 +82,7 @@
 ### Fedora
 
 .fedora43:
-    image: "kitware/cmake:ci-fedora43-x86_64-2026-02-08"
+    image: "kitware/cmake:ci-fedora43-x86_64-2026-04-28"
 
     variables:
         GIT_CLONE_PATH: "$CI_BUILDS_DIR/cmake ci/long file name for testing purposes"
@@ -130,6 +130,14 @@
 
     variables:
         CMAKE_CONFIGURATION: fedora43_tidy
+        CMAKE_CI_NO_INSTALL: 1
+
+.fedora43_pvs_studio:
+    extends: .fedora43
+    environment:
+        name: pvs-studio
+    variables:
+        CMAKE_CONFIGURATION: fedora43_pvs_studio
         CMAKE_CI_NO_INSTALL: 1
 
 .fedora43_clang_analyzer:

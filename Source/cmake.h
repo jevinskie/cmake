@@ -48,6 +48,9 @@ class cmDebuggerAdapter;
 #endif
 
 class cmExternalMakefileProjectGeneratorFactory;
+class cmCMakePresetsArgs;
+class cmCMakePresetsConfigureArgs;
+class cmCMakePresetsWorkflowArgs;
 class cmFileAPI;
 class cmInstrumentation;
 class cmFileTimeCache;
@@ -254,19 +257,8 @@ public:
   bool CreateAndSetGlobalGenerator(std::string const& name);
 
 #ifndef CMAKE_BOOTSTRAP
-  enum class ListPresets
-  {
-    None,
-    Configure,
-    Build,
-    Test,
-    Package,
-    Workflow,
-    All,
-  };
-
-  bool SetArgsFromPreset(std::string const& presetName,
-                         ListPresets listPresets, bool haveBinaryDirArg);
+  bool SetArgsFromPreset(cmCMakePresetsConfigureArgs const& args,
+                         bool haveBinaryDirArg);
 
   void PrintPresetList(cmCMakePresetsGraph const& graph) const;
 #endif
@@ -627,8 +619,9 @@ public:
   //! run the --build option
   int Build(cmBuildArgs buildArgs, std::vector<std::string> targets,
             std::vector<std::string> nativeOptions,
-            cmBuildOptions& buildOptions, std::string const& presetName,
-            bool listPresets, std::vector<std::string> const& args);
+            cmBuildOptions& buildOptions,
+            cmCMakePresetsArgs const& presetsArgs,
+            std::vector<std::string> const& args);
 
   enum class DryRun
   {
@@ -640,18 +633,7 @@ public:
   bool Open(std::string const& dir, DryRun dryRun);
 
   //! run the --workflow option
-  enum class WorkflowListPresets
-  {
-    No,
-    Yes,
-  };
-  enum class WorkflowFresh
-  {
-    No,
-    Yes,
-  };
-  int Workflow(std::string const& presetName, WorkflowListPresets listPresets,
-               WorkflowFresh fresh);
+  int Workflow(cmCMakePresetsWorkflowArgs const& args);
 
   void UnwatchUnusedCli(std::string const& var);
   void WatchUnusedCli(std::string const& var);

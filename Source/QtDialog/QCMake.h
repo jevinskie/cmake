@@ -111,7 +111,7 @@ public slots:
                            cmDiagnostics::DiagnosticAction);
   /// check if project IDE open is possible and emit openPossible signal
   void checkOpenPossible();
-  /// Reload the preset files and tree
+  /// Reload the presets files and tree
   void loadPresets();
 
 public:

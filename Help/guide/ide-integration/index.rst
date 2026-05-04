@@ -40,7 +40,7 @@ CMake supports a file format called ``CMakePresets.json``, and its
 user-specific counterpart, ``CMakeUserPresets.json``. This file contains
 information on the various configure presets that a user may want. Each preset
 may have a different compiler, build flags, etc. The details of this format are
-explained in the :manual:`cmake(1)` manual.
+explained in the :manual:`cmake-presets(7)` manual.
 
 IDE vendors are encouraged to read and evaluate this file the same way CMake
 does, and present the user with the presets listed in the file. Users should be
@@ -71,12 +71,12 @@ them as :option:`-D <cmake -D>` flags would cause the command line length limit
 of the platform to be exceeded, the IDE should instead construct a temporary
 cache script and pass it with the :option:`-C <cmake -C>` flag.
 
-While reading, parsing, and evaluating the contents of ``CMakePresets.json`` is
+While reading, parsing, and evaluating the contents of CMake presets files is
 straightforward, it is not trivial. In addition to the documentation, IDE
 vendors may also wish to refer to the CMake source code and test cases for a
 better understanding of how to implement the format.
 :download:`This file <../../manual/presets/schema.json>` provides a
-machine-readable JSON schema for the ``CMakePresets.json`` format that IDE
+machine-readable JSON schema for the CMake presets file format that IDE
 vendors may find useful for validation and providing editing assistance.
 
 Configuring

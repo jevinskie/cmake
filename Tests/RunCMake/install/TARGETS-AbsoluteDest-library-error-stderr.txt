@@ -1,0 +1,2 @@
+CMake Error \(install-absolute-destination\) at TARGETS-AbsoluteDest-library-error\.cmake:[0-9]+ \(install\):
+  INSTALL command given absolute DESTINATION path \(/absolute/lib\)\.

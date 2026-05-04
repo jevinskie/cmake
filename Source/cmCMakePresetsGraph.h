@@ -453,8 +453,15 @@ public:
     return preset.OriginFile->Version;
   }
 
-  bool ReadProjectPresets(std::string const& sourceDir,
-                          bool allowNoFiles = false);
+  enum class ReadOption
+  {
+    RequireFiles,
+    AllowNoFiles,
+  };
+
+  bool ReadProjectPresets(
+    std::string const& sourceDir, std::string const& presetsFile,
+    ReadOption readFilesOption = ReadOption::RequireFiles);
 
   std::string GetGeneratorForPreset(std::string const& presetName) const;
 
@@ -472,6 +479,7 @@ public:
 private:
   enum class RootType
   {
+    Any,
     Project,
     User,
   };
@@ -482,7 +490,8 @@ private:
     Included,
   };
 
-  bool ReadProjectPresetsInternal(bool allowNoFiles);
+  bool ReadProjectPresetsInternal(std::string const& presetsFile,
+                                  ReadOption readFilesOption);
   bool ReadJSONFile(std::string const& filename, RootType rootType,
                     ReadReason readReason, std::vector<File*>& inProgressFiles,
                     File*& file, std::string& errMsg);

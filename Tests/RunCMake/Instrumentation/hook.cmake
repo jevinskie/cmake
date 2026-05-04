@@ -200,6 +200,6 @@ if (EXISTS ${v1}/${hook}.hook)
 endif()
 file(WRITE ${v1}/${hook}.hook "${ERROR_MESSAGE}")
 
-if (NOT ERROR_MESSAGE MATCHES "^$")
+if (ERROR_MESSAGE)
   message(FATAL_ERROR ${ERROR_MESSAGE})
 endif()

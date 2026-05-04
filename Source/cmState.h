@@ -172,8 +172,14 @@ public:
 
   // Returns a command from its name, case insensitive, or nullptr
   Command GetCommand(std::string const& name) const;
+  // Returns a command type from its name, case insensitive, or cm::nullopt
+  cm::optional<cmStateEnums::CommandType> GetCommandType(
+    std::string const& name) const;
   // Returns a command from its name, or nullptr
   Command GetCommandByExactName(std::string const& name) const;
+  // Returns a command type from its name, or cm::nullopt
+  cm::optional<cmStateEnums::CommandType> GetCommandTypeByExactName(
+    std::string const& name) const;
 
   void AddBuiltinCommand(std::string const& name, Command command);
   void AddBuiltinCommand(std::string const& name, BuiltinCommand command);
@@ -186,7 +192,8 @@ public:
   void AddUnexpectedCommand(std::string const& name, char const* error);
   void AddUnexpectedFlowControlCommand(std::string const& name,
                                        char const* error);
-  bool AddScriptedCommand(std::string const& name, BT<Command> command,
+  bool AddScriptedCommand(std::string const& name,
+                          cmStateEnums::CommandType type, BT<Command> command,
                           cmMakefile& mf);
   void RemoveBuiltinCommand(std::string const& name);
   void RemoveUserDefinedCommands();
@@ -277,8 +284,32 @@ private:
 
   cmPropertyDefinitionMap PropertyDefinitions;
   std::vector<std::string> EnabledLanguages;
-  std::unordered_map<std::string, Command> BuiltinCommands;
-  std::unordered_map<std::string, Command> ScriptedCommands;
+
+  class CommandDescriptor
+  {
+  public:
+    using CommandType = cmStateEnums::CommandType;
+
+    CommandDescriptor()
+      : Type(CommandType::Macro)
+      , Script(nullptr)
+    {
+    }
+    CommandDescriptor(CommandType type, Command command);
+    CommandDescriptor(CommandDescriptor&& descriptor) noexcept;
+
+    CommandDescriptor& operator=(CommandDescriptor&& descriptor) noexcept;
+    CommandDescriptor& operator=(CommandDescriptor const& descriptor) =
+      default;
+
+    CommandType Type;
+    Command Script;
+  };
+  CommandDescriptor const* GetCommandDescriptorByExactName(
+    std::string const& name) const;
+
+  std::unordered_map<std::string, CommandDescriptor> BuiltinCommands;
+  std::unordered_map<std::string, CommandDescriptor> ScriptedCommands;
   std::unordered_set<std::string> FlowControlCommands;
   cmPropertyMap GlobalProperties;
   std::unique_ptr<cmCacheManager> CacheManager;

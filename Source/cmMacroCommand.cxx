@@ -19,6 +19,7 @@
 #include "cmPolicies.h"
 #include "cmRange.h"
 #include "cmState.h"
+#include "cmStateTypes.h"
 #include "cmStringAlgorithms.h"
 #include "cmSystemTools.h"
 
@@ -170,7 +171,11 @@ bool cmMacroFunctionBlocker::Replay(std::vector<cmListFileFunction> functions,
                                     cmExecutionStatus& status)
 {
   cmMakefile& mf = status.GetMakefile();
-  mf.AppendProperty("MACROS", this->Args[0]);
+  if (status.GetMakefile().GetPolicyStatus(cmPolicies::CMP0217) !=
+      cmPolicies::NEW) {
+
+    mf.AppendProperty("MACROS", this->Args[0]);
+  }
   // create a new command and add it to cmake
   cmMacroHelperCommand f;
   f.Args = this->Args;
@@ -179,7 +184,7 @@ bool cmMacroFunctionBlocker::Replay(std::vector<cmListFileFunction> functions,
   mf.RecordPolicies(f.Policies);
   mf.RecordDiagnostics(f.Diagnostics);
   return mf.GetState()->AddScriptedCommand(
-    this->Args[0],
+    this->Args[0], cmStateEnums::CommandType::Macro,
     BT<cmState::Command>(std::move(f),
                          mf.GetBacktrace().Push(this->GetStartingContext())),
     mf);
